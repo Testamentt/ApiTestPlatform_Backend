@@ -10,6 +10,10 @@ from app.models.enums import CaseSource, CaseStatus
 
 
 class TestCase(TimestampMixin, Base):
+    # why：__test__=False——pytest 会把 Test 前缀类当测试类收集（测试内 import 本模型时报
+    # PytestCollectionWarning），显式排除避免误收集。
+    __test__ = False
+
     __tablename__ = "test_cases"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)

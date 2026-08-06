@@ -6,6 +6,7 @@ import logging
 from datetime import UTC, datetime
 
 from app.celery_app import celery_app
+from app.core.config import get_settings
 from app.core.database import SessionLocal
 from app.models.enums import TaskStatus
 from app.models.task import Task
@@ -24,11 +25,14 @@ def scan_stale_tasks() -> int:
     killed = 0
     with SessionLocal() as session:
         running = session.query(Task).filter(Task.status == TaskStatus.RUNNING.value).all()
+        # why：超时阈值与 run_cmd 同源（execution.pytest_timeout），不落库——run_id 指纹已含 timeout，
+        # 但超时劫持判断的是进程实际跑了多久，用执行引擎同一配置保持一致
+        threshold = get_settings().execution.pytest_timeout
         for task in running:
             if task.started_at is None:
                 continue
             elapsed = (now - task.started_at).total_seconds()
-            if elapsed <= (task.timeout_seconds or 300):
+            if elapsed <= threshold:
                 continue
             # 读 DB 写入的 pid 杀整棵树（权威清理；pid 缺失则跳过）
             if task.pid:

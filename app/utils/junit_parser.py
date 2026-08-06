@@ -51,7 +51,7 @@ def parse_junit_xml(path: Path) -> tuple[JunitSummary, list[dict]]:
                 status = "fail"
             else:
                 status = "pass"
-            el = failure or err
+            el = failure if failure is not None else err
             msg = ""
             if el is not None:
                 msg = (el.attrib.get("message", "") or el.text or "")[:500]
