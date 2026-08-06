@@ -25,7 +25,7 @@ def get_settings() -> Settings:
 
 ## 2. Pydantic Settings 字段树（Phase 1）
 
-采用 pydantic-settings 2.x，`extra="forbid"`（未建模键启动即报错）。
+采用 `pydantic.BaseModel`（**非 BaseSettings**）——env 覆盖是手动合并（§1），BaseSettings 的 env_prefix 会把 `TESTPLATFORM_APP_DEBUG` 当扁平字段注入，与嵌套结构冲突；`extra="forbid"`（未建模键启动即报错）。
 
 ### 2.1 App
 | 字段 | 默认值 | 说明 |

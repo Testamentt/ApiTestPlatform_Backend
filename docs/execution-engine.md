@@ -32,11 +32,11 @@ result_expires = 3600                                          # result backend 
 
 ## 3. subprocess 统一封装（run_cmd，MVP 简化版）
 
-`app/utils/subprocess_util.py` 提供唯一函数 `run_cmd(args, timeout, *, check=True, cwd=None)`，**业务代码禁止各自 subprocess.run**：
+`app/utils/subprocess_util.py` 提供唯一函数 `run_cmd(args, timeout, *, check=True, cwd=None, on_start=None)`，**业务代码禁止各自 subprocess.run**：
 
 - 参数必须为列表，**禁止 `shell=True`**；命令在配置白名单内（`python`/`pytest`），参数逐项校验。
-- 用 `subprocess.run(args, capture_output=True, text=True, timeout=timeout, creationflags=CREATE_NO_WINDOW)`（MVP 不用 Popen）。
-- 捕获 `TimeoutExpired` → `kill_process_tree(e.process.pid)`（**best-effort**：父进程已死，`e.process.pid` 杀不到孙进程）→ 抛 `AppError("SUBPROCESS_TIMEOUT")`。
+- 用 `Popen + communicate(timeout=)`（`capture_output=True` 语义、`creationflags=CREATE_NO_WINDOW`）；`on_start(pid)` 在进程启动后立即回调——执行引擎用它写 `tasks.pid` + running（超时劫持的权威依据）。
+- 捕获 `TimeoutExpired` → `kill_process_tree(proc.pid)`（**best-effort**：父进程已死，`proc.pid` 杀不到孙进程）→ 抛 `AppError("SUBPROCESS_TIMEOUT")`。
 - 返回前校验 `returncode`（`check=True` 时非 0 抛 `AppError("SUBPROCESS_FAILED")`，detail 带 stdout 尾部）；执行引擎传 `check=False` 自行解读。
 
 > **关键认知（面试防守）**：`subprocess.run(timeout)` 在 Windows 只杀父进程，孙进程可能残留。**权威兜底是 `scan_stale_tasks`**——它从 DB 读 `mark_running` 阶段写入的 `tasks.pid`（pytest 进程），`taskkill /T /F` 杀整棵树。run_cmd 内的 kill 只是尽力而为，失败不影响任务终态。
@@ -47,7 +47,7 @@ result_expires = 3600                                          # result backend 
 1. 读 task → active 用例列表（case_ids 快照；draft 不在此列）——短事务，读完 commit
 2. 建按 task_id 隔离的 workspace: .workspace/tasks/{task_id}/（test 文件 + report.xml 均在此，防多任务互相覆盖）
 3. 逐用例 case_generator 生成 test_{case_id}.py（结构化字段 repr 插值，无 Jinja2；只断言 expected_status）
-4. 写 tasks.pid + status=running + started_at —— commit
+4. `run_cmd` 的 `on_start` 回调写 tasks.pid + status=running + started_at —— commit
 5. run_cmd([python, -m, pytest, 全部 test_*.py, --junitxml=report.xml,
             -o, addopts=, -p, no:cacheprovider], timeout=settings.execution.pytest_timeout, check=False)
 6. 解析 report.xml（junit_parser 累加各 testsuite 总数）→ 组 result_summary {total,passed,failed,...}
@@ -65,8 +65,9 @@ result_expires = 3600                                          # result backend 
 ```
 scan_stale_tasks():
   now = datetime.now(timezone.utc).replace(tzinfo=None)
+  threshold = settings.execution.pytest_timeout   # 与 run_cmd 同源；timeout 不落库，run_id 指纹已含
   running = SELECT * FROM tasks WHERE status='running'
-  stale = [t for t in running if started_at and (now - started_at).total_seconds() > t.timeout_seconds]
+  stale = [t for t in running if started_at and (now - started_at).total_seconds() > threshold]
   for t in stale:
     1. os.system(f"taskkill /T /F /PID {t.pid}")   # 读 DB 写入的 pid，权威清理
     2. 迁移 failed，error_stage='timeout'，error_msg=被杀时间

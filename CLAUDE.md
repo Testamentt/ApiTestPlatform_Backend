@@ -14,7 +14,7 @@ FastAPI + SQLAlchemy + SQLite + Celery + Redis + LLM API 驱动的测试用例�
 7. AI 生成的用例状态恒为 `draft`，禁止直接/自动置 `active`
 8. 密钥只能放 .env，禁止入库/入日志/入 Prompt/入 git
 9. 测试必须 mock LLM，禁止测试真调 API
-10. 禁止 `Base.metadata.create_all` 建表，必须走 Alembic
+10. 禁止 `Base.metadata.create_all` 建表，必须走 Alembic（**MVP Phase 1 例外**：运行期 create_all，Phase 4 切 Alembic，见 RULES.md §5.1）
 
 ## 协作纪律（每次会话）
 - 新增/修改文件前先给计划（目标、涉及文件、方案、影响面），经确认后实施；骨架/脚手架文件除外
@@ -51,11 +51,13 @@ FastAPI + SQLAlchemy + SQLite + Celery + Redis + LLM API 驱动的测试用例�
 ## 快速启动（在 backend/ 仓库内执行；前端为独立仓库 ../frontend，Phase 4 可选）
 ```bash
 cd backend                       # 从容器根 E:\Project\TestPlatform 进入
-pip install -e .                 # Python 3.11+
-docker-compose up -d             # Redis + Worker
-uvicorn app.main:app --reload    # http://localhost:8000/docs（Swagger UI 即 MVP 界面）
-pytest -m "not slow"
-# Phase 4 可选：Vue 前端（仅 2 页）
+pip install -e ".[dev]"          # Python 3.12+
+copy .env.example .env           # 首次配置（Redis 密码等）
+uvicorn app.main:app --port 8000 # Web：http://localhost:8000/docs（Swagger UI 即 MVP 界面）
+celery -A app.celery_app:celery_app worker --pool=solo   # Worker（Windows 必须 solo）
+# 或一键拉起两个窗口：scripts\start_all.bat
+pytest -q                        # 门禁全绿
+# Phase 4 可选：Vue 前端（仅 2 页）、Docker Compose（Redis + Worker）
 # cd ../frontend && npm install && npm run dev
 ```
 完整 5 步 SOP 见 RULES.md §12。

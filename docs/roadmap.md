@@ -14,7 +14,7 @@
 
 ## 当前目标
 
-完成 **Phase 0 文档与基建**（已交付全部设计文档 + 双仓库结构）；确认后进入 Phase 1 编码。
+**Phase 1 核心执行闭环已完成**（MVP 简化版，31 测试全绿 + 真实异步端到端验证通过，沉淀见 [sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)）；当前进入 **Phase 2 变更影响分析**（纯 Diff+SQL，先于 AI 生成）。
 
 ## 关键约束
 
@@ -29,17 +29,14 @@
 | 阶段 | 周期 | 目标 | 验收（面试演示） |
 | --- | --- | --- | --- |
 | **Phase 0 · 文档与基建** | 已完成 | 全部设计文档 + 双仓库 | 评审通过 |
-| **Phase 1 · 核心执行闭环** | 2 周（重中之重） | 跑通「创建用例 → 异步执行 → 查看结果」，全程 Swagger UI，**不写一行前端** | 见下方验收清单 |
+| **Phase 1 · 核心执行闭环** | 已完成（MVP 简化） | 跑通「创建用例 → 异步执行 → 查看结果」，全程 Swagger UI，**不写一行前端** | 见下方验收清单 |
 | **Phase 2 · 影响分析**（核心卖点 1） | 1 周 | 接口变更自动圈定受影响用例（**纯规则引擎，无 AI**） | 新旧 Swagger → diff → 圈定受影响用例 → 一键回归 |
 | **Phase 3 · AI 智能生成**（核心卖点 2） | 1 周 | OpenAPI → LLM → draft 用例 → 人工确认转 active | 生成 5 个 draft → 审核 → active |
 | **Phase 4 · 生产化与前端增强**（可选） | 锦上添花 | Docker Compose + GitHub Actions；Vue 可选（仅 2 页） | 一键 `docker compose up` 跑通 |
 
-### Phase 1 · 核心执行闭环（2 周，任务清单）
+### Phase 1 · 核心执行闭环（已完成，MVP 简化）
 
-| 周次 | 任务 | 技术盲区预警 |
-| --- | --- | --- |
-| 第 1 周 | ① pyproject.toml + 项目骨架（app/ 分层）② 配置加载（Pydantic Settings）+ SQLite 引擎 ③ 用例 CRUD（Models + Schemas + Repositories + Services + API）③-1 **用例 Schema 强制 `operation_id` 必填**（或经 Swagger 解析自动绑定），为 Phase 2 血缘映射预留 ④ 环境管理（支持 `{{base_url}}` 替换）⑤ 本地同步执行（先不加 Celery）：API 直接调 subprocess 跑 pytest，验证执行逻辑 | `Depends(get_db)` 会话管理、`subprocess` 超时参数 |
-| 第 2 周 | ⑥ 引入 Celery + Redis（同步执行改异步）⑦ 超时劫持兜底（Worker 启动扫描 + 定时每 5 分钟）⑧ JUnit XML 解析回写 DB ⑨ Allure 报告归档（下载链接） | broker/backend 区别、subprocess 进程隔离、超时劫持 SQL |
+> MVP 简化（面试导向）：Alembic→create_all、request_id 中间件→标准日志、Allure→HTML 报告、每 5 分钟扫描→**仅启动扫描一次（无 Beat）**、`{{base_url}}` 环境管理→base_url 写死 config、软删除→物理删除。31 测试全绿 + 真实异步端到端验证通过（uvicorn + celery worker --pool=solo + Redis + 本地 mock）。沉淀：[sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)。
 
 **Phase 1 验收标准（面试演示用）**：
 1. 打开 http://localhost:8000/docs
@@ -87,20 +84,28 @@
 > 若不做 Vue，Phase 4 缩减为「Docker Compose + GitHub Actions」，简历写「已容器化部署」。
 > **自愈看板（Vue 页）不再做**——是 AI UI 项目的卖点，不重复造轮子。
 
-## 已达成结论（Phase 0）
+## 已达成结论
 
+**Phase 0（文档与基建）**
 - [x] 后端三层架构 + MVP 零前端（Swagger UI）设计（architecture.md）
-- [x] 6 张业务表字段级设计 + Alembic 迁移策略（database.md）
+- [x] 2 张业务表字段级设计（test_cases/tasks）+ create_all 迁移策略（database.md，Phase 4 切 Alembic）
 - [x] REST 端点 + 统一异步模式（api.md）
 - [x] Celery 任务 + subprocess 执行 + 超时劫持（execution-engine.md）
-- [x] Prompt 版本化管理 + llm_client + 三层防幻觉护栏（ai-generation.md）
-- [x] 版本快照 + O(1) diff + SQL 反向检索（impact-analysis.md）
-- [x] Pydantic Settings 字段树 + 配置契约（configuration.md + config/）
+- [x] Prompt 版本化管理 + llm_client + 三层防幻觉护栏（ai-generation.md，Phase 3 前瞻）
+- [x] 版本快照 + O(1) diff + SQL 反向检索（impact-analysis.md，Phase 2 前瞻）
+- [x] Pydantic 配置字段树 + 配置契约（configuration.md + config/）
 - [x] 双仓库结构（backend/ + frontend/，frontend 可选）
+
+**Phase 1（核心执行闭环，已完成）**
+- [x] 用例 CRUD + confirm 审核（operation_id 必填、draft 防幻觉护栏）
+- [x] 任务 Lookup-Create 幂等（run_id=sha256 + UNIQUE）+ Celery 异步（202 立即返回）
+- [x] 执行引擎（run_cmd 白名单/超时/on_start 落 pid + junit 累加解析 + HTML 报告）
+- [x] 超时劫持 scan_stale_tasks（DB pid 权威杀树，Worker 启动扫描一次，无 Beat）
+- [x] 31 测试全绿 + ruff 全绿 + 真实异步端到端验证
 
 ## 待解决问题
 
-- [ ] 用户确认 Phase 0 文档（**进入编码的闸门**）
-- [ ] Swagger/OpenAPI 样例接口（scripts/sample_swagger.py 可生成）
-- [ ] 部署形态：本地直跑 vs Docker Compose
+- [ ] 演示 target 稳定性：默认 httpbin.org 外网不稳，面试建议本地 mock（改 `execution.base_url` 即可）
+- [ ] Swagger/OpenAPI 样例接口（Phase 2 的 scripts/sample_swagger.py 可生成）
+- [ ] 部署形态：本地直跑 vs Docker Compose（Phase 4）
 - [ ] Phase 4 是否做 Vue（面试不扣分，可跳过）

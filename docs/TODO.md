@@ -2,28 +2,27 @@
 
 > 按里程碑分组（面试导向，见 [roadmap.md](roadmap.md)）。完成即勾选并关联 `docs/sessions/` 沉淀（RULES.md §17-R5）。
 
-## Phase 0 · 文档与基建（当前）
+## Phase 0 · 文档与基建（已完成）
 
 - [x] 项目文档（architecture / database / api / execution-engine / ai-generation / impact-analysis / configuration / roadmap / TODO）
 - [x] 规则与配置契约（.claude/rules/RULES.md §1-§18 + config/settings.example.yaml + .env.example）
 - [x] 双仓库结构（backend/ + frontend/，frontend Phase 4 可选）
-- [ ] 用户评审确认全部文档（**进入编码的闸门**）
+- [x] 用户评审确认全部文档（进入编码的闸门）→ 2026-08-06 确认进入 Phase 1
 
-## Phase 1 · 核心执行闭环（2 周，重中之重）
+## Phase 1 · 核心执行闭环（已完成，MVP 简化）
 
-- [ ] pyproject.toml（依赖 + ruff + pytest 配置）+ app/ 分层骨架
-- [ ] Alembic 初始化 + baseline migration
-- [ ] 配置加载（pydantic-settings + get_engine + 日志 + request_id 中间件 + AppError）
-- [ ] 用例 CRUD + 环境管理（`{{base_url}}` 替换）
-- [ ] 用例 Schema 强制 `operation_id` 必填（③-1，为 Phase 2 血缘映射预留）
-- [ ] 本地同步执行（先不加 Celery）：API 直接调 subprocess 跑 pytest
-- [ ] Celery + Redis：execute_cases 异步化（broker/backend 配置）
-- [ ] 超时劫持：scan_stale_tasks（Worker 启动 + 每 5 分钟）
-- [ ] JUnit XML 解析 + 结果回写 DB + Allure 报告链接
-- [ ] tests/unit + tests/api + tests/tasks（fakes: FakeSubprocess）+ CI 两段式
-- [ ] 验收：/docs 上「创建用例 → 触发执行 → 轮询 task_id → pass/fail」闭环
+> MVP 简化（面试导向）：砍掉 Alembic（create_all 替代）、request_id 中间件、Allure（HTML 报告替代）、每 5 分钟扫描（仅启动扫描一次）、`{{base_url}}` 环境管理（base_url 写死 config）。沉淀：[docs/sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)。
 
-## Phase 2 · 变更影响分析（1 周，核心卖点 1）
+- [x] pyproject.toml（依赖 + ruff + pytest 配置）+ app/ 分层骨架
+- [x] 配置加载（BaseModel 手动合并 yaml/env + get_engine + 日志 + AppError）
+- [x] 用例 CRUD + confirm 审核（operation_id 必填 ③-1；draft→active 防幻觉护栏）
+- [x] 执行引擎：run_cmd（白名单 + timeout + on_start 落 pid）+ case_generator + junit_parser（累加 testsuite）+ report_util（HTML）
+- [x] Celery + Redis 异步化（execute_cases + scan_stale_tasks 启动扫描，无 Beat）
+- [x] Lookup-Create 幂等（run_id=sha256 + UNIQUE，存在即返回）
+- [x] tests/unit + tests/api + tests/tasks（fakes: FakeSubprocess）+ 31 用例全绿 + ruff 全绿
+- [x] 验收：/docs「创建用例 → confirm → 触发执行(202) → 轮询 → results + HTML 报告」闭环 + 真实异步端到端验证
+
+## Phase 2 · 变更影响分析（当前，1 周，核心卖点 1）
 
 - [ ] api_definitions 表（operation_id / path / method / request_schema_hash，`hashlib.md5` 指纹）
 - [ ] `POST /api/v1/parse`：Swagger 解析入库（$ref / allOf / oneOf 递归）
