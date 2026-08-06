@@ -38,7 +38,7 @@ def test_execute_success(session_factory, patch_sessionlocal, fake_execution):
 
 
 def test_execute_timeout_marks_failed(session_factory, patch_sessionlocal, monkeypatch):
-    from tests.fakes import make_fake_run_cmd
+    from ..fakes import make_fake_run_cmd
 
     case_id, task_id = _seed_task(session_factory)
     monkeypatch.setattr(
@@ -53,7 +53,7 @@ def test_execute_timeout_marks_failed(session_factory, patch_sessionlocal, monke
 
 
 def test_execute_parse_failure_falls_back(session_factory, patch_sessionlocal, monkeypatch):
-    from tests.fakes import make_fake_run_cmd
+    from ..fakes import make_fake_run_cmd
 
     case_id, task_id = _seed_task(session_factory)
     monkeypatch.setattr(
@@ -69,7 +69,7 @@ def test_execute_parse_failure_falls_back(session_factory, patch_sessionlocal, m
 
 
 def test_draft_case_excluded(session_factory, patch_sessionlocal, monkeypatch):
-    from tests.fakes import make_fake_run_cmd
+    from ..fakes import make_fake_run_cmd
 
     case_id, task_id = _seed_task(session_factory, case_status="draft")
     monkeypatch.setattr(

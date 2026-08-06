@@ -55,7 +55,7 @@ def patch_sessionlocal(session_factory, monkeypatch):
 @pytest.fixture()
 def fake_execution(monkeypatch):
     """why：假 run_cmd 写 report.xml，避免真实 subprocess + 网络。"""
-    from tests.fakes import JUNIT_OK, make_fake_run_cmd
+    from .fakes import JUNIT_OK, make_fake_run_cmd
 
     monkeypatch.setattr(
         "app.services.execution_service.run_cmd",
