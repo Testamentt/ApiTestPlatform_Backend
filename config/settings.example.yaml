@@ -1,7 +1,8 @@
-# settings.example.yaml — 配置契约
+# settings.example.yaml — 配置契约（Phase 1）
 # 复制为 settings.yaml 使用（settings.yaml 已被 .gitignore 忽略）
 # 环境变量（TESTPLATFORM_ 前缀）优先级最高，可覆盖以下任意字段
 # 密钥一律不写在此文件，只放 .env（见 .env.example）
+# Phase 2+ 再加回：llm / security / frontend 段
 
 app:
   name: testplatform          # 应用名
@@ -9,13 +10,10 @@ app:
   version: 0.1.0
   host: 0.0.0.0
   port: 8000
-  docs_enabled: true          # 生产环境关闭或鉴权保护
-  cors_origins: [http://localhost:5173]   # 前端来源白名单；生产同源托管则留空；禁止 '*'
 
 database:
   url: sqlite:///./data/platform.db   # 生产: postgresql://user:pass@host:5432/db
   echo: false                         # SQL 回显
-  busy_timeout_ms: 5000               # 对应 PRAGMA busy_timeout
 
 redis:
   host: 127.0.0.1
@@ -29,35 +27,10 @@ celery:
   soft_time_limit: 300                # 任务软超时
   time_limit: 360                     # 任务硬超时（必须 > visibility_timeout）
   visibility_timeout: 3600            # 必须 > time_limit，否则任务重复投递
-  worker_pool: solo                   # Windows 本地必须 solo
-  worker_concurrency: 1               # SQLite 单写者
   max_retries: 3                      # 仅瞬时异常重试
-  retry_backoff_max: 300
 
 execution:
-  workspace_dir: .workspace           # 动态测试文件 / Allure 结果
+  workspace_dir: .workspace           # 动态测试文件 / report.xml / HTML 报告
+  base_url: http://httpbin.org        # 被测接口 base_url（写死，Phase 2 再补多环境）
   pytest_timeout: 300                 # subprocess 超时阈值（来自 config，禁止硬编码）
-  max_stdout_bytes: 10485760          # 输出捕获限容 10MB
-  keep_workspace: false               # 调试用保留工作目录
-  allure_enabled: true
-  command_whitelist: [python, pytest, allure]   # run_cmd 命令白名单
-
-llm:
-  provider: deepseek                  # deepseek / qwen / openai（OpenAI 兼容）
-  base_url: https://api.deepseek.com  # 改 base_url 即切通义
-  model_chain: [deepseek-chat]        # primary + fallback 调用链
-  api_key_env: DEEPSEEK_API_KEY       # 只存环境变量名，不写明文
-  temperature: 0.0                    # 生成类固定 0（可复现）
-  connect_timeout: 5
-  read_timeout: 60
-  max_tokens: 4096
-  max_retries: 3                      # 指数退避 1s/3s/9s + 抖动
-  rate_limit_rpm: 30                  # 客户端级限流
-
-security:
-  api_token_env: TESTPLATFORM_API_TOKEN   # Phase 4 启用；Phase 1 无鉴权（值在 .env，非硬编码）
-
-frontend:                       # Phase 4 可选（MVP 用 Swagger UI，可整体忽略）
-  dev_port: 5173                          # Vite 开发服务器端口
-  dev_proxy_target: http://127.0.0.1:8000 # 开发代理目标（FastAPI）
-  dist_dir: frontend/dist                 # 构建产物（生产静态托管）
+  command_whitelist: [python, pytest] # run_cmd 命令白名单

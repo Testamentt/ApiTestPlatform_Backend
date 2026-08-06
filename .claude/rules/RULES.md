@@ -101,6 +101,8 @@
   - 返回前校验 `returncode`，非 0 抛业务异常并落 FAILED，stdout/stderr 尾部写入任务日志
 - 普通 `def` 端点与 Worker 内可用，`async def` 内禁止调用（见 §7.2）。外部工具路径/超时/环境变量统一进 config，禁止硬编码。
 
+> **MVP 简化（Phase 1 生效，面试导向）**：`run_cmd` 用 `subprocess.run(args, timeout, capture_output=True, text=True)`（不用 Popen/进程组/限容）；超时后 `os.system(f"taskkill /T /F /PID {pid}")` 为 best-effort（父进程已死杀不到孙进程），**权威兜底是 `scan_stale_tasks` 从 DB 读 `tasks.pid` 杀整棵树**（详见 docs/execution-engine.md §3）。生产化/Phase 4 再启用本节完整规范。
+
 ## §3 工程化规范
 
 ### 3.1 配置与密钥
@@ -153,12 +155,16 @@ tests/                 # unit / api / tasks
 - **[MUST]** schema 变更全部走 Alembic migration；禁止 `Base.metadata.create_all` 作为运行期建表手段（仅测试环境可用）。
 - 新增/修改模型后必须 `alembic revision --autogenerate` 并人工核对 diff，禁止盲提交；部署/启动脚本固定执行 `alembic upgrade head`；初次初始化留一个空 baseline migration。
 
+> **MVP 简化（Phase 1 生效）**：运行期用 `Base.metadata.create_all(engine)`（main lifespan 启动时同步执行一次）；Phase 4 切回 Alembic。
+
 ### 5.2 模型命名与约束
 - 表名/列名统一 `snake_case`；主键统一 `id`（INTEGER 自增）；外键统一 `{目标表}_id` 且必须建索引（`index=True`）。
 - 每个业务表必须有 `created_at`（`server_default=func.now()`）与 `updated_at`（`onupdate=func.now()` 且同步 `server_default`），由 DB/ORM 生成，禁止应用层传时间。
 - 时间一律存 UTC（统一 naive datetime，用 `datetime.now(timezone.utc)` 转 naive），接口层负责转用户时区，禁止 aware/naive 混存。
 - WHERE/JOIN/ORDER BY 常用列必须显式建索引；状态列优先用 Python `StrEnum` + `String` 列 + 代码层校验，禁止依赖 SQLite 原生 ENUM。
 - 需要"可恢复/审计"的表采用软删除：`is_deleted`（Boolean, default False）+ `deleted_at`（DateTime, 可空）。软删除表上的唯一约束必须用 SQLite 部分索引规避冲突（`CREATE UNIQUE INDEX ... WHERE is_deleted = 0`）。所有查询统一带 `is_deleted == False` 过滤（repository 统一封装），禁止裸 `session.query(Model)` 全量返回。
+
+> **MVP 简化（Phase 1 生效）**：MVP 用**物理删除 `db.delete()`**，不做软删除（面试导向，无回收站需求）；Phase 4 需审计时再启用本条。
 
 ## §6 统一错误处理与日志
 
@@ -205,6 +211,8 @@ tests/                 # unit / api / tasks
 - 任务必须幂等：写库前校验 `run_id`/状态，同 `run_id` 重复执行时若已 SUCCESS 直接返回已有结果，禁止重复调用 LLM。
 - 状态流转只允许顺序迁移（PENDING→RUNNING→SUCCESS/FAILED/CANCELLED，含 retry 过渡），代码内用显式 if 守卫，禁止任意跳转；失败任务必须记录 `error_stage`（parse/llm/save）与 `error_msg`。
 - 任务表对"任务类型 + 输入指纹（如 source_hash + params_hash）"建立唯一约束，重复/并发入队命中唯一键直接复用已存在任务。
+
+> **MVP 简化（Phase 1 生效）**：幂等用 **Lookup-Create**——`run_id = sha256(sorted(case_ids)+timeout)` + `UNIQUE(run_id)`，存在即返回已有任务（不重复执行）；状态机仅 PENDING→RUNNING→SUCCESS/FAILED 简单 if 守卫。Phase 4 再启用完整指纹/状态判断。
 
 ### 8.4 结果存储与入参
 - 任务产物（Swagger 解析结果、生成的用例 JSON）必须持久化到 SQLite；Redis result backend 仅存执行状态与短期结果，并设置 `result_expires=3600`。

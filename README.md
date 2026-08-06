@@ -65,7 +65,7 @@ copy .env.example .env        # 填入 DEEPSEEK_API_KEY、Redis 密码
 uvicorn app.main:app --reload --port 8000
 
 # 4. 启动 Worker（Windows 必须 --pool=solo）
-celery -A app.tasks.celery_app worker --pool=solo --beat
+celery -A app.celery_app:celery_app worker --pool=solo
 
 # （Phase 4 可选）Vue 前端：cd ../frontend && npm install && npm run dev
 ```
