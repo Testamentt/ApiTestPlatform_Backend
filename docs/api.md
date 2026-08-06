@@ -10,7 +10,7 @@
 - **错误响应**：`{code, message, detail}`；业务错误由 service 层 `raise AppError`，注册统一 exception handler（兜底 500 不泄漏堆栈）。参数校验保留 FastAPI 默认 422。
 - **分页**：列表统一 `page`（默认 1）/`page_size`（默认 20，上限 100）查询参数，响应 `{items, total, page, page_size}`；禁止无上限全量返回。
 - **状态码语义**：POST 创建 201、DELETE 204、异步任务 202、错误走异常体系（400/404/409/422/500/429）。
-- **鉴权**（MVP）：全部业务接口要求 `Authorization: Bearer <token>`，token 值在配置中（`security.api_token_env` 指向的 .env/配置，非硬编码在代码，RULES.md §10.3）；**不做 OAuth2、不做限流**（面试导向，见 roadmap）。Swagger UI 可直接在 Authorize 填入调试。
+- **鉴权**（方案 A）：**Phase 1 无鉴权**——全部端点免鉴权、Swagger UI 开箱即用（面试演示顺畅）；Phase 4 启用 Bearer Token（值在配置 `security.api_token_env`，非硬编码在代码，RULES.md §10.3）。不做 OAuth2、不做限流（面试导向，见 roadmap）。**（下表『鉴权』列为 Phase 4 目标状态）**
 - **CORS**：MVP 同源（Swagger UI）无需 CORS；仅 Phase 4 引入 Vue 时配置白名单 `app.cors_origins`，禁止 `*`（RULES.md §10.5）。
 - **请求 ID**：中间件生成 `request_id`（UUID）注入上下文，透传 Celery 任务与 LLM 日志（RULES.md §6.2）。
 
@@ -64,7 +64,7 @@
   "env_id": 1
 }
 ```
-约束：`method` 白名单校验；`status` 默认 `draft`（AI 来源强制 draft，见 3.3）；`assertions.type` ∈ status/field/business。
+约束：`method` 白名单校验；`status` 默认 `draft`（AI 来源强制 draft，见 3.3）；`assertions.type` ∈ status/field/business；**`operation_id` 必填**（Phase 1 ③-1，为 Phase 2 血缘映射——经 Swagger 解析自动绑定或手工填写）。
 
 **POST /cases/{case_id}/confirm** — 请求体 `{reviewer: "alice"}`。仅 `draft→active`；转 active 时**重新执行 schema 校验**（RULES.md §11.2）；已 active 幂等返回。**禁止任何自动化路径直接置 active**。
 

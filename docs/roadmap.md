@@ -38,8 +38,8 @@
 
 | 周次 | 任务 | 技术盲区预警 |
 | --- | --- | --- |
-| 第 1 周 | ① pyproject.toml + 项目骨架（app/ 分层）② 配置加载（Pydantic Settings）+ SQLite 引擎 ③ 用例 CRUD（Models + Schemas + Repositories + Services + API）④ 环境管理（支持 `{{base_url}}` 替换）⑤ 本地同步执行（先不加 Celery）：API 直接调 subprocess 跑 pytest，验证执行逻辑 | `Depends(get_db)` 会话管理、`subprocess` 超时参数 |
-| 第 2 周 | ⑥ 引入 Celery + Redis（同步执行改异步）⑦ 超时劫持兜底（Worker 启动扫描 + 定时每 5 分钟）⑧ JUnit XML 解析回写 DB ⑨ Allure 报告归档（下载链接）⑩ 基础鉴权（Bearer Token，值在配置中，不做 OAuth2） | broker/backend 区别、subprocess 进程隔离、超时劫持 SQL |
+| 第 1 周 | ① pyproject.toml + 项目骨架（app/ 分层）② 配置加载（Pydantic Settings）+ SQLite 引擎 ③ 用例 CRUD（Models + Schemas + Repositories + Services + API）③-1 **用例 Schema 强制 `operation_id` 必填**（或经 Swagger 解析自动绑定），为 Phase 2 血缘映射预留 ④ 环境管理（支持 `{{base_url}}` 替换）⑤ 本地同步执行（先不加 Celery）：API 直接调 subprocess 跑 pytest，验证执行逻辑 | `Depends(get_db)` 会话管理、`subprocess` 超时参数 |
+| 第 2 周 | ⑥ 引入 Celery + Redis（同步执行改异步）⑦ 超时劫持兜底（Worker 启动扫描 + 定时每 5 分钟）⑧ JUnit XML 解析回写 DB ⑨ Allure 报告归档（下载链接） | broker/backend 区别、subprocess 进程隔离、超时劫持 SQL |
 
 **Phase 1 验收标准（面试演示用）**：
 1. 打开 http://localhost:8000/docs
@@ -80,8 +80,9 @@
 | ① Docker Compose（FastAPI + Redis + Worker + SQLite） | **必须做**，面试一键跑起来 |
 | ② GitHub Actions（两段式 CI） | 简历「已容器化部署 + CI 门禁」 |
 | ③ 迁移 PostgreSQL（可选） | 一句话带过即可 |
-| ④ Vue 前端（可选，若做仅 2 页：用例列表 + 任务看板） | 其他功能继续用 Swagger UI |
-| ⑤ JWT 鉴权替换 Bearer Token（可选） | — |
+| ④ 基础鉴权（Bearer Token，值在配置中） | **方案 A：Phase 1 无鉴权**（面试演示开箱即用），Phase 4 补上 |
+| ⑤ Vue 前端（可选，若做仅 2 页：用例列表 + 任务看板） | 其他功能继续用 Swagger UI |
+| ⑥ JWT 鉴权替换 Bearer Token（可选） | — |
 
 > 若不做 Vue，Phase 4 缩减为「Docker Compose + GitHub Actions」，简历写「已容器化部署」。
 > **自愈看板（Vue 页）不再做**——是 AI UI 项目的卖点，不重复造轮子。

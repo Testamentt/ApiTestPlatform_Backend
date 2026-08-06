@@ -8,7 +8,7 @@
 
 **非目标（MVP 阶段不包含）**：
 - 前端界面（**MVP 界面 = FastAPI Swagger UI**，零前端代码；Vue 为 Phase 4 可选，面试不扣分）
-- 限流（Phase 1 只做 Bearer Token 鉴权，不做 Token/IP 限流——面试导向，见 roadmap）
+- 鉴权与限流（**Phase 1 均不做**，面试导向、演示开箱即用；Phase 4 加 Bearer Token，见 roadmap）
 - 多环境生产部署（先本地/Docker 单机）
 - 细粒度权限体系（先 Bearer Token 简单鉴权，见 RULES.md §10.3）
 

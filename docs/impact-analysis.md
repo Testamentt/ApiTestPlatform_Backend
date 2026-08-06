@@ -93,4 +93,4 @@ POST /api/v1/impact/{analysis_id}/regression
 | `old_version="auto"` | 取最近一个非空版本 |
 | 新旧版本相同（哈希全等） | changed_ops 为空，返回「无受影响用例」 |
 | operation 改名 | 视为 removed + added（提示人工确认关联） |
-| 无 `operation_id` 的手工用例 | 不参与血缘检索（人工补充后可圈定） |
+| 手工用例 | 创建时 Schema 强制 `operation_id` 必填（Phase 1 ③-1），血缘检索覆盖全部用例 |

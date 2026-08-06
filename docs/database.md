@@ -37,7 +37,7 @@ tasks        1 ──────── N generation_log (task_id)   [LLM 成本
 | name | VARCHAR(255) | NOT NULL | 用例名 |
 | method | VARCHAR(16) | NOT NULL | GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS |
 | path | VARCHAR(1024) | NOT NULL | 接口路径（不含 base_url） |
-| operation_id | VARCHAR(255) | NULL, **索引** | 静态血缘映射，影响分析反向检索依据；手工用例可 NULL |
+| operation_id | VARCHAR(255) | NOT NULL, **索引** | 静态血缘映射，影响分析反向检索依据（Phase 1 Schema 强制必填，③-1） |
 | api_version | VARCHAR(64) | NULL | 基于哪个 api_definitions.version 生成 |
 | request_schema | JSON | NULL | `{params, query, headers, body}`，执行时渲染请求 |
 | expected_status | INTEGER | NOT NULL DEFAULT 200 | 期望状态码 |

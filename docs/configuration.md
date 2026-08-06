@@ -93,7 +93,7 @@
 
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
-| security.api_token_env | TESTPLATFORM_API_TOKEN | Bearer Token 来源（值在 .env，非硬编码在代码；不做 OAuth2/限流，面试导向） |
+| security.api_token_env | TESTPLATFORM_API_TOKEN | Bearer Token 来源（Phase 4 启用；Phase 1 无鉴权；值在 .env，非硬编码） |
 
 ### 2.8 Frontend（Phase 4 可选，MVP 用 Swagger UI）
 
@@ -130,7 +130,7 @@ TESTPLATFORM_LLM_MODEL_CHAIN=deepseek-chat
 TESTPLATFORM_LLM_TEMPERATURE=0.0
 DEEPSEEK_API_KEY=<填入你的 DeepSeek API Key>           # 密钥：仅放 .env，禁止入库/入 git
 
-# ---- Security（MVP 鉴权）----
+# ---- Security（Phase 4 启用；Phase 1 无鉴权）----
 TESTPLATFORM_API_TOKEN=<填入你的访问 Token>
 
 # ---- Frontend（Phase 4 可选，MVP 用 Swagger UI）----

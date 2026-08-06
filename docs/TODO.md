@@ -15,11 +15,11 @@
 - [ ] Alembic 初始化 + baseline migration
 - [ ] 配置加载（pydantic-settings + get_engine + 日志 + request_id 中间件 + AppError）
 - [ ] 用例 CRUD + 环境管理（`{{base_url}}` 替换）
+- [ ] 用例 Schema 强制 `operation_id` 必填（③-1，为 Phase 2 血缘映射预留）
 - [ ] 本地同步执行（先不加 Celery）：API 直接调 subprocess 跑 pytest
 - [ ] Celery + Redis：execute_cases 异步化（broker/backend 配置）
 - [ ] 超时劫持：scan_stale_tasks（Worker 启动 + 每 5 分钟）
 - [ ] JUnit XML 解析 + 结果回写 DB + Allure 报告链接
-- [ ] 基础鉴权（Bearer Token，值在配置中；不做限流 / OAuth2）
 - [ ] tests/unit + tests/api + tests/tasks（fakes: FakeSubprocess）+ CI 两段式
 - [ ] 验收：/docs 上「创建用例 → 触发执行 → 轮询 task_id → pass/fail」闭环
 
@@ -43,6 +43,7 @@
 
 - [ ] Docker Compose（FastAPI + Redis + Worker + SQLite）
 - [ ] GitHub Actions 两段式 CI
+- [ ] 基础鉴权（Bearer Token，值在配置中；方案 A：Phase 1 无鉴权，此处补上）
 - [ ] （可选）PostgreSQL 迁移 / JWT 鉴权
 - [ ] （可选）Vue 前端：仅用例列表 + 任务看板两页
 - [ ] 不做：自愈看板（AI UI 项目卖点，不重复造轮子）

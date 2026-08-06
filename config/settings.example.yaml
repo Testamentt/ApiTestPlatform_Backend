@@ -55,7 +55,7 @@ llm:
   rate_limit_rpm: 30                  # 客户端级限流
 
 security:
-  api_token_env: TESTPLATFORM_API_TOKEN   # Bearer Token 来源（值在 .env，非硬编码在代码；不做限流）
+  api_token_env: TESTPLATFORM_API_TOKEN   # Phase 4 启用；Phase 1 无鉴权（值在 .env，非硬编码）
 
 frontend:                       # Phase 4 可选（MVP 用 Swagger UI，可整体忽略）
   dev_port: 5173                          # Vite 开发服务器端口
