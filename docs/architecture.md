@@ -104,27 +104,33 @@ Celery 关键配置（对齐 RULES.md §8.2/§8.3）：
 - **API 文档**：FastAPI Swagger UI（`/docs`）仅作后端接口文档与调试工具，不再是前端本体。开发环境开放；生产环境默认关闭或鉴权保护（RULES.md §10.5）。
 - **通信**：开发期 Vite dev server（5173）`server.proxy` 将 `/api` 代理到 FastAPI（8000），规避 CORS；生产由 FastAPI 挂载 `frontend/dist` 静态资源或 nginx 托管（同源）。CORS 只允许明确的前端来源白名单，禁止 `*`（RULES.md §10.5）。
 
-## 8. 目录结构（对齐 RULES.md §4）
+## 8. 目录结构（两个独立 git 仓库，对齐 RULES.md §4）
 
 ```
-app/
-├── main.py                 # 应用入口（路由聚合 + 异常 handler + request_id 中间件 + 静态挂载 frontend/dist）
-├── celery_app.py           # Celery app（broker/backend/任务注册）
-├── core/                   # config / logging / 统一异常 AppError
-├── api/v1/                 # 路由 + deps（依赖注入）
-├── models/                 # SQLAlchemy ORM
-├── schemas/                # Pydantic 出入参（response_model）
-├── services/               # 业务编排（case_service / task_service / parse_service / generate_service / impact_service）
-├── repositories/           # 数据访问（统一软删除过滤）
-├── tasks/                  # Celery 任务（execute_cases / generate_cases / impact_analyze / scan_stale_tasks）
-├── utils/                  # subprocess_util.run_cmd / llm_client（唯一外部调用封装）
-frontend/                   # Vue 3 前端工程（src/api、src/views、src/stores、vite.config.ts、npm scripts）
-prompts/                    # v1/system.md, v1/user.md（版本化 + 占位符注入）
-config/                     # settings.yaml（复制自 settings.example.yaml）+ .env
-tests/                      # unit / api / tasks / integration(-m slow)
-scripts/                    # dev_setup / sample_swagger
-docker/                     # Dockerfile / compose.yaml
+TestPlatform/                     # 容器目录（非 git 仓库）
+├── backend/                      # 仓库 A：FastAPI 后端 + 项目文档/规则/配置
+│   ├── app/
+│   │   ├── main.py               # 应用入口（路由聚合 + 异常 handler + request_id 中间件 + 静态挂载前端 dist）
+│   │   ├── celery_app.py         # Celery app（broker/backend/任务注册）
+│   │   ├── core/                 # config / logging / 统一异常 AppError
+│   │   ├── api/v1/               # 路由 + deps（依赖注入）
+│   │   ├── models/               # SQLAlchemy ORM
+│   │   ├── schemas/              # Pydantic 出入参（response_model）
+│   │   ├── services/             # 业务编排（case_service / task_service / parse_service / generate_service / impact_service）
+│   │   ├── repositories/         # 数据访问（统一软删除过滤）
+│   │   ├── tasks/                # Celery 任务（execute_cases / generate_cases / impact_analyze / scan_stale_tasks）
+│   │   └── utils/                # subprocess_util.run_cmd / llm_client（唯一外部调用封装）
+│   ├── prompts/                  # v1/system.md, v1/user.md（版本化 + 占位符注入）
+│   ├── config/                   # settings.yaml（复制自 settings.example.yaml）+ .env
+│   ├── docs/  tests/  scripts/  docker/
+│   ├── pyproject.toml  .env.example  .gitignore
+│   ├── README.md  CLAUDE.md  memory.md
+│   └── .claude/                  # rules/RULES.md（§1-§18）、skills/
+└── frontend/                     # 仓库 B：Vue 3 前端工程（独立 git 仓库）
+    └── src/  package.json  vite.config.ts  index.html
 ```
+
+依赖单向：`api → service → repository → model`；外部调用（subprocess / LLM / HTTP）统一走 `app/utils/` 封装。两个仓库独立提交（git 各自独立），见 [configuration.md](configuration.md) §5 本地/生产差异。
 
 依赖单向：`api → service → repository → model`；外部调用（subprocess / LLM / HTTP）统一走 `app/utils/` 封装。
 

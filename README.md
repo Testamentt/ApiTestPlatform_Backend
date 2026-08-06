@@ -36,6 +36,14 @@
 
 前后端分离：Vue 前端仅通过 REST `/api/v1` 与后端交互；后端三层中 Web 服务 ≠ 执行引擎（进程隔离），状态以 DB 为单一事实源，Worker 重启任务不丢。详见 [docs/architecture.md](docs/architecture.md)。
 
+## 目录结构（两个独立 git 仓库）
+
+```
+TestPlatform/                # 容器目录（非 git 仓库）
+├── backend/                 # 后端仓库：FastAPI + Celery + AI + 项目文档/规则/配置（本仓库）
+└── frontend/                # 前端仓库：Vue 3 前后端分离（独立 git 仓库）
+```
+
 ## 快速开始
 
 > ⚠️ 项目当前处于**文档沉淀阶段**：以下命令在编码阶段（Phase 1）启用，当前不可执行。
@@ -43,6 +51,8 @@
 **环境要求**：Python 3.12+、Redis（本地 127.0.0.1:6379）。
 
 ```bash
+# 以下命令在 backend/ 仓库内执行；前端为独立仓库 ../frontend
+
 # 1. 安装依赖（编码阶段）
 python -m venv .venv && .venv\Scripts\activate
 pip install -e ".[dev]"
@@ -54,11 +64,11 @@ copy .env.example .env        # 填入 DEEPSEEK_API_KEY、Redis 密码
 # 3. 启动后端 Web 服务（API 文档：http://127.0.0.1:8000/docs）
 uvicorn app.main:app --reload --port 8000
 
-# 4. 启动前端（开发环境，Vite 代理到 FastAPI）
-cd frontend && npm install && npm run dev    # http://localhost:5173
+# 4. 启动前端（独立仓库 ../frontend，Vite 代理到 FastAPI）
+cd ../frontend && npm install && npm run dev    # http://localhost:5173
 
 # 5. 启动 Worker（Windows 必须 --pool=solo）
-celery -A app.tasks.celery_app worker --pool=solo --beat
+cd ../backend && celery -A app.tasks.celery_app worker --pool=solo --beat
 ```
 
 ## 核心特性

@@ -48,11 +48,13 @@ Vue 3 + FastAPI + SQLAlchemy + SQLite + Celery + Redis + LLM API 驱动的测试
 | 开发流程规则（R1-R6） | §17 | 开始任何改动前（计划/测试/沉淀/收敛） |
 | 文档沉淀 | §18 | 多轮任务推进时 |
 
-## 快速启动
+## 快速启动（在 backend/ 仓库内执行；前端为独立仓库 ../frontend）
 ```bash
-pip install -e .                # Python 3.11+
-cd frontend && npm install && npm run dev   # Vue 前端（http://localhost:5173，开发走 Vite 代理到 FastAPI）
-docker-compose up -d            # Redis + Worker
+cd backend                       # 从容器根 E:\Project\TestPlatform 进入
+pip install -e .                 # Python 3.11+
+cd ../frontend && npm install && npm run dev   # Vue 前端（http://localhost:5173）
+cd ../backend
+docker-compose up -d             # Redis + Worker
 uvicorn app.main:app --reload
 pytest -m "not slow"
 ```
