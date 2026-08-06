@@ -1,0 +1,41 @@
+# 密钥与本地配置（RULES.md §3.1：密钥只放 .env）
+.env
+.env.*
+!.env.example
+config/settings.yaml
+config/settings.local.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# 测试与质量
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+reports/
+
+# 运行时数据（SQLite 默认存放 + 动态工作目录）
+data/
+.workspace/
+allure-results/
+allure-report/
+
+# 日志
+logs/
+*.log
+
+# Claude Code 本地设置（机器相关，不入库）
+.claude/settings.local.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
