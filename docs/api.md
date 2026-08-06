@@ -10,9 +10,8 @@
 - **错误响应**：`{code, message, detail}`；业务错误由 service 层 `raise AppError`，注册统一 exception handler（兜底 500 不泄漏堆栈）。参数校验保留 FastAPI 默认 422。
 - **分页**：列表统一 `page`（默认 1）/`page_size`（默认 20，上限 100）查询参数，响应 `{items, total, page, page_size}`；禁止无上限全量返回。
 - **状态码语义**：POST 创建 201、DELETE 204、异步任务 202、错误走异常体系（400/404/409/422/500/429）。
-- **鉴权**（MVP）：全部业务接口要求 `Authorization: Bearer <token>`，token 从配置下发（非硬编码，RULES.md §10.3）；Vue 前端登录/初始化后由 Axios 请求拦截器统一注入；开发环境可配置关闭。
-- **CORS**：允许的前端来源白名单来自配置 `app.cors_origins`（开发含 `http://localhost:5173`，生产同源静态托管或 nginx 反代则无需 CORS）；禁止 `*`（RULES.md §10.5）。开发期亦可用 Vite `server.proxy` 规避。
-- **限流**：LLM 触发类、执行类、解析类接口按 Token/IP 做 Redis 固定窗口计数（如每分钟上限），超限返回 429。
+- **鉴权**（MVP）：全部业务接口要求 `Authorization: Bearer <token>`，token 值在配置中（`security.api_token_env` 指向的 .env/配置，非硬编码在代码，RULES.md §10.3）；**不做 OAuth2、不做限流**（面试导向，见 roadmap）。Swagger UI 可直接在 Authorize 填入调试。
+- **CORS**：MVP 同源（Swagger UI）无需 CORS；仅 Phase 4 引入 Vue 时配置白名单 `app.cors_origins`，禁止 `*`（RULES.md §10.5）。
 - **请求 ID**：中间件生成 `request_id`（UUID）注入上下文，透传 Celery 任务与 LLM 日志（RULES.md §6.2）。
 
 ## 2. 端点总表
@@ -31,13 +30,13 @@
 | POST | `/api/v1/parse` | Swagger 解析（同步预览，不落库） | 是 | 解析结果 |
 | POST | `/api/v1/parse/import` | 上传/导入 Swagger → 入库为版本快照 | 是 | 201 api_definition |
 | GET | `/api/v1/parse/operations` | 查询已入库版本的操作集合 | 是 | `{operation_ids: []}` |
-| POST | `/api/v1/generate` | AI 用例生成（异步） | 是+限流 | 202 `{task_id}` |
-| POST | `/api/v1/tasks` | 创建执行任务（异步） | 是+限流 | 202 `{task_id}` |
+| POST | `/api/v1/generate` | AI 用例生成（异步） | 是 | 202 `{task_id}` |
+| POST | `/api/v1/tasks` | 创建执行任务（异步） | 是 | 202 `{task_id}` |
 | GET | `/api/v1/tasks` | 任务列表（分页 + 过滤） | 是 | 分页任务 |
 | GET | `/api/v1/tasks/{task_id}` | 任务状态/结果摘要 | 是 | 任务全字段 |
 | POST | `/api/v1/tasks/{task_id}/cancel` | 取消/强杀任务 | 是 | `{task_id, status: "cancelled"}` |
 | GET | `/api/v1/tasks/{task_id}/results` | 任务结果明细 | 是 | `{task, results: []}` |
-| POST | `/api/v1/impact/analyze` | 影响分析（异步） | 是+限流 | 202 `{analysis_id}` |
+| POST | `/api/v1/impact/analyze` | 影响分析（异步） | 是 | 202 `{analysis_id}` |
 | GET | `/api/v1/impact/analyses/{analysis_id}` | 分析结果 | 是 | `{added_ops, removed_ops, changed_ops, affected_cases}` |
 | POST | `/api/v1/impact/{analysis_id}/regression` | 一键回归（受影响用例建任务） | 是 | 202 `{task_id}` |
 | POST | `/api/v1/webhook/git` | Git Webhook 接收（GitHub/GitLab） | 是 | 202 `{message}` |
@@ -135,8 +134,8 @@
 3. 任务入参只传 ID（`task_id` / `analysis_id`），禁止传大对象（RULES.md §8.4）。
 4. 重复/并发入队命中 `run_id` 唯一约束直接复用已存在任务（RULES.md §8.3）。
 
-## 5. 前端使用说明（前后端分离）
+## 5. 前端使用说明（MVP 零前端）
 
-- **正式前端**：Vue 3 工程（`frontend/`），核心页面——用例管理（列表/编辑/批量确认）、任务与结果看板（轮询 `GET /tasks/{id}`）、draft 审核确认页、影响分析结果页、Allure 报告嵌入。所有交互走 REST `/api/v1`（见 [architecture.md](architecture.md) §7）。
-- **Swagger UI（`/docs`）**：仅作后端 API 文档与调试工具。开发环境开放；生产环境 `/docs` 关闭或鉴权保护（RULES.md §10.5）。MVP 阶段 token 由配置下发，Swagger UI 可直接在 Authorize 填入调试。
-- 用例确认流（前后端一致）：`POST /parse`（预览）→ `POST /parse/import`（入库）→ `POST /generate`（异步生成）→ `GET /tasks/{id}`（轮询）→ `GET /cases?status=draft`（审阅）→ `POST /cases/{id}/confirm`（确认）→ `POST /tasks`（执行）→ `GET /tasks/{id}/results`。
+- **MVP 界面 = Swagger UI（`/docs`）**：所有操作直接在 Swagger UI 完成——创建用例、触发执行（返回 `task_id` 后轮询 `GET /tasks/{id}` 看 `pending→running→pass/fail`）、draft 审核确认、影响分析、Allure 报告链接。开发环境开放；生产环境 `/docs` 关闭或鉴权保护（RULES.md §10.5）。
+- **Vue（Phase 4 可选）**：`frontend/` 独立仓库，若做仅 2 页（用例列表 + 任务看板），其余继续用 Swagger UI（见 [architecture.md](architecture.md) §7）。
+- 用例确认流：`POST /parse`（预览）→ `POST /parse/import`（入库）→ `POST /generate`（异步生成）→ `GET /tasks/{id}`（轮询）→ `GET /cases?status=draft`（审阅）→ `POST /cases/{id}/confirm`（确认）→ `POST /tasks`（执行）→ `GET /tasks/{id}/results`。

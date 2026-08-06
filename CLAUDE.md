@@ -1,6 +1,6 @@
 # TestPlatform — AI 测试用例生成平台
 
-Vue 3 + FastAPI + SQLAlchemy + SQLite + Celery + Redis + LLM API 驱动的测试用例生成平台（前后端分离）：导入 Swagger/OpenAPI 文档，解析后用 LLM 自动生成测试用例（默认 `draft`，人工审核后转 `active`）。前端为 Vue 3 工程（`frontend/`），Swagger UI 仅作 API 文档。
+FastAPI + SQLAlchemy + SQLite + Celery + Redis + LLM API 驱动的测试用例生成平台（面试导向，MVP 零前端）：导入 Swagger/OpenAPI 文档，解析后用 LLM 自动生成测试用例（默认 `draft`，人工审核后转 `active`）。**MVP 界面 = FastAPI Swagger UI（/docs）**；Vue 3 为 Phase 4 可选增强（frontend/，面试不扣分，见 [docs/roadmap.md](docs/roadmap.md)）。
 
 > 本文件只保留「每次生成代码都必须遵守」的核心内容，完整规则在 [.claude/rules/RULES.md](.claude/rules/RULES.md)，按需渐进读取。
 
@@ -48,15 +48,15 @@ Vue 3 + FastAPI + SQLAlchemy + SQLite + Celery + Redis + LLM API 驱动的测试
 | 开发流程规则（R1-R6） | §17 | 开始任何改动前（计划/测试/沉淀/收敛） |
 | 文档沉淀 | §18 | 多轮任务推进时 |
 
-## 快速启动（在 backend/ 仓库内执行；前端为独立仓库 ../frontend）
+## 快速启动（在 backend/ 仓库内执行；前端为独立仓库 ../frontend，Phase 4 可选）
 ```bash
 cd backend                       # 从容器根 E:\Project\TestPlatform 进入
 pip install -e .                 # Python 3.11+
-cd ../frontend && npm install && npm run dev   # Vue 前端（http://localhost:5173）
-cd ../backend
 docker-compose up -d             # Redis + Worker
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload    # http://localhost:8000/docs（Swagger UI 即 MVP 界面）
 pytest -m "not slow"
+# Phase 4 可选：Vue 前端（仅 2 页）
+# cd ../frontend && npm install && npm run dev
 ```
 完整 5 步 SOP 见 RULES.md §12。
 

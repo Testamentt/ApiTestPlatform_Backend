@@ -27,7 +27,8 @@
 | 10 | 禁止 `Base.metadata.create_all` 作为运行期建表，必须走 Alembic |
 
 ### 目标
-交付可运行、可测试、可讲清楚（面试防守）的 MVP 代码。
+- 交付可运行、可测试、可讲清楚（面试防守）的 MVP 代码。
+- **[MUST]** 面试导向原则：本项目为面试作品，引入任何新技术 / 依赖 / 功能前，先评估**学习成本 vs 面试收益**；讲不清、收益低、成本高的内容一律不做或后置（详见 `docs/roadmap.md` 项目原则）。
 
 ## §1 代码质量红线
 
@@ -125,7 +126,7 @@
 
 > 代码分两个独立 git 仓库，均在 `E:\Project\TestPlatform`（容器目录，非仓库）下：
 > - **`backend/`**（本仓库）：FastAPI 后端 + 项目文档/规则/配置（`app/`、`config/`、`docs/`、`.claude/`、`CLAUDE.md`、`README.md` 等）。
-> - **`frontend/`**（独立仓库）：Vue 3 前端工程（`src/`、`package.json`、`vite.config.ts` 等）。
+> - **`frontend/`**（独立仓库）：Vue 3 前端工程（`src/`、`package.json`、`vite.config.ts` 等；Phase 4 可选）。
 
 backend 仓库固定分层结构（新增文件必须归位）：
 ```
@@ -257,6 +258,7 @@ tests/                 # unit / api / tasks
 
 ### 10.3 API 鉴权与限流
 - 所有业务接口必须鉴权：MVP 用简单 Bearer Token（从配置下发，非硬编码），后续可换 JWT/OAuth。
+- **[MUST]** 限流 MVP 暂缓（面试导向，见 roadmap Phase 1）：Phase 1 只做 Bearer Token，不做 Token/IP 限流；Phase 4 生产化时再启用本条限流规则。
 - 对 LLM 触发类、工具执行类、解析类接口按 Token/IP 限流（Redis 固定窗口计数，如每用户每分钟上限），超限返回 429。
 - 若 Swagger 以文件上传方式接入，限制大小（≤2MB）与类型（json/yaml）。
 - 若支持从 URL 拉取 Swagger 文档：校验 scheme 仅 http/https、目标域名/IP 不在内网保留段、限制重定向次数与响应大小（防 SSRF）；否则仅允许本地上传。

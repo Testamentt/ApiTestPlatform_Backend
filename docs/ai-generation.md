@@ -178,7 +178,7 @@ method ∈ GET/POST/PUT/PATCH/DELETE；assertions.type ∈ status/field/business
 ## 8. 生成落地与审核流（draft→active）
 
 1. `generate_cases` 任务：读 parse 结果 → 按 operation 组装 Prompt → `llm_client.chat` → 严格校验 → 批量落库 draft → 写 `tasks.result_summary = {generated, draft_created, rejected, prompt_version}` → 写 generation_log。
-2. 前端（Vue 页面）展示 draft 清单 → 人工编辑/确认 → `POST /api/v1/cases/{id}/confirm`（或批量）→ active。
+2. 前端（MVP 用 Swagger UI）展示 draft 清单 → 人工编辑/确认 → `POST /api/v1/cases/{id}/confirm`（或批量）→ active。
 3. 拒绝的 draft 可删除或改 manual。
 
 ## 9. 验收指标与可复现

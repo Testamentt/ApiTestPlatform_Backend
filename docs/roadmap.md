@@ -2,40 +2,104 @@
 
 > 本文是项目方向活文档，随迭代更新（RULES.md §17-R5：变更沉淀五要素）。设计细节见 [architecture.md](architecture.md) 及各专题文档。
 
+## 项目原则（面试导向）
+
+**本项目是针对面试的作品**：引入任何新技术 / 依赖 / 功能前，先严格评估**学习成本 vs 面试收益**——面试讲不清、收益低、成本高的内容一律不做或后置。三大决策原则：
+
+| 原则 | 内容 |
+| --- | --- |
+| 执行闭环优先 | 先跑通「接口 → 异步执行 → 查看结果」最小闭环，再补前端与鉴权 |
+| MVP 零前端 | Phase 1 用 FastAPI Swagger UI（零前端代码）；Vue 降级为 Phase 4 可选，甚至不做（面试不扣分） |
+| 纯逻辑先行 | 先做「影响分析」（Diff + SQL，纯规则引擎、不调 API、不花钱、无幻觉），后做「AI 生成」（LLM） |
+
 ## 当前目标
 
-完成 **Phase 0 文档沉淀**：全部设计文档经用户确认后，进入编码阶段。
+完成 **Phase 0 文档与基建**（已交付全部设计文档 + 双仓库结构）；确认后进入 Phase 1 编码。
 
 ## 关键约束
 
 - 初始化分两阶段：**文档先行 → 用户确认 → 编码**（未确认不写代码）。
-- 全部实现遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（16 节硬性规则）。
+- 全部实现遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（§1-§18 硬性规则；面试导向原则见 §0）。
 - 本地环境：Windows 10 / Python 3.12.6 / Redis 127.0.0.1:6379（requirepass=1234abcd）/ Docker 未安装。
 - Windows 本地 Celery worker 必须 `--pool=solo`。
+- 仓库结构：`backend/` 与 `frontend/` 两个独立 git 仓库（frontend 为 Phase 4 可选；前期界面 = Swagger UI）。
 
 ## 阶段路线
 
-| 阶段 | 目标 | 验收 |
+| 阶段 | 周期 | 目标 | 验收（面试演示） |
+| --- | --- | --- | --- |
+| **Phase 0 · 文档与基建** | 已完成 | 全部设计文档 + 双仓库 | 评审通过 |
+| **Phase 1 · 核心执行闭环** | 2 周（重中之重） | 跑通「创建用例 → 异步执行 → 查看结果」，全程 Swagger UI，**不写一行前端** | 见下方验收清单 |
+| **Phase 2 · 影响分析**（核心卖点 1） | 1 周 | 接口变更自动圈定受影响用例（**纯规则引擎，无 AI**） | 新旧 Swagger → diff → 圈定受影响用例 → 一键回归 |
+| **Phase 3 · AI 智能生成**（核心卖点 2） | 1 周 | OpenAPI → LLM → draft 用例 → 人工确认转 active | 生成 5 个 draft → 审核 → active |
+| **Phase 4 · 生产化与前端增强**（可选） | 锦上添花 | Docker Compose + GitHub Actions；Vue 可选（仅 2 页） | 一键 `docker compose up` 跑通 |
+
+### Phase 1 · 核心执行闭环（2 周，任务清单）
+
+| 周次 | 任务 | 技术盲区预警 |
 | --- | --- | --- |
-| **Phase 0 · 文档与确认** | 全部设计文档（本次交付）+ 用户评审确认 | 文档间一致、评审通过 |
-| **Phase 1 · MVP 最小闭环** | 项目骨架（pyproject + app 分层 + Alembic + 配置）+ 用例 CRUD + 环境管理 + 执行引擎（动态生成→subprocess→JUnit→回写 + 300s 超时劫持）+ Allure 链接 + **Vue 前端脚手架（frontend/：用例管理 + 任务看板 + draft 审核）** + Swagger UI（API 文档）+ CI | 10+ 用例并发、Web 响应 <50ms、死循环被强杀、`pytest -m "not slow"` 全绿、前端可完成「解析→生成→审核→执行→看结果」闭环 |
-| **Phase 2 · AI 生成** | `prompts/v1/` + `llm_client` + OpenAPI 解析器 + draft/active 审核流 + generation_log | 单接口 2~3min、draft 不可执行、失败记录落库 |
-| **Phase 3 · 影响分析** | api_definitions 快照 + diff + 反向检索 + Git Webhook + 一键回归 | 影响评估 <10s、覆盖率 100% |
-| **Phase 4 · 生产化** | 鉴权加固（JWT）、限流、PostgreSQL、Docker Compose、Beat 周期扫描、自愈看板/监控、并发调优、AI 成本看板、Webhook 签名校验 | 可部署、可观测、可审计 |
+| 第 1 周 | ① pyproject.toml + 项目骨架（app/ 分层）② 配置加载（Pydantic Settings）+ SQLite 引擎 ③ 用例 CRUD（Models + Schemas + Repositories + Services + API）④ 环境管理（支持 `{{base_url}}` 替换）⑤ 本地同步执行（先不加 Celery）：API 直接调 subprocess 跑 pytest，验证执行逻辑 | `Depends(get_db)` 会话管理、`subprocess` 超时参数 |
+| 第 2 周 | ⑥ 引入 Celery + Redis（同步执行改异步）⑦ 超时劫持兜底（Worker 启动扫描 + 定时每 5 分钟）⑧ JUnit XML 解析回写 DB ⑨ Allure 报告归档（下载链接）⑩ 基础鉴权（Bearer Token，值在配置中，不做 OAuth2） | broker/backend 区别、subprocess 进程隔离、超时劫持 SQL |
+
+**Phase 1 验收标准（面试演示用）**：
+1. 打开 http://localhost:8000/docs
+2. 调用 `POST /api/v1/cases` 创建用例
+3. 调用 `POST /api/v1/tasks` 传入 case_id，立即返回 `task_id`（202）
+4. 轮询 `GET /api/v1/tasks/{task_id}`：`pending → running → pass/fail`
+
+这是面试官最想看的「异步解耦」效果，全程无需前端。
+
+### Phase 2 · 影响分析（1 周，核心卖点 1）
+
+| 任务 | 关键实现细节 |
+| --- | --- |
+| ① api_definitions 表：存储每次解析的 Swagger（operation_id / path / method / request_schema_hash） | `hashlib.md5` 对 parameters + requestBody 生成指纹 |
+| ② `POST /api/v1/parse`：解析 Swagger JSON 入库 | 递归处理 $ref / allOf / oneOf（AI 代码重点审查） |
+| ③ `POST /api/v1/impact/analyze`：传入新版 Swagger，返回变更 operation_id 列表 | 对比新旧 schema_hash |
+| ④ 反向检索：`SELECT * FROM test_cases WHERE operation_id IN (变更列表)` | **核心 SQL，面试必问** |
+| ⑤ 一键回归：自动创建任务执行受影响用例 | 复用 Phase 1 执行引擎 |
+
+**验收**：Swagger 1.0 建 3 个用例（绑 3 个 operation_id）→ 传 Swagger 2.0（改 1 个接口入参）→ diff 返回「变更 1 个接口、影响 1 个用例」→ 一键回归。面试官据此认定你有「精准回归」思维。
+
+### Phase 3 · AI 智能生成（1 周，核心卖点 2）
+
+| 任务 | 安全护栏（防幻觉） |
+| --- | --- |
+| ① 完善 OpenAPI 解析器（提取 required / enum / format / min-max） | — |
+| ② Prompt 模板（存 `prompts/` 目录） | 强制 LLM 基于约束生成，禁止捏造参数名 |
+| ③ LLM Client（复用 AI UI 项目经验） | 结构化输出（JSON Mode / Function Calling） |
+| ④ 生成用例强制 draft + `POST /api/v1/cases/{id}/confirm` 审核 | 草稿不入库 active，人工审核后才 active（面试防守核心） |
+| ⑤ AI 采纳率埋点 | 采纳率 <50% 时关闭该接口的 AI 生成 |
+
+**验收**：上传 Swagger → `POST /api/v1/generate` 返回 5 个 draft → 筛选 `status=draft` → confirm → active。重点强调「人工审核」，杜绝面试官对幻觉的担忧。
+
+### Phase 4 · 生产化与前端增强（可选，锦上添花）
+
+| 任务 | 说明 |
+| --- | --- |
+| ① Docker Compose（FastAPI + Redis + Worker + SQLite） | **必须做**，面试一键跑起来 |
+| ② GitHub Actions（两段式 CI） | 简历「已容器化部署 + CI 门禁」 |
+| ③ 迁移 PostgreSQL（可选） | 一句话带过即可 |
+| ④ Vue 前端（可选，若做仅 2 页：用例列表 + 任务看板） | 其他功能继续用 Swagger UI |
+| ⑤ JWT 鉴权替换 Bearer Token（可选） | — |
+
+> 若不做 Vue，Phase 4 缩减为「Docker Compose + GitHub Actions」，简历写「已容器化部署」。
+> **自愈看板（Vue 页）不再做**——是 AI UI 项目的卖点，不重复造轮子。
 
 ## 已达成结论（Phase 0）
 
-- [x] 前后端分离：Vue 3 前端层（frontend/）+ 后端三层架构（architecture.md）
+- [x] 后端三层架构 + MVP 零前端（Swagger UI）设计（architecture.md）
 - [x] 6 张业务表字段级设计 + Alembic 迁移策略（database.md）
-- [x] 22 个 REST 端点 + 统一异步模式（api.md）
+- [x] REST 端点 + 统一异步模式（api.md）
 - [x] Celery 任务 + subprocess 执行 + 超时劫持（execution-engine.md）
-- [x] Prompt 版本化管理 + llm_client 封装 + 三层防幻觉护栏（ai-generation.md）
+- [x] Prompt 版本化管理 + llm_client + 三层防幻觉护栏（ai-generation.md）
 - [x] 版本快照 + O(1) diff + SQL 反向检索（impact-analysis.md）
 - [x] Pydantic Settings 字段树 + 配置契约（configuration.md + config/）
+- [x] 双仓库结构（backend/ + frontend/，frontend 可选）
 
 ## 待解决问题
 
-- [ ] 用户确认 Phase 0 全部文档内容（**进入编码的闸门**）
-- [ ] 是否有真实可用的 Swagger/OpenAPI 样例接口用于联调（scripts/sample_swagger.py 可生成）
-- [ ] 部署形态确认：本地直跑 vs Docker Compose（Docker 未安装，需评估）
-- [ ] Webhook 平台确认：GitHub / GitLab / 其他
+- [ ] 用户确认 Phase 0 文档（**进入编码的闸门**）
+- [ ] Swagger/OpenAPI 样例接口（scripts/sample_swagger.py 可生成）
+- [ ] 部署形态：本地直跑 vs Docker Compose
+- [ ] Phase 4 是否做 Vue（面试不扣分，可跳过）

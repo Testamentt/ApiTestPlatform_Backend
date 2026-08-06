@@ -66,7 +66,7 @@ Git push → POST /api/v1/webhook/git（校验 X-GitHub-Event / X-Gitlab-Event�
   → 拉取新 Swagger 文件（或请求体携带；防 SSRF：scheme 仅 http/https、禁内网、限大小/重定向）
   → 解析入库新版本 api_definitions（commit_sha 去重）
   → 创建 impact_analyses(status=pending) → send_task(impact_analyze) → 202 {analysis_id}
-  → Vue 前端轮询 GET /api/v1/impact/analyses/{id} 展示受影响用例清单
+  → 前端（MVP 用 Swagger UI）轮询 GET /api/v1/impact/analyses/{id} 展示受影响用例清单
 ```
 
 ## 6. 一键回归

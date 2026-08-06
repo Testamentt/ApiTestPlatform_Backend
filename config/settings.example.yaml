@@ -55,11 +55,9 @@ llm:
   rate_limit_rpm: 30                  # 客户端级限流
 
 security:
-  api_token_env: TESTPLATFORM_API_TOKEN   # Bearer Token 来源（非硬编码）
-  rate_limit_window: 60                   # Redis 固定窗口（秒）
-  rate_limit_max: 30                      # 窗口内最大请求数
+  api_token_env: TESTPLATFORM_API_TOKEN   # Bearer Token 来源（值在 .env，非硬编码在代码；不做限流）
 
-frontend:
+frontend:                       # Phase 4 可选（MVP 用 Swagger UI，可整体忽略）
   dev_port: 5173                          # Vite 开发服务器端口
   dev_proxy_target: http://127.0.0.1:8000 # 开发代理目标（FastAPI）
   dist_dir: frontend/dist                 # 构建产物（生产静态托管）

@@ -93,15 +93,13 @@
 
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
-| security.api_token_env | TESTPLATFORM_API_TOKEN | Bearer Token 来源（非硬编码） |
-| security.rate_limit_window | 60 | Redis 固定窗口（秒） |
-| security.rate_limit_max | 30 | 窗口内最大请求数 |
+| security.api_token_env | TESTPLATFORM_API_TOKEN | Bearer Token 来源（值在 .env，非硬编码在代码；不做 OAuth2/限流，面试导向） |
 
-### 2.8 Frontend（Vue 前后端分离）
+### 2.8 Frontend（Phase 4 可选，MVP 用 Swagger UI）
 
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
-| frontend.dev_port | 5173 | Vite 开发服务器端口 |
+| frontend.dev_port | 5173 | Vite 开发服务器端口（Phase 4 可选） |
 | frontend.dev_proxy_target | http://127.0.0.1:8000 | 开发代理目标（FastAPI） |
 | frontend.dist_dir | frontend/dist | 构建产物目录（生产由 FastAPI 静态托管或 nginx） |
 
@@ -135,10 +133,10 @@ DEEPSEEK_API_KEY=<填入你的 DeepSeek API Key>           # 密钥：仅放 .en
 # ---- Security（MVP 鉴权）----
 TESTPLATFORM_API_TOKEN=<填入你的访问 Token>
 
-# ---- Frontend（Vue 前后端分离）----
-TESTPLATFORM_APP_CORS_ORIGINS=http://localhost:5173   # 开发前端来源；生产同源托管则留空
-TESTPLATFORM_FRONTEND_DEV_PORT=5173                   # Vite 开发端口
-TESTPLATFORM_FRONTEND_PROXY_TARGET=http://127.0.0.1:8000   # 开发代理目标（FastAPI）
+# ---- Frontend（Phase 4 可选，MVP 用 Swagger UI）----
+TESTPLATFORM_APP_CORS_ORIGINS=http://localhost:5173   # 引入 Vue 时才需配置
+TESTPLATFORM_FRONTEND_DEV_PORT=5173
+TESTPLATFORM_FRONTEND_PROXY_TARGET=http://127.0.0.1:8000
 ```
 
 ## 4. settings.example.yaml 契约

@@ -65,7 +65,7 @@ result_expires = 3600                                          # result backend 
 
 ## 5. 超时劫持机制（scan_stale_tasks）
 
-**触发**：`worker_ready` signal 触发一次 + Celery Beat 每 60s 周期执行（本地 Windows 用 `--pool=solo --beat`）。
+**触发**：`worker_ready` signal 触发一次（Worker 启动即扫描）+ Celery Beat 定时任务**每 5 分钟**周期扫描（本地 Windows 用 `--pool=solo --beat`）。
 
 ```
 scan_stale_tasks():
@@ -101,7 +101,7 @@ scan_stale_tasks():
 - 子进程 pytest 带 `--alluredir=.workspace/tasks/{task_id}/allure-results`。
 - 任务结束：`allure generate <alluredir> -o <allure-report> --clean`（命令走 run_cmd 白名单）。
 - 报告挂 FastAPI 静态目录：`/static/allure/{task_id}/index.html`，写入 `tasks.allure_link`；`case_results.allure_uuid` 支持用例级跳转。
-- 「自愈看板」：Vue 前端聚合 `case_results` 统计 pass 率/耗时/失败分布，属 roadmap Phase 4 增强。
+- 「自愈看板」：**不做**——是 AI UI 项目的卖点，不重复造轮子（roadmap Phase 4 已删）。
 
 ## 8. Windows 注意事项
 

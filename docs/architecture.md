@@ -1,26 +1,26 @@
 # 架构设计（architecture.md）
 
-> 规则引用：本项目的所有实现必须遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（§1-§18 权威规则）。本文是总体架构基准文档，描述前后端分离、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
+> 规则引用：本项目的所有实现必须遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（§1-§18 权威规则）。本文是总体架构基准文档，描述 MVP 零前端、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
 
 ## 1. 目标与非目标
 
 **目标**：交付一套轻量级、可扩展的接口测试效能平台，以「AI 提效 + 异步解耦 + 精准回归」为核心，降低接口用例编写成本，提升回归测试准确性与执行稳定性。
 
 **非目标（MVP 阶段不包含）**：
-- 大规模/全功能管理系统级 UI（MVP 前端聚焦核心操作流：用例管理、任务查看、draft 审核、影响分析）
+- 前端界面（**MVP 界面 = FastAPI Swagger UI**，零前端代码；Vue 为 Phase 4 可选，面试不扣分）
+- 限流（Phase 1 只做 Bearer Token 鉴权，不做 Token/IP 限流——面试导向，见 roadmap）
 - 多环境生产部署（先本地/Docker 单机）
 - 细粒度权限体系（先 Bearer Token 简单鉴权，见 RULES.md §10.3）
 
-## 2. 架构总览（前后端分离）
+## 2. 架构总览（MVP 零前端 + 后端三层）
 
 ```
 用户 / CI 系统
    │ REST /api/v1（Bearer Token）
    ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ 【前端层】 Vue 3 + Element Plus（frontend/，前后端分离）        │
-│   用例管理 / 任务看板 / draft 审核 / 影响分析 页面             │
-│   开发走 Vite 代理（5173→8000）；生产静态托管（FastAPI/nginx） │
+│ 【MVP 界面】FastAPI Swagger UI（/docs，零前端代码）             │
+│   Phase 4 可选：Vue 3（frontend/，仅 2 页）                    │
 └──────────────────────────┬───────────────────────────────────┘
                            │ HTTP JSON
                            ▼
@@ -95,14 +95,13 @@ Celery 关键配置（对齐 RULES.md §8.2/§8.3）：
 | ① AI 提效 | 生成用例恒为 `draft`，仅人工审核接口可转 `active`；LLM 输出过 Pydantic 严格校验后才能入库，失败记录同样落库（status=failed + 原因 + prompt_version + model + 原始响应） | §10.2 / §11.2 |
 | ② 影响分析 | `test_cases.operation_id` 索引 + `api_definitions` 版本快照 + `operation_hashes` O(1) diff + SQL 反向检索 | §5.2（索引） |
 | ③ 异步解耦 | 状态以 DB 为单一事实源；`tasks.pid` 供跨进程强杀；300s 超时进程树清理 | §8.3 / §8.5 / §2.4 |
-| 前后端分离 | Vue 3 前端（`frontend/`）仅消费 REST `/api/v1` JSON 契约；开发走 Vite 代理，生产同源静态托管；Swagger UI 保留作 API 文档 | §7（response_model）/ §10.5（CORS） |
+| MVP 零前端 | 界面 = FastAPI Swagger UI（`/docs`），零前端代码；Vue 3（`frontend/`）为 Phase 4 可选增强（面试不扣分） | §7（response_model） |
 
-## 7. 前端形态（前后端分离）
+## 7. 前端形态（MVP 零前端，面试导向）
 
-- **前端层**：Vue 3 + TypeScript + Vite + Element Plus + Pinia + Vue Router（`frontend/` 独立工程）。通过 REST `/api/v1` 与后端交互；Bearer Token 由配置/登录下发后存入 Pinia + localStorage，Axios 请求拦截器统一注入。
-- 核心页面（MVP）：用例管理（列表/编辑/批量确认）、任务与结果看板、draft 审核确认页、影响分析结果页、Allure 报告嵌入（`/reports/allure/{task_id}`）。
-- **API 文档**：FastAPI Swagger UI（`/docs`）仅作后端接口文档与调试工具，不再是前端本体。开发环境开放；生产环境默认关闭或鉴权保护（RULES.md §10.5）。
-- **通信**：开发期 Vite dev server（5173）`server.proxy` 将 `/api` 代理到 FastAPI（8000），规避 CORS；生产由 FastAPI 挂载 `frontend/dist` 静态资源或 nginx 托管（同源）。CORS 只允许明确的前端来源白名单，禁止 `*`（RULES.md §10.5）。
+- **MVP 界面 = FastAPI Swagger UI（`/docs`）**：所有操作（创建用例 / 触发执行 / 查看任务 / 审核 draft / 影响分析 / Allure 报告链接）直接在 Swagger UI 完成，零前端代码。开发环境开放；生产环境默认关闭或鉴权保护（RULES.md §10.5）。
+- **Vue 3（Phase 4 可选）**：`frontend/` 独立仓库；若做仅 2 页（用例列表 + 任务看板），其余继续用 Swagger UI；面试不扣分，可跳过。开发走 Vite 代理或 CORS 白名单，禁止 `*`（RULES.md §10.5）。
+- **CORS**：MVP 同源（Swagger UI）无需 CORS；仅 Phase 4 引入 Vue 时配置 `app.cors_origins` 白名单。
 
 ## 8. 目录结构（两个独立 git 仓库，对齐 RULES.md §4）
 
@@ -126,7 +125,7 @@ TestPlatform/                     # 容器目录（非 git 仓库）
 │   ├── pyproject.toml  .env.example  .gitignore
 │   ├── README.md  CLAUDE.md  memory.md
 │   └── .claude/                  # rules/RULES.md（§1-§18）、skills/
-└── frontend/                     # 仓库 B：Vue 3 前端工程（独立 git 仓库）
+└── frontend/                     # 仓库 B：Vue 3 前端工程（Phase 4 可选，独立 git 仓库）
     └── src/  package.json  vite.config.ts  index.html
 ```
 
@@ -137,7 +136,7 @@ TestPlatform/                     # 容器目录（非 git 仓库）
 ## 9. 预期与风险
 
 - 预期：单接口用例编写 10~15min → 2~3min；影响评估 1~2h → <10s；Web 响应稳定 <50ms；支持 10+ 用例并发。
-- 风险：SQLite 单写者限制（MVP 用 `--pool=solo` 串行化，见 RULES.md §3.3）；LLM 成本不可控（需成本日志 + 限流，见 RULES.md §9.5/§9.6）；子进程残留进程（靠超时劫持 + 启动扫描兜底）。
+- 风险：SQLite 单写者限制（MVP 用 `--pool=solo` 串行化，见 RULES.md §3.3）；LLM 成本不可控（需成本日志，见 RULES.md §9.6）；子进程残留进程（靠超时劫持 + 启动扫描兜底）。
 
 ## 10. 相关文档
 

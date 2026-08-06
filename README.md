@@ -20,8 +20,8 @@
 用户 / CI 系统
    │ REST /api/v1（Bearer Token）
    ▼
-【前端层】 Vue 3 + Element Plus（frontend/，前后端分离）
-   │ HTTP JSON（开发走 Vite 代理到 FastAPI）
+【MVP 界面】 FastAPI Swagger UI（/docs，零前端代码；Phase 4 可选 Vue 3）
+   │ HTTP JSON
    ▼
 【Web 服务层】 FastAPI + SQLAlchemy   （用例 CRUD / Swagger 解析 / AI 用例生成）
    │ ① 创建任务记录  ② 发送任务到队列
@@ -34,14 +34,14 @@
    ⑤ 结果回写 DB  ⑥ 生成 Allure 报告链接
 ```
 
-前后端分离：Vue 前端仅通过 REST `/api/v1` 与后端交互；后端三层中 Web 服务 ≠ 执行引擎（进程隔离），状态以 DB 为单一事实源，Worker 重启任务不丢。详见 [docs/architecture.md](docs/architecture.md)。
+MVP 零前端：界面 = FastAPI Swagger UI（`/docs`）；后端三层中 Web 服务 ≠ 执行引擎（进程隔离），状态以 DB 为单一事实源，Worker 重启任务不丢。Vue 3 为 Phase 4 可选增强。详见 [docs/architecture.md](docs/architecture.md)。
 
 ## 目录结构（两个独立 git 仓库）
 
 ```
 TestPlatform/                # 容器目录（非 git 仓库）
 ├── backend/                 # 后端仓库：FastAPI + Celery + AI + 项目文档/规则/配置（本仓库）
-└── frontend/                # 前端仓库：Vue 3 前后端分离（独立 git 仓库）
+└── frontend/                # 前端仓库：Vue 3（Phase 4 可选，MVP 用 Swagger UI）
 ```
 
 ## 快速开始
@@ -61,14 +61,13 @@ pip install -e ".[dev]"
 copy config\settings.example.yaml config\settings.yaml
 copy .env.example .env        # 填入 DEEPSEEK_API_KEY、Redis 密码
 
-# 3. 启动后端 Web 服务（API 文档：http://127.0.0.1:8000/docs）
+# 3. 启动后端 Web 服务（Swagger UI 即 MVP 界面：http://127.0.0.1:8000/docs）
 uvicorn app.main:app --reload --port 8000
 
-# 4. 启动前端（独立仓库 ../frontend，Vite 代理到 FastAPI）
-cd ../frontend && npm install && npm run dev    # http://localhost:5173
+# 4. 启动 Worker（Windows 必须 --pool=solo）
+celery -A app.tasks.celery_app worker --pool=solo --beat
 
-# 5. 启动 Worker（Windows 必须 --pool=solo）
-cd ../backend && celery -A app.tasks.celery_app worker --pool=solo --beat
+# （Phase 4 可选）Vue 前端：cd ../frontend && npm install && npm run dev
 ```
 
 ## 核心特性
@@ -82,7 +81,7 @@ cd ../backend && celery -A app.tasks.celery_app worker --pool=solo --beat
 
 | 文档 | 内容 |
 | --- | --- |
-| [docs/architecture.md](docs/architecture.md) | 前后端分离、后端三层、进程隔离、异步模型、核心决策 |
+| [docs/architecture.md](docs/architecture.md) | MVP 零前端、后端三层、进程隔离、异步模型、核心决策 |
 | [docs/database.md](docs/database.md) | 数据模型（6 表字段级设计） |
 | [docs/api.md](docs/api.md) | REST API 设计（端点总表） |
 | [docs/execution-engine.md](docs/execution-engine.md) | Celery 任务、subprocess 执行、超时劫持、Allure |
