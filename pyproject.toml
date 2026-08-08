@@ -40,10 +40,11 @@ ignore = ["B008", "E501"]  # B008: FastAPI Depends() 默认参数误报；E501: 
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --tb=short"
+addopts = "-q --tb=short -m 'not slow'"
 markers = [
     "unit: 纯逻辑单元测试",
     "api: FastAPI 接口测试",
     "tasks: Celery 任务测试（eager）",
     "integration: 端到端真实链路（慢）",
+    "slow: 端到端/集成冒烟（不随默认 CI，用 -m slow 单独跑）",
 ]
