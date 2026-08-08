@@ -1,4 +1,4 @@
-# 密钥与本地配置（RULES.md §3.1：密钥只放 .env）
+# 密钥与本地配置（密钥只放 .env，RULES §3.1）
 .env
 .env.*
 !.env.example
@@ -32,10 +32,23 @@ allure-report/
 logs/
 *.log
 
-# Claude Code 本地设置（机器相关，不入库）
-.claude/settings.local.json
-
 # IDE
 .idea/
 .vscode/
 *.swp
+
+# ---- 以下只保留项目本体，不公开（已上传文件用 git rm --cached 移出跟踪）----
+
+# Claude Code / AI 协作（规则/技能/指南/记忆，仅本地开发用）
+.claude/
+CLAUDE.md
+memory.md
+
+# 测试（面试仓库不公开测试）
+tests/
+
+# 文档中的对话产物（过程记录，不公开；只保留设计/架构/数据库等文档）
+docs/plans/
+docs/reviews/
+docs/sessions/
+docs/session-doc-template.md
