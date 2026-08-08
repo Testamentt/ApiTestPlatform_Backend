@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-def dispatch_execution(task_id: int) -> None:
+def dispatch_execution(task_id: int) -> str | None:
     from app.tasks.execute_cases import execute_cases_task  # noqa: PLC0415
 
-    execute_cases_task.delay(task_id)
+    return execute_cases_task.delay(task_id).id

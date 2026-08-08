@@ -15,6 +15,12 @@ def test_create_case_201_default_draft(client):
     assert r.json()["data"]["operation_id"] == "httpbin_get"
 
 
+def test_create_case_exposes_trust_score(client):
+    # trust_score 可观测（手工=100），审核按血缘可信度优先 Review（P1-4 修复）
+    r = _create_case(client)
+    assert r.json()["data"]["trust_score"] == 100
+
+
 def test_operation_id_required(client):
     assert _create_case(client, operation_id="").status_code == 422
 

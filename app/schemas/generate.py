@@ -42,6 +42,7 @@ class GenerateTaskRead(BaseModel):
     run_id: str
     status: str
     operation_count: int
+    celery_task_id: str | None  # 卡死时可通过 Celery 定位/revoke（RULES §8.3）
     prompt_version: str | None
     error_stage: str | None
     error_msg: str | None

@@ -47,7 +47,15 @@ class TaskService:
             return existing
         task = Task(run_id=run_id, case_ids=payload.case_ids, status=TaskStatus.PENDING)
         self.task_repo.add(task)
-        dispatch_execution(task.id)
+        # why：持久化 celery_task_id（RULES §8.3）——任务卡死时可通过 Celery 定位/revoke
+        celery_task_id = dispatch_execution(task.id)
+        if celery_task_id:
+            task.celery_task_id = celery_task_id
+            try:
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+                raise
         return task
 
     def get_task(self, task_id: int) -> Task:
