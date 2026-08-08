@@ -1,7 +1,7 @@
 # 数据库设计（database.md）· Phase 1-3 简化版
 
 > 规则引用：`RULES.md` §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移）。本设计所有字段名/表名与 API、执行引擎文档保持一致。
-> **Phase 1-3 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）；Phase 3 建 `generation_tasks` + `generation_log`（AI 生成）并给 `test_cases`/`impact_analyses` 加字段。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `RULES.md` §5.1/§5.2）。
+> **Phase 1-3 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）；Phase 3 建 `generation_tasks` + `generation_logs`（AI 生成）并给 `test_cases`/`impact_analyses` 加字段。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `RULES.md` §5.1/§5.2）。
 
 ## 1. 设计原则（Phase 1 简化）
 
@@ -108,7 +108,7 @@
 
 索引：`UNIQUE(run_id)`、`idx_generation_tasks_status(status)`。
 
-### 2.6 generation_log（逐 operation LLM 调用日志，成本 + 置信度）
+### 2.6 generation_logs（逐 operation LLM 调用日志，成本 + 置信度）
 
 | 字段 | 类型 | 约束/默认 | 说明 |
 | --- | --- | --- | --- |
@@ -170,5 +170,4 @@ pending/running ──(超时劫持 scan_stale_tasks)──▶ failed（error_st
 
 - **environments**（多环境管理）：name/base_url/global_headers/timeout_seconds。
 - **case_results**（需逐用例明细时再拆）：task_id/case_id 外键，UNIQUE(task_id, case_id) 幂等。
-- **api_definitions / impact_analyses**：**Phase 2 已建**（见 §2.3/§2.4）。
-- **generation_log**（Phase 3 LLM 成本日志）：usage 明细 + cost_estimate。
+- **api_definitions / impact_analyses / generation_tasks / generation_logs**：**Phase 2/3 已建**（见 §2.3-§2.6）。

@@ -20,7 +20,7 @@ Worker generate_cases_task（time_limit=llm.task_timeout_seconds=600）
   ▼
 Pydantic 严格校验（GeneratedCase extra="forbid"，operation_id 服务端注入）
   ├─ 通过 → 批量落库 test_cases(status=draft, source=ai, trust_score=80/60)
-  └─ 失败 → generation_log(validation_failed + raw_response + confidence=0) → 不建坏用例
+  └─ 失败 → generation_logs(validation_failed + raw_response + confidence=0) → 不建坏用例
   ▼
 result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, cost_total} → SUCCESS
   ▼
@@ -57,12 +57,12 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 - `response_format={"type":"json_object"}` + `temperature=0`（确定性）+ `max_tokens`（config）。
 - **`_extract_json` 预处理**：剥离 Markdown 代码块/首尾空白后再 `json.loads`——格式微小偏差不误杀合法响应，双重容错。
 - 错误分类：429/5xx/超时 → 可重试（指数退避 3 次）；JSON 解析失败 / Pydantic 校验失败 → 不可重试。
-- 成本：`cost_estimate = total_tokens × llm.cost_per_1k_tokens / 1000`（demo 均价估算；精算留生产）；每次调用写 generation_log（usage/latency/cost）。
+- 成本：`cost_estimate = total_tokens × llm.cost_per_1k_tokens / 1000`（demo 均价估算；精算留生产）；每次调用写 generation_logs（usage/latency/cost）。
 
 ## 6. 严格校验与防幻觉护栏（RULES §10.2/§11.2）
 
 **三层护栏**：
-1. **生成层**：`GeneratedCase`（`extra="forbid"`）严格校验——字段缺失/类型不符/多余字段判失败；`generation_log(validation_failed + raw_response + confidence=0)` 落库，**不建坏用例**。
+1. **生成层**：`GeneratedCase`（`extra="forbid"`）严格校验——字段缺失/类型不符/多余字段判失败；`generation_logs(validation_failed + raw_response + confidence=0)` 落库，**不建坏用例**。
 2. **状态层**：AI 用例恒为 `draft`，`confirm`（reviewer）是进 active 的唯一入口，执行引擎只选 active。
 3. **血缘层**：**operation_id 服务端注入**——不信任 LLM 输出（LLM 输出含 operation_id 字段 → extra="forbid" 直接判失败）。
 
@@ -76,8 +76,8 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 3. 逐 operation（串行）：
    a. 渲染 prompt → llm_client.chat_json → parsed（Pydantic 校验）
    b. operation_id 注入 + trust_score（parse warnings 非空?60:80）→ 批量 add draft → 短事务提交
-   c. 校验失败 → generation_log(validation_failed + raw_response + confidence=0) → rejected+1（rejected_detail 记具体错误）
-   d. LLM 异常 → generation_log(error) → 继续下一个（宽容，不拖垮整批）
+   c. 校验失败 → generation_logs(validation_failed + raw_response + confidence=0) → rejected+1（rejected_detail 记具体错误）
+   d. LLM 异常 → generation_logs(error) → 继续下一个（宽容，不拖垮整批）
 4. result_summary → SUCCESS；致命错误（解析失败）→ FAILED(error_stage="parse")
 ```
 
@@ -87,7 +87,7 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 
 - **定向生成**：`operation_ids` 缺省时读最新影响分析的 `untested_ops`（系统自动识别未覆盖接口）；新项目无历史分析 → 全量开箱即用。
 - **修复建议**：`POST /impact/{id}/fix-hints` 对 breaking 变更生成一句话建议（复用 llm_client，`model='fix_hint'` 区分来源，best-effort）；`AnalyzeResult` 返回 `has_fix_hint` + `fix_hint_endpoint` 提示入口——analyze 保持纯规则秒回。
-- **置信度/审计**：`generation_log.ai_confidence`（1.0/0.0）+ usage/cost/raw——同一套审计体系覆盖 UI 自愈与 AI 生成两个场景。
+- **置信度/审计**：`generation_logs.ai_confidence`（1.0/0.0）+ usage/cost/raw——同一套审计体系覆盖 UI 自愈与 AI 生成两个场景。
 
 ## 9. 验收指标与面试锚点
 
