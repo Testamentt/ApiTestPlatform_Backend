@@ -11,8 +11,13 @@ def render_test_file(case) -> str:
     timeout = settings.execution.pytest_timeout
     params = case.params or {}
     body = case.body
+    # why：case.name 只进「文件头注释」且必须 repr——它允许换行/引号/#，
+    # 若进入 docstring/代码区可闭合字符串注入任意 Python 代码（匿名 RCE）。
+    # repr 保证无裸换行（换行转义为 \n 字面量），注释不解析转义序列，二者叠加后注入必然失效。
+    # 其余字段（path/method/params/body/base_url）已用 !r 进字符串字面量，无注入风险。
+    safe_name = f"{case.name!r}"
     return (
-        f'"""case {case.id}: {case.name}"""\n'
+        f"# case {case.id}: {safe_name}\n"
         "import httpx\n\n"
         f"def test_{case.id}():\n"
         f"    url = {base_url!r} + {case.path!r}\n"
