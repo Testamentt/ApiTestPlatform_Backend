@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
+from time import monotonic
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
+from app.models.generation_log import GenerationLog
 from app.models.impact_analysis import ImpactAnalysis
 from app.repositories.api_definition_repository import ApiDefinitionRepository
 from app.repositories.case_repository import CaseRepository
@@ -24,6 +26,7 @@ from app.utils.llm_client import (
     LlmClient,  # 类 import 不实例化（构造才读 env），惰性创建见 __init__/suggest_fix_hints
 )
 from app.utils.openapi_parser import parse_openapi
+from app.utils.prompt_util import PROMPT_VERSION, load_fix_hint_system, render_fix_hint_user
 
 logger = logging.getLogger(__name__)
 
@@ -128,26 +131,69 @@ class ImpactService:
 
     def suggest_fix_hints(self, analysis_id: int) -> dict | None:
         """breaking 变更的一句话修复建议（best-effort，复用 llm_client）。
-        why：analyze 保持纯规则秒回；建议按需生成、失败置 None 不阻塞——不让 LLM 拖慢规则引擎，但给用户 AI 助手。"""
+        why：analyze 保持纯规则秒回；建议按需生成、失败置 None 不阻塞——不让 LLM 拖慢规则引擎，但给用户 AI 助手。
+        Prompt 走 prompts/v1 模板（§3.2 版本化）+ 定界/repr 注入防护（§10.1）；审计写 generation_logs（§9.6，
+        文档承诺 model='fix_hint' 区分来源）。fix-hints 为轻量同步建议（Web 请求线程 best-effort，失败置 None）。"""
         analysis = self.impact_repo.get_or_raise(analysis_id)
         if not analysis.breaking_changed_ops:
             raise AppError("NO_BREAKING_CHANGES", status_code=422, detail="无 breaking 变更，无需修复建议")
+        ops = list(analysis.breaking_changed_ops)
+        # 短事务分界：先关事务再调 LLM——禁止持 DB Session/连接期间调 LLM（§2.1）
+        self.session.commit()
         llm = self.llm or LlmClient()
-        system = "你是接口测试专家，针对破坏性接口变更给出一句话可执行的修复建议。"
-        user = (
-            "以下接口发生破坏性变更（字段被删 / required 收紧 / 类型变化 / 枚举删减）："
-            + ", ".join(analysis.breaking_changed_ops)
-            + "。请给出一句话建议。"
-        )
+        system = load_fix_hint_system()
+        user = render_fix_hint_user(ops)
+        start = monotonic()
         try:
-            parsed, _ = llm.chat_json(system, user, schema=FixHint)
+            parsed, usage = llm.chat_json(system, user, schema=FixHint)
         except AppError as e:
+            # best-effort 失败置 None，但同样落审计（§9.6 结构化日志兜底）
+            self._write_fix_hint_log(usage=None, latency_ms=int((monotonic() - start) * 1000),
+                                     error=str(e.detail), status="error")
             logger.warning("fix-hints 生成失败（best-effort 置 None）: %s", e.detail)
             return None
-        hint = {"breaking_changed_ops": analysis.breaking_changed_ops, "suggestion": parsed.suggestion}
-        analysis.ai_fix_hint = hint
-        self.session.commit()
+        latency_ms = int((monotonic() - start) * 1000)
+        cost = round(usage.total_tokens * llm.settings.cost_per_1k_tokens / 1000, 6)
+        self._write_fix_hint_log(usage=usage, latency_ms=latency_ms, cost=cost, status="success")
+        hint = {"breaking_changed_ops": ops, "suggestion": parsed.suggestion}
+        try:
+            analysis.ai_fix_hint = hint
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
         return hint
+
+    def _write_fix_hint_log(self, *, usage, latency_ms: int, cost: float = 0.0,
+                            error: str | None = None, status: str) -> None:
+        """fix-hints 审计落库。why：§9.6 每次 LLM 调用记 usage/cost 到 generation_logs；
+        无关联生成任务（generation_task_id 可空），model='fix_hint' 区分来源（文档契约）。"""
+        usage_dict = None
+        if usage is not None:
+            usage_dict = {
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
+            }
+        self.session.add(
+            GenerationLog(
+                generation_task_id=None,
+                operation_id="fix_hint",
+                model="fix_hint",
+                prompt_version=PROMPT_VERSION,
+                status=status,
+                ai_confidence=1.0 if status == "success" else 0.0,
+                usage=usage_dict,
+                latency_ms=latency_ms,
+                cost_estimate=cost if status == "success" else None,
+                error_msg=error,
+            )
+        )
+        try:
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
 
     def regression(self, analysis_id: int) -> RegressionResult:
         """一键回归。宽容降级：快照里失效用例被过滤，只执行仍 active 的；summary 用执行时真实口径（D6）。"""

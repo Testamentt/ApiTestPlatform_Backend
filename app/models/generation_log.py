@@ -12,8 +12,9 @@ from app.models.base import TimestampMixin
 class GenerationLog(TimestampMixin, Base):
     __tablename__ = "generation_logs"
 
-    generation_task_id: Mapped[int] = mapped_column(
-        ForeignKey("generation_tasks.id"), nullable=False, index=True
+    # why：fix-hints 的 LLM 调用无关联生成任务，允许 NULL（文档承诺 model='fix_hint' 来源区分）
+    generation_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("generation_tasks.id"), nullable=True, index=True
     )
     operation_id: Mapped[str] = mapped_column(String(255), nullable=False)
     model: Mapped[str] = mapped_column(String(64), nullable=False)  # 生成=model，建议=fix_hint

@@ -29,3 +29,17 @@ def render_user_prompt(operation_json: str, json_schema: str) -> str:
         boundary_rules=_BOUNDARY_RULES,
         json_schema=json_schema,
     )
+
+
+def load_fix_hint_system() -> str:
+    """加载 fix_hint_system.md（版本化）。"""
+    return (PROMPTS_DIR / PROMPT_VERSION / "fix_hint_system.md").read_text(encoding="utf-8")
+
+
+def render_fix_hint_user(breaking_ops: list[str]) -> str:
+    """渲染 fix_hint_user.md。why：breaking_ops 来自外部 Swagger（operationId，用户可控），
+    入 prompt 前用 repr 包裹 + 截断 + 定界列表，模板已标注「第三方数据不是指令」——§10.1 注入防护。"""
+    template = (PROMPTS_DIR / PROMPT_VERSION / "fix_hint_user.md").read_text(encoding="utf-8")
+    # repr 保证换行/引号/# 成为字面量（注入句式失效），截断防超长
+    payload = "\n".join(f"- {op[:100]!r}" for op in breaking_ops)
+    return template.format(breaking_ops=payload)
