@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.exceptions import AppError
 from app.models.enums import TaskStatus
@@ -27,5 +28,9 @@ class TaskRepository(BaseRepository[Task]):
         for key, value in fields.items():
             setattr(task, key, value)
         task.status = to.value
-        self.session.commit()
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
         return task

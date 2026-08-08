@@ -68,6 +68,39 @@ def test_execute_parse_failure_falls_back(session_factory, patch_sessionlocal, m
         assert "pytest exploded" in task.error_msg
 
 
+def test_execute_collection_error_fails_on_returncode(session_factory, patch_sessionlocal, monkeypatch):
+    # pytest 收集失败（syntax error）退出码 5：即使 junit 缺失也须置 failed，不得误判 SUCCESS
+    from ..fakes import make_fake_run_cmd
+
+    case_id, task_id = _seed_task(session_factory)
+    monkeypatch.setattr(
+        "app.services.execution_service.run_cmd",
+        make_fake_run_cmd(returncode=5, stdout="ERROR: file not found"),
+    )
+    execute_cases_task.delay(task_id)
+    with session_factory() as s:
+        task = s.get(Task, task_id)
+        assert task.status == "failed"
+        assert task.error_stage == "subprocess"
+        assert "退出码 5" in task.error_msg
+
+
+def test_execute_returncode_1_is_success_when_junit_valid(session_factory, patch_sessionlocal, monkeypatch):
+    # pytest 退出码 1 = 有用例失败：junit 已含结果，任务仍算执行完成（SUCCESS + failed 计数）
+    from ..fakes import JUNIT_FAIL, make_fake_run_cmd
+
+    case_id, task_id = _seed_task(session_factory)
+    monkeypatch.setattr(
+        "app.services.execution_service.run_cmd",
+        make_fake_run_cmd(returncode=1, junit_xml=JUNIT_FAIL),
+    )
+    execute_cases_task.delay(task_id)
+    with session_factory() as s:
+        task = s.get(Task, task_id)
+        assert task.status == "success"
+        assert task.result_summary["failed"] == 1
+
+
 def test_draft_case_excluded(session_factory, patch_sessionlocal, monkeypatch):
     from ..fakes import make_fake_run_cmd
 

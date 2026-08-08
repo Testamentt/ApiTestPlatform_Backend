@@ -61,7 +61,9 @@ def parse_junit_xml(path: Path) -> tuple[JunitSummary, list[dict]]:
 
     summary = JunitSummary(
         total=total,
-        passed=total - failed - errors,
+        # why：pytest 的 junitxml 中 tests 含 skipped 用例（每个含 <skipped/> 的 testcase 也计入 tests），
+        # passed 必须扣减 skipped，否则被跳过用例被计为通过、通过率虚高（口径与逐用例层面一致）。
+        passed=total - failed - errors - skipped,
         failed=failed + errors,
         skipped=skipped,
         duration_ms=duration_ms,

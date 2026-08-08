@@ -18,7 +18,7 @@ from app.models.test_case import TestCase
 from app.utils.case_generator import render_test_file
 from app.utils.junit_parser import parse_junit_xml
 from app.utils.report_util import write_report_html
-from app.utils.subprocess_util import run_cmd
+from app.utils.subprocess_util import kill_process_tree, run_cmd
 
 
 def _utcnow() -> datetime:
@@ -32,6 +32,14 @@ class ExecutionService:
         self.logger = logging.getLogger(__name__)
 
     def execute_cases(self, task_id: int) -> None:
+        """执行编排入口。why：兜底任何未预期异常，保证任务进入明确终态（不卡 PENDING/RUNNING）。"""
+        try:
+            self._execute_cases(task_id)
+        except Exception:
+            self.logger.exception("execute_cases 任务 %s 未预期异常", task_id)
+            self._fail(task_id, "internal", "执行引擎未预期异常，详见服务日志")
+
+    def _execute_cases(self, task_id: int) -> None:
         # ① 读任务与 active 用例（短事务，读完即释放连接）
         with self.session_factory() as session:
             task = session.get(Task, task_id)
@@ -59,10 +67,14 @@ class ExecutionService:
                 t = s.get(Task, task_id)
                 if t is None:
                     return
-                t.pid = pid
-                t.status = TaskStatus.RUNNING.value
-                t.started_at = _utcnow()
-                s.commit()
+                try:
+                    t.pid = pid
+                    t.status = TaskStatus.RUNNING.value
+                    t.started_at = _utcnow()
+                    s.commit()
+                except Exception:
+                    s.rollback()
+                    raise
 
         cmd = [
             sys.executable,
@@ -88,14 +100,22 @@ class ExecutionService:
             self._fail(task_id, "timeout", f"subprocess 超时: {e.detail}")
             return
 
-        # ④ 解析 junit；损坏时降级为 stdout 文本（保证任务有明确终态）
+        # ④ returncode 终态检查。why：pytest 退出码 1=有用例失败（junit 已含结果，任务仍算执行完成）；
+        # 其余非零（2 中断/3 内部/4 usage/5 收集失败）表示 pytest 自身异常，产出的 junit 可能缺测试
+        # （如收集错误 → total=0），若判 SUCCESS 会误导为"全部通过"——置 FAILED(subprocess)。
+        if result.returncode not in (0, 1):
+            tail = (result.stdout or "")[-2000:] or (result.stderr or "")[-2000:]
+            self._fail(task_id, "subprocess", f"pytest 异常退出码 {result.returncode}: {tail}")
+            return
+
+        # ⑤ 解析 junit；损坏时降级为 stdout 文本（保证任务有明确终态）
         try:
             summary, entries = parse_junit_xml(workspace / "report.xml")
         except AppError as e:
             self._fail(task_id, "parse", result.stdout[-2000:] or str(e.detail))
             return
 
-        # ⑤ 组 result_summary + 写 HTML 报告 + success
+        # ⑥ 组 result_summary + 写 HTML 报告 + success
         result_summary = {
             "total": summary.total,
             "passed": summary.passed,
@@ -123,11 +143,35 @@ class ExecutionService:
             task = session.get(Task, task_id)
             if task is None:
                 return
-            task.status = TaskStatus.FAILED.value
-            task.error_stage = stage
-            task.error_msg = msg
-            task.finished_at = _utcnow()
-            session.commit()
+            try:
+                task.status = TaskStatus.FAILED.value
+                task.error_stage = stage
+                task.error_msg = msg
+                task.finished_at = _utcnow()
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+
+    def force_fail_timeout(self, task_id: int) -> None:
+        """软超时兜底：置终态并 best-effort 杀 pytest 进程树。
+        why：Celery 软超时中断任务函数后 DB 状态可能停留在 running/pending，
+        必须迁移 failed，否则要等下次 Worker 启动的扫描兜底（RULES §8.2）。"""
+        with self.session_factory() as session:
+            task = session.get(Task, task_id)
+            if task is None:
+                return
+            if task.pid:
+                kill_process_tree(task.pid)
+            try:
+                task.status = TaskStatus.FAILED.value
+                task.error_stage = "timeout"
+                task.error_msg = f"Celery 软超时（{get_settings().celery.soft_time_limit}s）"
+                task.finished_at = _utcnow()
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
 
     def _finish_success(self, task_id: int, result_summary: dict) -> None:
         with self.session_factory() as session:
@@ -146,8 +190,12 @@ class ExecutionService:
                 report_link = f"/static/reports/{task_id}/report.html"
             except Exception:
                 self.logger.exception("生成 HTML 报告失败（best-effort）")
-            task.result_summary = result_summary
-            task.report_link = report_link
-            task.status = TaskStatus.SUCCESS.value
-            task.finished_at = _utcnow()
-            session.commit()
+            try:
+                task.result_summary = result_summary
+                task.report_link = report_link
+                task.status = TaskStatus.SUCCESS.value
+                task.finished_at = _utcnow()
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise

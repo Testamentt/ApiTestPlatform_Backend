@@ -26,11 +26,25 @@ def test_parse_sums_all_testsuites(tmp_path):
     assert summary.total == 3
     assert summary.failed == 1
     assert summary.skipped == 1
+    assert summary.passed == 1  # 3 - 1 failed - 0 errors - 1 skipped
     assert len(entries) == 3
     statuses = {e["case_id"]: e["status"] for e in entries}
     assert statuses[1] == "pass"
     assert statuses[2] == "fail"
     assert statuses[3] == "skipped"
+
+
+def test_skipped_not_counted_as_passed(tmp_path):
+    # pytest 的 junit tests 属性含 skipped：tests=10/failures=1/skipped=3 → passed 应为 6 而非 9
+    path = tmp_path / "report.xml"
+    path.write_text(
+        '<testsuites><testsuite name="pytest" tests="10" failures="1" '
+        'errors="0" skipped="3" time="1.0"/></testsuites>',
+        encoding="utf-8",
+    )
+    summary, _ = parse_junit_xml(path)
+    assert summary.passed == 6
+    assert summary.passed + summary.failed + summary.skipped == summary.total
 
 
 def test_parse_missing_raises():

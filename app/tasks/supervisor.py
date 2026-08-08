@@ -22,28 +22,36 @@ def _utcnow() -> datetime:
 @celery_app.task(name="scan_stale_tasks")
 def scan_stale_tasks() -> int:
     now = _utcnow()
-    killed = 0
+    threshold = get_settings().execution.pytest_timeout
+    stale: list[Task] = []
     with SessionLocal() as session:
         running = session.query(Task).filter(Task.status == TaskStatus.RUNNING.value).all()
-        # why：超时阈值与 run_cmd 同源（execution.pytest_timeout），不落库——run_id 指纹已含 timeout，
-        # 但超时劫持判断的是进程实际跑了多久，用执行引擎同一配置保持一致
-        threshold = get_settings().execution.pytest_timeout
         for task in running:
             if task.started_at is None:
                 continue
-            elapsed = (now - task.started_at).total_seconds()
-            if elapsed <= threshold:
+            if (now - task.started_at).total_seconds() <= threshold:
                 continue
-            # 读 DB 写入的 pid 杀整棵树（权威清理；pid 缺失则跳过）
-            if task.pid:
-                kill_process_tree(task.pid)
-            task.status = TaskStatus.FAILED.value
-            task.error_stage = "timeout"
-            task.error_msg = f"running 超时 {elapsed:.0f}s，强杀于 {now}"
-            task.finished_at = now
-            killed += 1
-        if killed:
-            session.commit()
-    if killed:
-        logger.info("scan_stale_tasks: 迁移 %s 个超时任务为 failed", killed)
-    return killed
+            stale.append(task)
+        if stale:
+            session.expunge_all()  # 脱离 Session，供事务关闭后引用其已加载字段
+    # 短事务分界：先关事务再杀进程树——禁止持 DB Session 期间调 subprocess（RULES §2.1）
+    for task in stale:
+        if task.pid:
+            kill_process_tree(task.pid)  # 读 DB 写入的 pid 杀整棵树（权威清理；pid 缺失跳过）
+    if stale:
+        with SessionLocal() as session:
+            for task in stale:
+                t = session.get(Task, task.id)
+                if t is None:
+                    continue
+                t.status = TaskStatus.FAILED.value
+                t.error_stage = "timeout"
+                t.error_msg = f"running 超时，强杀于 {now}"
+                t.finished_at = now
+            try:
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+        logger.info("scan_stale_tasks: 迁移 %s 个超时任务为 failed", len(stale))
+    return len(stale)

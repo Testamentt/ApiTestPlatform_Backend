@@ -12,6 +12,13 @@ JUNIT_OK = """<?xml version="1.0" encoding="utf-8"?>
   </testsuite>
 </testsuites>"""
 
+JUNIT_FAIL = """<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testsuite name="pytest" tests="1" failures="1" errors="0" skipped="0" time="0.05">
+    <testcase name="test_1" time="0.01"><failure message="assert 200 != 500"/></testcase>
+  </testsuite>
+</testsuites>"""
+
 
 def make_fake_run_cmd(
     *,

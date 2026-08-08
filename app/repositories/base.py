@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Generic, TypeVar
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import Base
@@ -47,11 +48,19 @@ class BaseRepository(Generic[ModelT]):
 
     def add(self, obj: ModelT) -> ModelT:
         self.session.add(obj)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()  # 唯一回滚点，防止脏数据残留（RULES §15 示例 2）
+            raise
         self.session.refresh(obj)
         return obj
 
     def delete(self, obj: ModelT) -> None:
         """物理删除（MVP，无软删除）。"""
         self.session.delete(obj)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise

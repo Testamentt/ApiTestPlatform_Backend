@@ -1,6 +1,7 @@
 # 用例业务编排。why：业务规则（draft→active 防幻觉护栏、删除）收敛在 service，路由零逻辑。
 from __future__ import annotations
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -26,7 +27,11 @@ class CaseService:
         case = self.repo.get_or_raise(case_id)
         for key, value in payload.model_dump(exclude_unset=True).items():
             setattr(case, key, value)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
         self.session.refresh(case)
         return case
 
@@ -40,7 +45,11 @@ class CaseService:
                 "INVALID_CONFIRM", status_code=409, detail=f"仅 draft 可确认，当前 {case.status}"
             )
         case.status = CaseStatus.ACTIVE
-        self.session.commit()
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            self.session.rollback()
+            raise
         self.session.refresh(case)
         return case
 
