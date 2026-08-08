@@ -1,7 +1,7 @@
-# 配置管理设计（configuration.md）· Phase 1 简化版
+# 配置管理设计（configuration.md）· Phase 1-2 简化版
 
 > 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §3.1（配置与密钥）。配置统一放 `config/`，Pydantic Settings 管理。
-> **Phase 1 简化**：仅 app/database/redis/celery/execution 五段；llm/security/frontend 属 Phase 2+，当前不建模。
+> **Phase 1-2 简化**：app/database/redis/celery/execution/swagger 六段；llm/security/frontend 属 Phase 3+，当前不建模。
 
 ## 1. 配置分层与加载
 
@@ -49,8 +49,9 @@ def get_settings() -> Settings:
 | --- | --- | --- |
 | redis.host | 127.0.0.1 | |
 | redis.port | 6379 | |
-| redis.password | ""（经 `TESTPLATFORM_REDIS_PASSWORD`） | 本地 1234abcd，禁止提交 |
+| redis.password | ""（经 `TESTPLATFORM_REDIS_PASSWORD`） | 本地按实际填写，禁止提交 |
 | redis.db | 0 | |
+| redis.socket_timeout | 2.0 | 健康检查探测超时（RULES §2.3：来自 config，禁止硬编码） |
 
 ### 2.4 Celery
 | 字段 | 默认值 | 说明 |
@@ -59,8 +60,9 @@ def get_settings() -> Settings:
 | celery.result_backend | redis://127.0.0.1:6379/1 | 仅短期状态，`result_expires=3600` |
 | celery.soft_time_limit | 300 | 任务软超时 |
 | celery.time_limit | 360 | 任务硬超时（必须 > visibility） |
-| celery.visibility_timeout | 3600 | 必须 > time_limit（RULES.md §8.2） |
-| celery.max_retries | 3 | 仅瞬时异常重试 |
+| celery.visibility_timeout | 3600 | **经 `broker_transport_options` 接线**，必须 > time_limit（RULES.md §8.2） |
+| celery.max_retries | 3 | 仅瞬时异常重试（任务装饰器读取，非硬编码） |
+| celery.result_expires | 3600 | result backend 存活时长（非硬编码） |
 
 ### 2.5 Execution
 | 字段 | 默认值 | 说明 |
@@ -70,7 +72,16 @@ def get_settings() -> Settings:
 | execution.pytest_timeout | 300 | subprocess 超时阈值（来自 config，禁止硬编码） |
 | execution.command_whitelist | [python, pytest] | run_cmd 命令白名单 |
 
-## 3. .env.example 变量清单（Phase 1）
+### 2.6 Swagger（Phase 2 影响分析）
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| swagger.max_upload_bytes | 2000000 | Swagger 文档大小上限（超限拒绝解析，RULES §10.3） |
+| swagger.hash_version | 1 | 哈希算法版本（升级递增，旧快照不重建；diff 版本不一致全标 changed） |
+| swagger.max_operation_ids_warn | 200 | operation 数告警阈值（**超限只 warning 继续入库**——IN(...200) 检索仍无碍，仅分析响应变长） |
+
+> **新增字段全部带 default**：`settings.yaml`/`.env` 缺失时 pydantic 用默认值，**启动不阻塞**（兼容已部署的 Phase 1 配置）。
+
+## 3. .env.example 变量清单（Phase 1-2）
 
 ```bash
 # ---- App ----
@@ -84,17 +95,24 @@ TESTPLATFORM_DATABASE_URL=sqlite:///./data/platform.db   # 生产: postgresql://
 # ---- Redis ----
 TESTPLATFORM_REDIS_HOST=127.0.0.1
 TESTPLATFORM_REDIS_PORT=6379
-TESTPLATFORM_REDIS_PASSWORD=1234abcd                    # 本地 Redis 密码（示例值，真实值勿提交）
+TESTPLATFORM_REDIS_PASSWORD=your_redis_password        # 占位符，按实际填写，真实值勿提交
 TESTPLATFORM_REDIS_DB=0
+TESTPLATFORM_REDIS_SOCKET_TIMEOUT=2.0                  # 健康检查探测超时（秒）
 
 # ---- Celery ----
 # Windows 本地 worker 必须 --pool=solo（见 scripts/start_worker.bat）
 TESTPLATFORM_CELERY_SOFT_TIME_LIMIT=300
 TESTPLATFORM_CELERY_TIME_LIMIT=360
+TESTPLATFORM_CELERY_RESULT_EXPIRES=3600                # result backend 仅短期状态，存活时长
 
 # ---- Execution ----
 TESTPLATFORM_EXECUTION_BASE_URL=http://httpbin.org     # 被测接口 base_url（写死）
 TESTPLATFORM_EXECUTION_PYTEST_TIMEOUT=300
+
+# ---- Swagger（Phase 2 影响分析）----
+TESTPLATFORM_SWAGGER_MAX_UPLOAD_BYTES=2000000          # 文档大小上限
+TESTPLATFORM_SWAGGER_HASH_VERSION=1                    # 哈希算法版本
+TESTPLATFORM_SWAGGER_MAX_OPERATION_IDS_WARN=200        # operation 数告警阈值
 ```
 
 > llm（DEEPSEEK_API_KEY）、security（TESTPLATFORM_API_TOKEN）、frontend（CORS）相关变量在 Phase 2+ 再加回。

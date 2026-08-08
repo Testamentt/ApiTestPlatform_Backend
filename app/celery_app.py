@@ -21,7 +21,9 @@ def configure_celery(app: Celery) -> None:
         task_reject_on_worker_lost=True,
         task_soft_time_limit=settings.celery.soft_time_limit,
         task_time_limit=settings.celery.time_limit,
-        result_expires=3600,
+        # why：visibility_timeout 必须 > time_limit，否则运行中任务被重复投递（RULES.md §8.2）
+        broker_transport_options={"visibility_timeout": settings.celery.visibility_timeout},
+        result_expires=settings.celery.result_expires,
         broker_connection_retry_on_startup=True,
         task_serializer="json",
         result_serializer="json",
