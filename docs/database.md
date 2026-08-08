@@ -1,7 +1,7 @@
-# 数据库设计（database.md）· Phase 1-2 简化版
+# 数据库设计（database.md）· Phase 1-3 简化版
 
 > 规则引用：`RULES.md` §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移）。本设计所有字段名/表名与 API、执行引擎文档保持一致。
-> **Phase 1-2 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `RULES.md` §5.1/§5.2）。
+> **Phase 1-3 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）；Phase 3 建 `generation_tasks` + `generation_log`（AI 生成）并给 `test_cases`/`impact_analyses` 加字段。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `RULES.md` §5.1/§5.2）。
 
 ## 1. 设计原则（Phase 1 简化）
 
@@ -31,6 +31,7 @@
 | assertions | JSON | NULL | MVP 留空；Phase 3 填 status/field/business |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'draft' | draft/active/archived（StrEnum） |
 | source | VARCHAR(16) | NOT NULL DEFAULT 'manual' | manual/ai/swagger |
+| trust_score | INTEGER | NOT NULL DEFAULT 100 | **血缘可信度 0-100（Phase 3）**：手工=100、AI 校验通过=80、AI 带 warnings=60；字段 `doc=` 写计算口径 + 赋值位置（generation_service.generate）；低分需重点 Review，动态降权 Phase 4 |
 | created_at / updated_at | DATETIME | NOT NULL, server_default=now / onupdate | |
 
 索引：`idx_test_cases_operation_id(operation_id)`、`idx_test_cases_status(status)`。
@@ -85,7 +86,44 @@
 | untested_ops | JSON | NOT NULL | 未绑 active 用例的接口清单（首次=全部，Phase 3 铺路） |
 | affected_summary | JSON | NOT NULL | `{total}`（快照期；回归时按执行时真实口径重算） |
 | last_regression_at / last_regression_task_id / last_regression_executed_count | DATETIME / VARCHAR / INTEGER | NULL | **回归结果持久化**（每次一键回归更新，可追溯） |
+| ai_fix_hint | JSON | NULL | **修复建议（Phase 3 预留）**：breaking 变更的一句话 LLM 建议；`POST /impact/{id}/fix-hints` 按需生成（best-effort），不阻塞 analyze 纯规则秒回 |
 | created_at / updated_at | DATETIME | TimestampMixin | |
+
+### 2.5 generation_tasks（AI 生成任务，Phase 3，独立于执行 tasks 表）
+
+| 字段 | 类型 | 约束/默认 | 说明 |
+| --- | --- | --- | --- |
+| id | INTEGER | PK, autoincrement | |
+| run_id | VARCHAR(64) | NOT NULL, **UNIQUE** | `sha256(document + operation_ids)` 指纹，Lookup-Create 幂等（重复提交不重复调 LLM） |
+| status | VARCHAR(16) | NOT NULL DEFAULT 'pending' | pending/running/success/failed |
+| celery_task_id | VARCHAR(64) | NULL | |
+| document | JSON | NOT NULL | 源 Swagger（≤2MB 落库；任务入参只传 task_id，RULES §8.4） |
+| operation_ids | JSON | NULL | 定向生成子集；NULL=全量/untested |
+| operation_count | INTEGER | NOT NULL DEFAULT 0 | |
+| prompt_version | VARCHAR(16) | NULL | 恒 "v1" |
+| error_stage / error_msg | VARCHAR/TEXT | NULL | parse/llm/validate |
+| result_summary | JSON | NULL | `{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total}` |
+| started_at / finished_at | DATETIME | NULL | |
+| created_at / updated_at | DATETIME | TimestampMixin | |
+
+索引：`UNIQUE(run_id)`、`idx_generation_tasks_status(status)`。
+
+### 2.6 generation_log（逐 operation LLM 调用日志，成本 + 置信度）
+
+| 字段 | 类型 | 约束/默认 | 说明 |
+| --- | --- | --- | --- |
+| id | INTEGER | PK | |
+| generation_task_id | INTEGER | NOT NULL, **FK + index** | 关联生成任务 |
+| operation_id | VARCHAR(255) | NOT NULL | 本次生成接口 |
+| model / prompt_version | VARCHAR | NOT NULL | 区分来源（生成=model，建议=fix_hint） |
+| status | VARCHAR(16) | NOT NULL | success / validation_failed / error |
+| ai_confidence | FLOAT | NOT NULL DEFAULT 1.0 | 置信度（复用 UI 项目体系：校验通过=1.0、失败=0.0） |
+| usage | JSON | NULL | `{prompt_tokens, completion_tokens, total_tokens}` |
+| latency_ms | INTEGER | NULL | |
+| cost_estimate | FLOAT | NULL | `total_tokens × llm.cost_per_1k_tokens / 1000`（估算） |
+| raw_response | TEXT | NULL | 校验失败时保存 LLM 原始响应（可追溯） |
+| error_msg | TEXT | NULL | **具体校验错误**（如「字段 expected_status 类型错误」） |
+| created_at | DATETIME | TimestampMixin | |
 
 ## 3. 状态机
 

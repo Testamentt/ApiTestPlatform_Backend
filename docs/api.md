@@ -32,9 +32,12 @@
 | POST | `/api/v1/parse` | 解析 Swagger/OpenAPI 3.x 入库（版本快照，**reparse 覆盖**） | 201 `{version_id, version, ...}` |
 | POST | `/api/v1/impact/analyze` | 新版 Swagger vs 最近版本 diff → 影响结果（breaking/orphaned/untested） | 200 影响分析 |
 | POST | `/api/v1/impact/{analysis_id}/regression` | 一键回归受影响用例（**宽容降级**） | 202 `{task_id}` |
+| POST | `/api/v1/impact/{analysis_id}/fix-hints` | **按需生成 breaking 变更修复建议**（轻量 LLM，复用 llm_client） | 200 `{ai_fix_hint}` |
+| POST | `/api/v1/generate` | AI 生成测试用例（异步；定向/全量/智能三种触发） | 202 `{task_id}` |
+| GET | `/api/v1/generate/{generation_task_id}` | 生成任务状态/结果摘要 | 任务全字段 |
 
-> Phase 2+ 端点（generate / webhook / environments）本期不暴露。
-> **parse/analyze 为纯规则同步**（`def` 端点线程池，<1s），不引入 Celery 任务；regression 复用 Phase 1 执行引擎。
+> Phase 4+ 端点（webhook / environments）本期不暴露。
+> **parse/analyze 为纯规则同步**（`def` 端点线程池，<1s），不引入 Celery 任务；regression 复用 Phase 1 执行引擎；**generate 走 Celery 异步**（LLM 调用不得阻塞 Web 线程，RULES §9.5）。
 
 ## 3. 分组详述
 
@@ -92,6 +95,20 @@
 - 读 `affected_case_ids` 快照 → **宽容过滤**只执行当前仍 active 的 → 复用 `POST /tasks` 的 Lookup-Create 幂等 → 202。
 - 响应：`{analysis_id, task_id, task_status, executed_case_ids, executed_count, dropped_case_ids, dropped_count, dropped_reasons, affected_summary}`——summary 为**执行时真实口径** `{total: executed+dropped, executed, dropped}`（D6）；dropped 附 reason（case deleted / case draft）。
 - 无受影响用例 → 422；受影响用例全部失效 → 422。
+
+### 3.5 AI 用例生成（Phase 3，Celery 异步）
+
+**POST /generate** — 请求体：`{document: {...OpenAPI 3.x}, operation_ids?: [...] , force_full?: false}` → **202** `{task_id, status}`。
+- **三种触发（优先级）**：① `operation_ids` 显式定向；② `force_full=True` 全量重建；③ 都缺省 → 读最新影响分析 `untested_ops`（无历史分析 → 全量开箱即用；已全覆盖 → `422 NO_UNTESTED_OPS`）。
+- **Lookup-Create 幂等**：`run_id = sha256(document + operation_ids)`，同输入重复提交返回同一任务，不重复调 LLM。
+- 大小 > `swagger.max_upload_bytes` → 422；畸形文档（缺 paths）→ 任务 `failed(error_stage="parse")`，入口拦截不调 LLM。
+- 结果 `result_summary`：`{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total}`。
+
+**GET /generate/{id}** — 轮询 `{status: pending→running→success/failed, result_summary, error_msg}`。
+
+**POST /impact/{analysis_id}/fix-hints** — 对 breaking 变更调 LLM 生成一句话修复建议，更新 `ai_fix_hint`（best-effort，失败置 NULL 不阻塞）；`AnalyzeResult` 返回 `has_fix_hint` + `fix_hint_endpoint` 提示入口。
+
+- 生成用例经 `GET /cases?status=draft` 查看（source=ai、trust_score=80/60）；confirm 复用 `POST /cases/{id}/confirm` 转 active 后才可执行。
 
 ## 4. 与 Celery 交互模式（统一异步模式）
 

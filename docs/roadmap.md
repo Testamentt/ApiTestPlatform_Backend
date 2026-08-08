@@ -52,17 +52,22 @@
 
 **Phase 2 验收（面试演示用）**：Swagger 1.0 建 3 用例（绑 3 个 operation_id）→ 传 Swagger 2.0（改 1 个接口入参）→ `POST /api/v1/impact/analyze` 返回「变更 1 个接口、影响 1 个用例」→ `POST /api/v1/impact/{id}/regression` 一键回归。面试官据此认定你有「精准回归」思维。
 
-### Phase 3 · AI 智能生成（1 周，核心卖点 2）
+### Phase 3 · AI 智能生成（核心卖点 2，实施中）
+
+> **Phase 3.5 文档锁定前置**（防「已实现文档未同步」）：先锁定 ai-generation/configuration/database/api/architecture/roadmap 文档 → 契约确认 → 编码 → 3.5-C 编码后逐文档核对。设计见 [ai-generation.md](ai-generation.md)。
 
 | 任务 | 安全护栏（防幻觉） |
 | --- | --- |
-| ① 完善 OpenAPI 解析器（提取 required / enum / format / min-max） | — |
-| ② Prompt 模板（存 `prompts/` 目录） | 强制 LLM 基于约束生成，禁止捏造参数名 |
-| ③ LLM Client（复用 AI UI 项目经验） | 结构化输出（JSON Mode / Function Calling） |
-| ④ 生成用例强制 draft + `POST /api/v1/cases/{id}/confirm` 审核 | 草稿不入库 active，人工审核后才 active（面试防守核心） |
-| ⑤ AI 采纳率埋点 | 采纳率 <50% 时关闭该接口的 AI 生成 |
+| ① llm_client 唯一封装（openai SDK + _extract_json + 重试 + 成本） | 结构化输出 response_format + json.loads 兜底 |
+| ② prompts/v1/ 模板（占位符注入 + 版本断言） | 防注入：结构化提取 + 定界符 + 第三方数据标注 |
+| ③ generation_tasks 独立表 + generate_cases 异步任务 | 幂等 run_id + time_limit=600s 兜底 |
+| ④ 生成用例强制 draft + confirm 审核 | 三层护栏：extra="forbid" 校验 + draft 恒为 + **operation_id 服务端注入** |
+| ⑤ 校验失败落库（generation_log） | 失败记录同样落库 + raw_response + confidence=0，不建坏用例 |
+| ⑥ 联动：定向生成（untested_ops）/ fix-hints / trust_score | 系统识别未覆盖接口 + AI 修复建议 + 血缘可信度 |
 
-**验收**：上传 Swagger → `POST /api/v1/generate` 返回 5 个 draft → 筛选 `status=draft` → confirm → active。重点强调「人工审核」，杜绝面试官对幻觉的担忧。
+**验收**：上传 Swagger → `POST /api/v1/generate` → 轮询 → 生成 draft → `status=draft` 筛选 → confirm → active → 可执行。重点强调「人工审核」，杜绝面试官对幻觉的担忧。
+
+> 砍掉/延后（Phase 4）：AI 采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、多版本 prompt、动态信任降权、前端展示。
 
 ### Phase 4 · 生产化与前端增强（可选，锦上添花）
 

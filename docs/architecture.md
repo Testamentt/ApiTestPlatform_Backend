@@ -1,7 +1,7 @@
 # 架构设计（architecture.md）· Phase 1 简化版
 
 > 规则引用：本项目的所有实现必须遵守 `RULES.md`（§1-§18 权威规则）。本文是总体架构基准文档，描述 MVP 零前端、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
-> **Phase 1-2 范围**：Phase 1「用例 + 任务执行」闭环（已完成）；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；generate（AI 生成）属 Phase 3。
+> **Phase 1-3 范围**：Phase 1「用例 + 任务执行」闭环（已完成）；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；Phase 3「AI 生成」——OpenAPI→LLM→draft 用例（复用解析器 + llm_client）。
 
 ## 1. 目标与非目标
 
@@ -91,6 +91,20 @@ Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `
    → SQL 反向检索（breaking 变更的 active 用例 / removed 的 orphaned / 未绑的 untested）→ 落库 impact_analyses → 200
 3. POST /api/v1/impact/{analysis_id}/regression → 宽容降级过滤失效用例 → 复用 Phase 1 执行引擎 → 202 {task_id} → 轮询
 ```
+
+### Phase 3 AI 生成链路（Celery 异步，LLM 不阻塞 Web）
+
+```
+1. POST /api/v1/generate {document, operation_ids?, force_full?} → run_id=sha256(document+operation_ids) Lookup-Create 幂等
+   → 落库 generation_tasks(PENDING, document) → generate_cases_task.delay(task_id) → 202
+2. Worker generate_cases_task（time_limit=llm.task_timeout_seconds=600）：
+   → parse_openapi → 过滤定向 operation_ids（未命中的记 skipped_detail，不静默）
+   → 逐 operation：prompts/v1 渲染 → llm_client.chat_json（response_format + _extract_json）→ Pydantic 严格校验
+   → 通过：operation_id 服务端注入 + trust_score(warnings?60:80) → 落库 draft
+   → 失败：generation_log(validation_failed + raw_response + confidence=0) → 不建坏用例
+   → result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, cost_total} → SUCCESS
+3. GET /cases?status=draft 查生成用例 → POST /cases/{id}/confirm（reviewer）→ active → 可执行
+4. POST /impact/{id}/fix-hints（联动）：breaking 变更按需生成一句话修复建议（复用 llm_client，best-effort）
 ```
 
 ## 6. 关键设计决策（面试防守）
@@ -117,14 +131,14 @@ backend/
 │   ├── main.py               # 应用入口（路由聚合 + 异常 handler + /static 挂载 + lifespan 建表）
 │   ├── celery_app.py         # Celery app（显式读 Settings 拼 broker/backend + worker_ready 触发 scan）
 │   ├── core/                 # config / database / logging / exceptions
-│   ├── api/v1/               # 路由 + deps（cases / tasks / health / parse / impact）
-│   ├── models/               # SQLAlchemy ORM（test_cases / tasks / api_definitions / impact_analyses）
-│   ├── schemas/              # Pydantic 出入参（case / task / swagger / impact）
-│   ├── services/             # 业务编排（case / task / execution / swagger / impact）
-│   ├── repositories/         # 数据访问（case / task / api_definition / impact_analysis，物理删除）
-│   ├── tasks/                # Celery 任务（execute_cases / scan_stale_tasks）
-│   └── utils/                # subprocess_util / openapi_parser / case_generator / junit_parser / report_util
-├── prompts/                  # Phase 3 再建（版本化 + 占位符注入）
+│   ├── api/v1/               # 路由 + deps（cases / tasks / health / parse / impact / generate）
+│   ├── models/               # SQLAlchemy ORM（test_cases / tasks / api_definitions / impact_analyses / generation_tasks / generation_log）
+│   ├── schemas/              # Pydantic 出入参（case / task / swagger / impact / generate）
+│   ├── services/             # 业务编排（case / task / execution / swagger / impact / generation）
+│   ├── repositories/         # 数据访问（case / task / api_definition / impact_analysis / generation_task，物理删除）
+│   ├── tasks/                # Celery 任务（execute_cases / scan_stale_tasks / generate_cases）
+│   └── utils/                # subprocess_util / openapi_parser / llm_client / impact_diff / case_generator / junit_parser / report_util
+├── prompts/v1/               # 版本化 Prompt（system.md + user.md，占位符注入，写死 v1）
 ├── docs/  tests/  scripts/
 └── .claude/                  # rules/RULES.md（§1-§18）、skills/
 ```

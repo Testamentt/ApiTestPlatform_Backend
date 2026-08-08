@@ -1,7 +1,7 @@
-# 配置管理设计（configuration.md）· Phase 1-2 简化版
+# 配置管理设计（configuration.md）· Phase 1-3 简化版
 
 > 规则引用：`RULES.md` §3.1（配置与密钥）。配置统一放 `config/`，Pydantic Settings 管理。
-> **Phase 1-2 简化**：app/database/redis/celery/execution/swagger 六段；llm/security/frontend 属 Phase 3+，当前不建模。
+> **Phase 1-3 简化**：app/database/redis/celery/execution/swagger/llm 七段；security/frontend 属 Phase 4+，当前不建模。
 
 ## 1. 配置分层与加载
 
@@ -79,9 +79,23 @@ def get_settings() -> Settings:
 | swagger.hash_version | 1 | 哈希算法版本（升级递增，旧快照不重建；diff 版本不一致全标 changed） |
 | swagger.max_operation_ids_warn | 200 | operation 数告警阈值（**超限只 warning 继续入库**——IN(...200) 检索仍无碍，仅分析响应变长） |
 
+### 2.7 LLM（Phase 3 AI 生成）
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| llm.api_key_env | DEEPSEEK_API_KEY | API key **环境变量名**（密钥只放 .env，RULES §3.1/§8） |
+| llm.base_url | https://api.deepseek.com | DeepSeek（OpenAI 兼容协议，openai SDK base_url） |
+| llm.model | deepseek-chat | |
+| llm.temperature | 0 | **确定性/可复现**（RULES §9.3，生成类固定 0） |
+| llm.max_tokens | 4096 | 生成上限 |
+| llm.connect_timeout / read_timeout | 5 / 60 | 连接/读超时（RULES §2.3：来自 config 禁止硬编码） |
+| llm.max_retries | 3 | 瞬时异常重试次数（RULES §9.4） |
+| llm.retry_backoff | 1 | 指数退避基数（秒） |
+| llm.cost_per_1k_tokens | 0.001 | **成本估算单价**（demo 均价，$/1K tokens；精算留生产） |
+| llm.task_timeout_seconds | 600 | **生成任务硬超时**（Celery `time_limit`，200 接口串行 ≈400s 兜底） |
+
 > **新增字段全部带 default**：`settings.yaml`/`.env` 缺失时 pydantic 用默认值，**启动不阻塞**（兼容已部署的 Phase 1 配置）。
 
-## 3. .env.example 变量清单（Phase 1-2）
+## 3. .env.example 变量清单（Phase 1-3）
 
 ```bash
 # ---- App ----
@@ -113,9 +127,19 @@ TESTPLATFORM_EXECUTION_PYTEST_TIMEOUT=300
 TESTPLATFORM_SWAGGER_MAX_UPLOAD_BYTES=2000000          # 文档大小上限
 TESTPLATFORM_SWAGGER_HASH_VERSION=1                    # 哈希算法版本
 TESTPLATFORM_SWAGGER_MAX_OPERATION_IDS_WARN=200        # operation 数告警阈值
+
+# ---- LLM（Phase 3 AI 生成）----
+DEEPSEEK_API_KEY=sk-your-deepseek-api-key              # DeepSeek key（密钥只放 .env，勿提交）
+TESTPLATFORM_LLM_BASE_URL=https://api.deepseek.com     # OpenAI 兼容协议
+TESTPLATFORM_LLM_MODEL=deepseek-chat
+TESTPLATFORM_LLM_TEMPERATURE=0                         # 确定性，可复现
+TESTPLATFORM_LLM_MAX_TOKENS=4096
+TESTPLATFORM_LLM_MAX_RETRIES=3                         # 瞬时异常重试次数
+TESTPLATFORM_LLM_COST_PER_1K_TOKENS=0.001              # 成本估算单价（demo 均价）
+TESTPLATFORM_LLM_TASK_TIMEOUT_SECONDS=600              # 生成任务硬超时
 ```
 
-> llm（DEEPSEEK_API_KEY）、security（TESTPLATFORM_API_TOKEN）、frontend（CORS）相关变量在 Phase 2+ 再加回。
+> security（TESTPLATFORM_API_TOKEN）、frontend（CORS）相关变量在 Phase 4 再加回。
 
 ## 4. settings.example.yaml 契约
 
