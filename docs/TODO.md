@@ -32,21 +32,21 @@
 - [x] 反向检索：`SELECT * FROM test_cases WHERE operation_id IN (...)`（核心 SQL）
 - [x] 一键回归：受影响用例创建执行任务（复用 Phase 1 引擎，宽容降级 + 真实口径 + last_regression）
 
-## Phase 3 · AI 智能生成（当前，核心卖点 2）
+## Phase 3 · AI 智能生成（已完成，核心卖点 2）
 
-> Phase 3.5 文档锁定前置（回合 1 文档更新 → 回合 2 契约确认 → 编码 → 3.5-C 核对）。
+> 实现 + 评审修复（软超时捕获/终态兜底/fix-hints 审计与 prompt 外置/长度预检/文档字段剥离/celery_task_id/e2e 层），155 测试全绿 + ruff 全绿。
 
-- [ ] 回合 1：文档锁定（ai-generation/configuration/database/api/architecture/roadmap + config 三件套 + .env.example llm 段）
-- [ ] 回合 2：代码生成清单确认
-- [ ] Step 1 依赖 + config（openai SDK + LlmSettings 全带 default）
-- [ ] Step 2 models（generation_tasks + generation_log + test_cases.trust_score + impact_analyses.ai_fix_hint）
-- [ ] Step 3 prompts/v1/ + 版本一致性断言
-- [ ] Step 4 llm_client（_extract_json + 重试 + usage + 成本）
-- [ ] Step 5 generation_service（幂等 + 定向优先级 + trust_score/confidence/rejected_detail）
-- [ ] Step 6 generate_cases_task（time_limit）+ api（POST/GET generate + fix-hints）
-- [ ] Step 7 api/tasks 测试（202/幂等/422/空文档 failed(parse)/校验失败落库）
-- [ ] Step 8 验证 + 3.5-C 核对 + 沉淀 + 提交
-- [ ] confirm 审核接口（Phase 1 复用，AI 用例 draft → active）
+- [x] 回合 1：文档锁定（ai-generation/configuration/database/api/architecture/roadmap + config 三件套 + .env.example llm 段）
+- [x] 回合 2：代码生成清单确认
+- [x] Step 1 依赖 + config（openai SDK + LlmSettings 全带 default）
+- [x] Step 2 models（generation_tasks + generation_log + test_cases.trust_score + impact_analyses.ai_fix_hint）
+- [x] Step 3 prompts/v1/（含 fix-hints 模板）+ 版本一致性断言
+- [x] Step 4 llm_client（_extract_json + 重试 + 长度预检 + usage + 成本）
+- [x] Step 5 generation_service（幂等 + 定向优先级 + trust_score/confidence/rejected_detail + 异常兜底）
+- [x] Step 6 generate_cases_task（soft/time_limit + 软超时捕获）+ api（POST/GET generate + fix-hints）
+- [x] Step 7 api/tasks 测试（202/幂等/422/空文档 failed(parse)/校验失败落库/fix-hints 审计与注入防护）
+- [x] Step 8 验证 + 3.5-C 核对 + 沉淀 + 提交
+- [x] confirm 审核接口（Phase 1 复用，AI 用例 draft → active）
 
 ## Phase 4 · 生产化与前端增强（可选，锦上添花）
 

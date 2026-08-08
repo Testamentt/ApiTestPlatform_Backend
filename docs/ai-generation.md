@@ -12,7 +12,7 @@ Swagger/OpenAPI 3.0 文档
 GenerationService.create_generation_task
   │ run_id=sha256(document+operation_ids) → Lookup-Create 幂等 → 落库 PENDING → Celery 入队
   ▼
-Worker generate_cases_task（time_limit=llm.task_timeout_seconds=600）
+Worker generate_cases_task（soft_time_limit=540 / time_limit=llm.task_timeout_seconds=600，软超时捕获落 FAILED）
   │ parse_openapi（Phase 2 解析器复用）→ 过滤定向 operation_ids（skipped 记录）
   ▼
 逐 operation（串行，worker --pool=solo 单写者）：
@@ -39,7 +39,7 @@ result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, 
 | document 落库 | Swagger ≤2MB 存 `document` JSON 列；任务入参只传 `task_id`（RULES §8.4 大对象不传队列） |
 | 定向优先级 | `operation_ids`（显式）> `force_full=True`（全量重建）> 默认（读最新影响分析 `untested_ops`；无历史分析 → 全量开箱即用；已全覆盖 → 422 防浪费） |
 | 状态机 | pending→running→success/failed（error_stage: parse/llm/validate） |
-| 超时 | Celery `time_limit=llm.task_timeout_seconds`(600s)，200 接口串行 ≈400s 兜底；大文档建议分批（Phase 4） |
+| 超时 | Celery `soft_time_limit=llm.task_soft_timeout_seconds`(540s) / `time_limit=llm.task_timeout_seconds`(600s)，软超时捕获 `force_fail_timeout` 落 FAILED（§8.2）；200 接口串行 ≈400s 兜底；大文档建议分批（Phase 4） |
 
 ## 4. Prompt 管理（prompts/v1/，RULES §3.2）
 
@@ -55,9 +55,10 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 
 - openai SDK（DeepSeek OpenAI 兼容协议，`base_url` 指向 api.deepseek.com）；密钥从 `llm.api_key_env` 指向的环境变量读（只放 .env）。
 - `response_format={"type":"json_object"}` + `temperature=0`（确定性）+ `max_tokens`（config）。
+- **输入长度预检（§9.3）**：调用前对 system+user 总长度预检（`llm.max_input_chars`，超限抛 `LLM_INPUT_TOO_LONG`），防上下文裸奔。
 - **`_extract_json` 预处理**：剥离 Markdown 代码块/首尾空白后再 `json.loads`——格式微小偏差不误杀合法响应，双重容错。
-- 错误分类：429/5xx/超时 → 可重试（指数退避 3 次）；JSON 解析失败 / Pydantic 校验失败 → 不可重试。
-- 成本：`cost_estimate = total_tokens × llm.cost_per_1k_tokens / 1000`（demo 均价估算；精算留生产）；每次调用写 generation_logs（usage/latency/cost）。
+- 错误分类：429/5xx/超时 → 可重试（指数退避 3 次）；JSON 解析失败 / Pydantic 校验失败 → 不可重试；`resp.usage=None` 防御（兼容端点置零）。
+- 成本：`cost_estimate = total_tokens × llm.cost_per_1k_tokens / 1000`（demo 均价估算；精算留生产）；每次调用写 generation_logs（usage/latency/cost，含 fix-hints）。
 
 ## 6. 严格校验与防幻觉护栏（RULES §10.2/§11.2）
 
@@ -66,7 +67,7 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 2. **状态层**：AI 用例恒为 `draft`，`confirm`（reviewer）是进 active 的唯一入口，执行引擎只选 active。
 3. **血缘层**：**operation_id 服务端注入**——不信任 LLM 输出（LLM 输出含 operation_id 字段 → extra="forbid" 直接判失败）。
 
-**trust_score（血缘可信度，联动点）**：手工=100 / AI 校验通过=80 / AI 带 parse warnings=60。字段 `doc=` 注释写计算口径 + 赋值位置（`generation_service.generate`，可导航）；低分用例默认 draft 需人工 confirm（confirm 天然兜底），动态降权 Phase 4。
+**trust_score（血缘可信度，联动点）**：手工=100 / AI 校验通过=80 / AI 带 parse warnings=60。赋值位置：`generation_service._run_generation`（逐 operation 落库时写入，`CaseRead` API 可观测）；低分用例默认 draft 需人工 confirm（confirm 天然兜底），动态降权 Phase 4。
 
 ## 7. 生成流程（worker 内，短事务分界）
 
@@ -86,7 +87,7 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 ## 8. 联动（跨 Phase 能力复用）
 
 - **定向生成**：`operation_ids` 缺省时读最新影响分析的 `untested_ops`（系统自动识别未覆盖接口）；新项目无历史分析 → 全量开箱即用。
-- **修复建议**：`POST /impact/{id}/fix-hints` 对 breaking 变更生成一句话建议（复用 llm_client，`model='fix_hint'` 区分来源，best-effort）；`AnalyzeResult` 返回 `has_fix_hint` + `fix_hint_endpoint` 提示入口——analyze 保持纯规则秒回。
+- **修复建议**：`POST /impact/{id}/fix-hints` 对 breaking 变更生成一句话建议（prompt 走 `prompts/v1/fix_hint_*` 模板 + repr 定界注入防护；审计写 `generation_logs`，`model='fix_hint'` 区分来源，best-effort 失败置 None）；`AnalyzeResult` 返回 `has_fix_hint` + `fix_hint_endpoint` 提示入口——analyze 保持纯规则秒回。
 - **置信度/审计**：`generation_logs.ai_confidence`（1.0/0.0）+ usage/cost/raw——同一套审计体系覆盖 UI 自愈与 AI 生成两个场景。
 
 ## 9. 验收指标与面试锚点

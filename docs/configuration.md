@@ -87,10 +87,12 @@ def get_settings() -> Settings:
 | llm.model | deepseek-chat | |
 | llm.temperature | 0 | **确定性/可复现**（RULES §9.3，生成类固定 0） |
 | llm.max_tokens | 4096 | 生成上限 |
+| llm.max_input_chars | 50000 | 调用前输入长度预检阈值（§9.3：超限拒绝，防上下文裸奔） |
 | llm.connect_timeout / read_timeout | 5 / 60 | 连接/读超时（RULES §2.3：来自 config 禁止硬编码） |
 | llm.max_retries | 3 | 瞬时异常重试次数（RULES §9.4） |
 | llm.retry_backoff | 1 | 指数退避基数（秒） |
 | llm.cost_per_1k_tokens | 0.001 | **成本估算单价**（demo 均价，$/1K tokens；精算留生产） |
+| llm.task_soft_timeout_seconds | 540 | **生成任务软超时**（Celery `soft_time_limit`，留 60s 清理窗口；§8.2 捕获落 FAILED） |
 | llm.task_timeout_seconds | 600 | **生成任务硬超时**（Celery `time_limit`，200 接口串行 ≈400s 兜底） |
 
 > **新增字段全部带 default**：`settings.yaml`/`.env` 缺失时 pydantic 用默认值，**启动不阻塞**（兼容已部署的 Phase 1 配置）。
@@ -134,8 +136,13 @@ TESTPLATFORM_LLM_BASE_URL=https://api.deepseek.com     # OpenAI 兼容协议
 TESTPLATFORM_LLM_MODEL=deepseek-chat
 TESTPLATFORM_LLM_TEMPERATURE=0                         # 确定性，可复现
 TESTPLATFORM_LLM_MAX_TOKENS=4096
+TESTPLATFORM_LLM_MAX_INPUT_CHARS=50000                 # 输入长度预检阈值（超限拒绝）
+TESTPLATFORM_LLM_CONNECT_TIMEOUT=5                     # 连接超时
+TESTPLATFORM_LLM_READ_TIMEOUT=60                       # 读超时
 TESTPLATFORM_LLM_MAX_RETRIES=3                         # 瞬时异常重试次数
+TESTPLATFORM_LLM_RETRY_BACKOFF=1                       # 指数退避基数
 TESTPLATFORM_LLM_COST_PER_1K_TOKENS=0.001              # 成本估算单价（demo 均价）
+TESTPLATFORM_LLM_TASK_SOFT_TIMEOUT_SECONDS=540         # 生成任务软超时（捕获落 FAILED）
 TESTPLATFORM_LLM_TASK_TIMEOUT_SECONDS=600              # 生成任务硬超时
 ```
 

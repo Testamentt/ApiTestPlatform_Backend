@@ -48,9 +48,11 @@ llm:                                  # Phase 3 AI 生成（全带 default，缺
   model: deepseek-chat
   temperature: 0                      # 确定性，可复现
   max_tokens: 4096                    # 生成上限
+  max_input_chars: 50000              # 输入长度预检阈值（§9.3：超限拒绝）
   connect_timeout: 5                  # 连接超时（秒）
   read_timeout: 60                    # 读超时（秒）
   max_retries: 3                      # 瞬时异常重试次数
   retry_backoff: 1                    # 指数退避基数（秒）
   cost_per_1k_tokens: 0.001           # 成本估算单价（demo 均价，$/1K tokens）
+  task_soft_timeout_seconds: 540      # 生成任务软超时（< 硬超时，留清理窗口）
   task_timeout_seconds: 600           # 生成任务硬超时（200 接口串行 ≈400s 兜底）

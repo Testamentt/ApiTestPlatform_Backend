@@ -31,7 +31,7 @@
 | assertions | JSON | NULL | MVP 留空；Phase 3 填 status/field/business |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'draft' | draft/active/archived（StrEnum） |
 | source | VARCHAR(16) | NOT NULL DEFAULT 'manual' | manual/ai/swagger |
-| trust_score | INTEGER | NOT NULL DEFAULT 100 | **血缘可信度 0-100（Phase 3）**：手工=100、AI 校验通过=80、AI 带 warnings=60；字段 `doc=` 写计算口径 + 赋值位置（generation_service.generate）；低分需重点 Review，动态降权 Phase 4 |
+| trust_score | INTEGER | NOT NULL DEFAULT 100 | **血缘可信度 0-100（Phase 3）**：手工=100、AI 校验通过=80、AI 带 warnings=60；赋值位置：`generation_service._run_generation` 逐 operation 落库时写入；`CaseRead` API 可观测；低分需重点 Review，动态降权 Phase 4 |
 | created_at / updated_at | DATETIME | NOT NULL, server_default=now / onupdate | |
 
 索引：`idx_test_cases_operation_id(operation_id)`、`idx_test_cases_status(status)`。
@@ -96,11 +96,11 @@
 | id | INTEGER | PK, autoincrement | |
 | run_id | VARCHAR(64) | NOT NULL, **UNIQUE** | `sha256(document + operation_ids)` 指纹，Lookup-Create 幂等（重复提交不重复调 LLM） |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'pending' | pending/running/success/failed |
-| celery_task_id | VARCHAR(64) | NULL | |
+| celery_task_id | VARCHAR(64) | NULL | **已持久化**（P2-3）：`_dispatch` 写入 AsyncResult.id，卡死时可经 Celery 定位/revoke |
 | document | JSON | NOT NULL | 源 Swagger（≤2MB 落库；任务入参只传 task_id，RULES §8.4） |
 | operation_ids | JSON | NULL | 定向生成子集；NULL=全量/untested |
 | operation_count | INTEGER | NOT NULL DEFAULT 0 | |
-| prompt_version | VARCHAR(16) | NULL | 恒 "v1" |
+| prompt_version | VARCHAR(16) | NULL | 预留列；版本溯源由 `generation_logs.prompt_version` 与 `result_summary.prompt_version` 承载（任务列当前恒 NULL） |
 | error_stage / error_msg | VARCHAR/TEXT | NULL | parse/llm/validate |
 | result_summary | JSON | NULL | `{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total}` |
 | started_at / finished_at | DATETIME | NULL | |
@@ -113,8 +113,8 @@
 | 字段 | 类型 | 约束/默认 | 说明 |
 | --- | --- | --- | --- |
 | id | INTEGER | PK | |
-| generation_task_id | INTEGER | NOT NULL, **FK + index** | 关联生成任务 |
-| operation_id | VARCHAR(255) | NOT NULL | 本次生成接口 |
+| generation_task_id | INTEGER | **可空**, FK + index | 关联生成任务；**fix-hints 的 LLM 调用无生成任务 → NULL**（model='fix_hint' 区分来源） |
+| operation_id | VARCHAR(255) | NOT NULL | 本次生成接口（fix-hints 场景恒 'fix_hint'） |
 | model / prompt_version | VARCHAR | NOT NULL | 区分来源（生成=model，建议=fix_hint） |
 | status | VARCHAR(16) | NOT NULL | success / validation_failed / error |
 | ai_confidence | FLOAT | NOT NULL DEFAULT 1.0 | 置信度（复用 UI 项目体系：校验通过=1.0、失败=0.0） |
@@ -123,7 +123,7 @@
 | cost_estimate | FLOAT | NULL | `total_tokens × llm.cost_per_1k_tokens / 1000`（估算） |
 | raw_response | TEXT | NULL | 校验失败时保存 LLM 原始响应（可追溯） |
 | error_msg | TEXT | NULL | **具体校验错误**（如「字段 expected_status 类型错误」） |
-| created_at | DATETIME | TimestampMixin | |
+| created_at / updated_at | DATETIME | TimestampMixin | |
 
 ## 3. 状态机
 

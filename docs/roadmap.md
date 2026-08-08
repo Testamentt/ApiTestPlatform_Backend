@@ -14,7 +14,7 @@
 
 ## 当前目标
 
-**Phase 1 核心执行闭环已完成**（MVP 简化版，沉淀见 [sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)）；**Phase 2 变更影响分析已完成**（parse/impact/regression 三端点已接线，104 测试全绿，沉淀见 [sessions/2026-08-08-review-fixes.md](sessions/2026-08-08-review-fixes.md)）；当前进入 **Phase 3 AI 智能生成**（LLM，先做纯规则引擎后做生成）。
+**Phase 1 核心执行闭环已完成**（MVP 简化版）；**Phase 2 变更影响分析已完成**（parse/impact/regression 三端点已接线）；**Phase 3 AI 智能生成已完成**（155 测试全绿 + ruff 全绿 + e2e 冒烟，评审修复见会话沉淀）；当前进入 **Phase 4 生产化与前端增强**（可选）。
 
 ## 关键约束
 
@@ -31,12 +31,12 @@
 | **Phase 0 · 文档与基建** | 已完成 | 全部设计文档 + 双仓库 | 评审通过 |
 | **Phase 1 · 核心执行闭环** | 已完成（MVP 简化） | 跑通「创建用例 → 异步执行 → 查看结果」，全程 Swagger UI，**不写一行前端** | 见下方验收清单 |
 | **Phase 2 · 影响分析**（核心卖点 1） | 1 周 | 接口变更自动圈定受影响用例（**纯规则引擎，无 AI**） | 新旧 Swagger → diff → 圈定受影响用例 → 一键回归 |
-| **Phase 3 · AI 智能生成**（核心卖点 2） | 1 周 | OpenAPI → LLM → draft 用例 → 人工确认转 active | 生成 5 个 draft → 审核 → active |
+| **Phase 3 · AI 智能生成**（核心卖点 2） | 已完成 | OpenAPI → LLM → draft 用例 → 人工确认转 active | 生成 5 个 draft → 审核 → active |
 | **Phase 4 · 生产化与前端增强**（可选） | 锦上添花 | Docker Compose + GitHub Actions；Vue 可选（仅 2 页） | 一键 `docker compose up` 跑通 |
 
 ### Phase 1 · 核心执行闭环（已完成，MVP 简化）
 
-> MVP 简化（面试导向）：Alembic→create_all、request_id 中间件→标准日志、Allure→HTML 报告、每 5 分钟扫描→**仅启动扫描一次（无 Beat）**、`{{base_url}}` 环境管理→base_url 写死 config、软删除→物理删除。31 测试全绿 + 真实异步端到端验证通过（uvicorn + celery worker --pool=solo + Redis + 本地 mock）。沉淀：[sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)。
+> MVP 简化（面试导向）：Alembic→create_all、request_id 中间件→标准日志、Allure→HTML 报告、每 5 分钟扫描→**仅启动扫描一次（无 Beat）**、`{{base_url}}` 环境管理→base_url 写死 config、软删除→物理删除。31 测试全绿 + 真实异步端到端验证通过（uvicorn + celery worker --pool=solo + Redis + 本地 mock）。沉淀：`docs/sessions/2026-08-06-phase1-mvp.md`（本地）。
 
 **Phase 1 验收标准（面试演示用）**：
 1. 打开 http://localhost:8000/docs
@@ -48,13 +48,13 @@
 
 ### Phase 2 · 影响分析（已完成，核心卖点 1）
 
-> 纯规则引擎（无 AI）：版本快照 → 分段 hash O(1) diff → breaking 五场景联合判定 → SQL 反向检索 → 一键回归（宽容降级 + 真实口径 + 可追溯）。评审修复（2026-08-08）：修复 `_normalize` 剥离属性名导致字段级变更不可见、响应状态码删减/替换不圈定用例、版本碰撞守卫、API 接线（parse/impact 路由）+ 104 测试全绿。沉淀：[sessions/2026-08-08-review-fixes.md](sessions/2026-08-08-review-fixes.md)。
+> 纯规则引擎（无 AI）：版本快照 → 分段 hash O(1) diff → breaking 五场景联合判定 → SQL 反向检索 → 一键回归（宽容降级 + 真实口径 + 可追溯）。评审修复（2026-08-08）：修复 `_normalize` 剥离属性名导致字段级变更不可见、响应状态码删减/替换不圈定用例、版本碰撞守卫、API 接线（parse/impact 路由）+ 104 测试全绿。沉淀：`docs/sessions/2026-08-08-review-fixes.md`（本地）。
 
 **Phase 2 验收（面试演示用）**：Swagger 1.0 建 3 用例（绑 3 个 operation_id）→ 传 Swagger 2.0（改 1 个接口入参）→ `POST /api/v1/impact/analyze` 返回「变更 1 个接口、影响 1 个用例」→ `POST /api/v1/impact/{id}/regression` 一键回归。面试官据此认定你有「精准回归」思维。
 
-### Phase 3 · AI 智能生成（核心卖点 2，实施中）
+### Phase 3 · AI 智能生成（已完成，核心卖点 2）
 
-> **Phase 3.5 文档锁定前置**（防「已实现文档未同步」）：先锁定 ai-generation/configuration/database/api/architecture/roadmap 文档 → 契约确认 → 编码 → 3.5-C 编码后逐文档核对。设计见 [ai-generation.md](ai-generation.md)。
+> 实现：`llm_client`（openai SDK 唯一封装 + response_format 结构化输出 + 重试 + 长度预检 + 成本）+ `prompts/v1` 模板（含 fix-hints）+ `generation_tasks/logs` 独立表 + `POST /generate` 异步任务 + 三层防幻觉护栏 + 跨项目联动（定向生成 / fix-hints / trust_score）。评审修复（2026-08-08）：软超时捕获与终态兜底、fix-hints prompt 外置与审计落库、输入长度预检、prompt 文档字段剥离、celery_task_id 持久化、e2e 测试层 + 155 测试全绿。
 
 | 任务 | 安全护栏（防幻觉） |
 | --- | --- |
@@ -65,7 +65,7 @@
 | ⑤ 校验失败落库（generation_log） | 失败记录同样落库 + raw_response + confidence=0，不建坏用例 |
 | ⑥ 联动：定向生成（untested_ops）/ fix-hints / trust_score | 系统识别未覆盖接口 + AI 修复建议 + 血缘可信度 |
 
-**验收**：上传 Swagger → `POST /api/v1/generate` → 轮询 → 生成 draft → `status=draft` 筛选 → confirm → active → 可执行。重点强调「人工审核」，杜绝面试官对幻觉的担忧。
+**验收（面试演示用）**：上传 Swagger → `POST /api/v1/generate` → 轮询 → 生成 draft → `status=draft` 筛选（source=ai、trust_score=80/60）→ confirm → active → 可执行。重点强调「人工审核」杜绝幻觉污染；`POST /impact/{id}/fix-hints` 演示 breaking 修复建议。e2e 冒烟覆盖该全链路（`pytest -m slow`）。
 
 > 砍掉/延后（Phase 4）：AI 采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、多版本 prompt、动态信任降权、前端展示。
 
@@ -108,6 +108,15 @@
 - [x] `POST /api/v1/impact/analyze`：O(1) diff + breaking 五场景联合判定 + SQL 反向检索
 - [x] `POST /api/v1/impact/{id}/regression`：一键回归（宽容降级 + 真实口径 + last_regression 可追溯）
 - [x] 字段级变更命中（`_normalize` 保留属性名）、响应状态码删减/替换圈定、版本碰撞守卫、v1/v2/v3 连续对比
+
+**Phase 3（AI 智能生成，已完成）**
+- [x] llm_client 唯一封装（response_format 结构化输出 + _extract_json 清洗 + 重试分类 + 长度预检 + 成本）
+- [x] prompts/v1 模板（占位符注入 + 版本一致性断言 + fix-hints 模板 + 注入防护）
+- [x] generation_tasks/logs 独立表 + `POST /generate` 异步任务（run_id 幂等 + soft/time_limit 兜底 + 软超时捕获）
+- [x] 三层防幻觉护栏（extra="forbid" 严格校验 + draft 恒为 + operation_id 服务端注入）+ trust_score
+- [x] 校验失败/LLM 错误落库（generation_logs：raw_response + confidence + usage/cost）
+- [x] 联动：定向生成（untested_ops 智能决策）/ fix-hints（审计落库）/ CaseRead 暴露 trust_score
+- [x] 155 测试全绿 + ruff 全绿 + e2e 冒烟（`pytest -m slow`）
 
 ## 待解决问题
 

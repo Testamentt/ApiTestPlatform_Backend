@@ -1,7 +1,7 @@
-# REST API 设计（api.md）· Phase 1 简化版
+# REST API 设计（api.md）· Phase 1-3 实现版
 
 > 规则引用：`RULES.md` §6（错误处理）、§7（接口规范）。所有端点前缀 `/api/v1`。
-> **Phase 1 简化（面试导向）**：仅 cases/tasks/health 三类端点；无鉴权、无环境管理、无 parse/generate/impact（Phase 2/3）。
+> **Phase 1-3 已实现（面试导向）**：cases/tasks/health + parse/impact/regression/fix-hints + generate；无鉴权、无环境管理（Phase 4）。
 
 ## 1. 通用约定
 
