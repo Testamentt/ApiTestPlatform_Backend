@@ -75,3 +75,22 @@ def test_generate_task_parse_failure(session_factory, monkeypatch):
         assert task.status == GenerationStatus.FAILED.value
         assert task.error_stage == "parse"
         assert s.query(TestCase).count() == 0  # 入口拦截，不产生 draft
+
+
+def test_generate_task_soft_timeout_fails(session_factory, monkeypatch):
+    # RULES §8.2：SoftTimeLimitExceeded 捕获 → force_fail_timeout 落 FAILED(timeout)，不卡 RUNNING
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    task_id = _seed_task(session_factory)
+    monkeypatch.setattr("app.tasks.generate_cases.SessionLocal", session_factory)
+
+    def _boom(*a, **k):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr("app.tasks.generate_cases.run_generation", _boom)
+    generate_cases_task.delay(task_id)
+    with session_factory() as s:
+        task = s.get(GenerationTask, task_id)
+        assert task.status == GenerationStatus.FAILED.value
+        assert task.error_stage == "timeout"
+        assert "软超时" in task.error_msg

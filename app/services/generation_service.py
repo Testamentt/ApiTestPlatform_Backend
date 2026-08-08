@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import re
 from datetime import UTC, datetime
 from time import monotonic
 
@@ -28,21 +30,69 @@ def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+logger = logging.getLogger(__name__)
+
+
 def compute_run_id(document: dict, operation_ids: list[str] | None) -> str:
     """幂等键：document + 定向子集。why：同输入同指纹，Lookup-Create 防重复调 LLM 花钱。"""
     key = json.dumps({"document": document, "operation_ids": operation_ids or []}, sort_keys=True)
     return hashlib.sha256(key.encode()).hexdigest()
 
 
+# 进 Prompt 的结构约束白名单；description/example/title/default/x-* 等文档字段剥离（§10.1）
+_PROMPT_STRUCT_KEYS = {
+    "type", "properties", "items", "required", "enum", "format",
+    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
+    "minLength", "maxLength", "pattern", "minItems", "maxItems", "uniqueItems", "nullable",
+}
+
+_SCRIPT_TAG_RE = re.compile(r"<[^>]*script[^>]*>", re.IGNORECASE)
+
+
+def _sanitize_llm_field(value):
+    """LLM 输出文本清洗（§10.2）。why：LLM 输出不可信，可回显 prompt 中的注入文本，
+    入库前剔除 <script> 等危险标签与控制字符（防 XSS/存储注入）。"""
+    if isinstance(value, str):
+        return _SCRIPT_TAG_RE.sub("", value).replace("\x00", "")
+    if isinstance(value, list):
+        return [_sanitize_llm_field(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _sanitize_llm_field(v) for k, v in value.items()}
+    return value
+
+
+def _strip_doc_fields(value):
+    """递归剥离 schema 文档字段，只留结构约束进 Prompt。
+    why：§10.1 预处理——用户 Swagger 的 description/example 可含指令/HTML/敏感文本，不得进入 LLM 输入。"""
+    if isinstance(value, dict):
+        return {k: _strip_doc_fields(v) for k, v in value.items() if k in _PROMPT_STRUCT_KEYS}
+    if isinstance(value, list):
+        return [_strip_doc_fields(v) for v in value]
+    return value
+
+
 def _operation_to_json(op: ParsedOperation) -> str:
-    """operation 可读描述（Prompt 注入）。why：只取结构化字段（白名单提取，已剥离文档性字段），防注入（RULES §10.1）。"""
+    """operation 可读描述（Prompt 注入）。why：只取结构化字段（结构键白名单，剥离 description/example
+    等文档字段），防注入（RULES §10.1）。"""
+    params = [
+        {
+            "name": p["name"], "in": p["in"], "required": p["required"],
+            "schema": _strip_doc_fields(p.get("schema", {})),
+        }
+        for p in op.parameters
+    ]
+    body = (
+        {"required": op.request_body["required"], "schema": _strip_doc_fields(op.request_body.get("schema", {}))}
+        if op.request_body
+        else None
+    )
     payload = {
         "operation_id": op.operation_id,
         "method": op.method,
         "path": op.path,
-        "parameters": op.parameters,
-        "request_body": op.request_body,
-        "responses": {code: r.get("schema") for code, r in op.responses.items()},
+        "parameters": params,
+        "request_body": body,
+        "responses": {code: _strip_doc_fields(r.get("schema")) for code, r in op.responses.items()},
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
@@ -86,14 +136,46 @@ def _fail(session_factory, task_id: int, stage: str, msg: str) -> None:
         task = s.get(GenerationTask, task_id)
         if task is None:
             return
-        task.status = GenerationStatus.FAILED.value
-        task.error_stage = stage
-        task.error_msg = msg
-        task.finished_at = _utcnow()
-        s.commit()
+        try:
+            task.status = GenerationStatus.FAILED.value
+            task.error_stage = stage
+            task.error_msg = msg
+            task.finished_at = _utcnow()
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
+
+
+def force_fail_timeout(session_factory, task_id: int) -> None:
+    """软超时兜底：置终态并落 failed(timeout)。
+    why：Celery 软超时中断任务函数后 DB 状态可能停在 running，须迁移 failed（RULES §8.2），
+    否则 run_id 幂等会永久复用该卡死任务、无法重新生成。"""
+    with session_factory() as s:
+        task = s.get(GenerationTask, task_id)
+        if task is None:
+            return
+        try:
+            task.status = GenerationStatus.FAILED.value
+            task.error_stage = "timeout"
+            task.error_msg = f"Celery 软超时（{get_settings().llm.task_soft_timeout_seconds}s）"
+            task.finished_at = _utcnow()
+            s.commit()
+        except Exception:
+            s.rollback()
+            raise
 
 
 def run_generation(session_factory, task_id: int, *, llm: LlmClient | None = None) -> None:
+    """生成编排入口。why：兜底任何未预期异常，保证任务进入明确终态（不卡 RUNNING，RULES §8.3）。"""
+    try:
+        _run_generation(session_factory, task_id, llm=llm)
+    except Exception:
+        logger.exception("run_generation 任务 %s 未预期异常", task_id)
+        _fail(session_factory, task_id, "internal", "生成引擎未预期异常，详见服务日志")
+
+
+def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = None) -> None:
     """Worker 内生成编排（短事务分界）。宽容：单接口失败记 log 继续；致命错误（解析失败）才整任务 FAILED。"""
     llm = llm or LlmClient()
     cost_per_1k = llm.settings.cost_per_1k_tokens
@@ -172,14 +254,14 @@ def run_generation(session_factory, task_id: int, *, llm: LlmClient | None = Non
             for c in parsed_cases.cases:
                 s.add(
                     TestCase(
-                        name=c.name,
+                        name=_sanitize_llm_field(c.name),
                         method=c.method,
-                        path=c.path,
+                        path=_sanitize_llm_field(c.path),
                         operation_id=op_id,  # 【防幻觉】服务端注入，不信任 LLM 输出
-                        params=c.params or None,
-                        body=c.body,
+                        params=_sanitize_llm_field(c.params or None),
+                        body=_sanitize_llm_field(c.body),
                         expected_status=c.expected_status,
-                        assertions=c.assertions or None,
+                        assertions=_sanitize_llm_field(c.assertions or None),
                         status=CaseStatus.DRAFT,  # draft 恒为，人工 confirm 才 active
                         source=CaseSource.AI,
                         trust_score=trust_score,
@@ -245,14 +327,20 @@ class GenerationService:
             )
 
         if operation_ids is None and not force_full:
-            # 系统智能决策（间隙 1）：按 created_at 降序取最新一次分析；无历史 → 全量（开箱即用）
+            # 系统智能决策（间隙 1）：按 created_at 降序取最新一次分析；无历史 → 全量（开箱即用）。
+            # why：校验最新分析的 untested_ops 与当前提交的 document 对应——过期快照可能静默全量跳过
+            # （generated=0 仍 SUCCESS）；parse 顺带提前校验文档合法性（fail fast）。
+            current_ids = set(parse_openapi(document).operation_ids)
             latest = self.session.scalar(
                 select(ImpactAnalysis).order_by(ImpactAnalysis.created_at.desc()).limit(1)
             )
             if latest is None:
                 pass  # 首次运行友好 → 全量（operation_ids 保持 None）
             elif latest.untested_ops:
-                operation_ids = latest.untested_ops
+                valid = sorted(oid for oid in latest.untested_ops if oid in current_ids)
+                if valid:
+                    operation_ids = valid
+                # 全部不在当前文档 → 回退全量（防过期快照静默跳过）
             else:
                 raise AppError("NO_UNTESTED_OPS", status_code=422, detail="所有接口已有 active 用例，无需生成")
 
@@ -278,4 +366,13 @@ class GenerationService:
         # why：延迟导入防循环引用（celery 任务模块会反向 import 本包）；测试 monkeypatch 隔离
         from app.tasks.generate_cases import generate_cases_task  # noqa: PLC0415
 
-        generate_cases_task.delay(task_id)
+        result = generate_cases_task.delay(task_id)
+        # why：持久化 celery_task_id（RULES §8.3）——任务卡死时可通过 Celery 定位/revoke
+        task = self.session.get(GenerationTask, task_id)
+        if task is not None:
+            task.celery_task_id = result.id
+            try:
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+                raise

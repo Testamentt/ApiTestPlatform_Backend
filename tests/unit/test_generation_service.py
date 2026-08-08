@@ -169,6 +169,23 @@ def test_run_generation_warnings_trust_score(session_factory):
         assert cases and all(c.trust_score == 60 for c in cases)
 
 
+def test_run_generation_sanitizes_llm_output(session_factory):
+    # §10.2：LLM 输出中的 <script> 等危险标签/控制字符入库前清洗
+    task_id = _seed_task(session_factory, operation_ids=["listUsers"])
+    evil = {
+        "cases": [{
+            "name": "<script>alert(1)</script>正向",
+            "method": "GET", "path": "/users",
+            "params": {}, "body": None, "expected_status": 200,
+        }]
+    }
+    run_generation(session_factory, task_id, llm=FakeLlmClient(data=evil))
+    with session_factory() as s:
+        case = s.query(TestCase).one()
+        assert "<script>" not in case.name  # 危险标签剔除（§10.2）；残留文本在前端自动转义下安全
+        assert "正向" in case.name
+
+
 def test_run_generation_parse_failure(session_factory):
     task_id = _seed_task(session_factory, document={"openapi": "3.0.3"})  # 缺 paths
     run_generation(session_factory, task_id, llm=FakeLlmClient())
@@ -177,3 +194,52 @@ def test_run_generation_parse_failure(session_factory):
         assert task.status == GenerationStatus.FAILED.value
         assert task.error_stage == "parse"
         assert s.query(TestCase).count() == 0  # 入口拦截，不产生 draft
+
+
+def test_run_generation_unexpected_error_fails_internal(session_factory):
+    # 非 AppError 意外异常（如 llm_client 内部 AttributeError）→ 外层兜底落 FAILED(internal)，不卡 RUNNING
+    task_id = _seed_task(session_factory)
+    run_generation(session_factory, task_id, llm=FakeLlmClient(raise_error=RuntimeError("boom")))
+    with session_factory() as s:
+        task = s.get(GenerationTask, task_id)
+        assert task.status == GenerationStatus.FAILED.value
+        assert task.error_stage == "internal"
+        assert s.query(TestCase).count() == 0  # 未完成不残留部分 draft
+
+
+def test_run_generation_partial_success(session_factory):
+    # 宽容批处理：1 个失败 + 其余成功 → 任务仍 SUCCESS、成功 op 建用例、失败 op 记 log 继续
+    calls = {"n": 0}
+
+    class _MixedLlm(FakeLlmClient):
+        def chat_json(self, system, user, *, schema):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise AppError("LLM_FAILED", status_code=502, detail="mock fail")
+            return super().chat_json(system, user, schema=schema)
+
+    task_id = _seed_task(session_factory)  # 3 个 operation
+    run_generation(session_factory, task_id, llm=_MixedLlm())
+    with session_factory() as s:
+        task = s.get(GenerationTask, task_id)
+        assert task.status == GenerationStatus.SUCCESS.value  # 部分失败不整任务 FAILED
+        assert task.result_summary["rejected"] == 1
+        assert task.result_summary["generated"] == 2
+        assert task.result_summary["draft_created"] == 2
+        assert s.query(TestCase).count() == 2  # 成功 op 用例保留
+        statuses = {log.status for log in s.query(GenerationLog).all()}
+        assert {"success", "error"} <= statuses  # 失败与成功都审计
+
+
+def test_create_concurrent_run_id_collision(session_factory, monkeypatch):
+    # 并发竞态：check-then-insert 窗口内第二个请求 commit 撞 UNIQUE(run_id)（§11.1 唯一约束冲突必测场景）
+    from sqlalchemy.exc import IntegrityError
+
+    with session_factory() as s:
+        svc = GenerationService(s)
+        monkeypatch.setattr(svc, "_dispatch", lambda _tid: None)
+        svc.create_generation_task(DOC)  # 插入 run_id=X
+        # 模拟并发第二个请求：find 未命中（TOCTOU），commit 撞唯一约束
+        monkeypatch.setattr(svc.repo, "find_by_run_id", lambda rid: None)
+        with pytest.raises(IntegrityError):
+            svc.create_generation_task(DOC)

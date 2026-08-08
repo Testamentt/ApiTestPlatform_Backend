@@ -79,7 +79,57 @@ def test_chat_json_retry_then_fail(monkeypatch):
     with pytest.raises(AppError) as ei:
         client.chat_json("sys", "user", schema=_FakeSchema)
     assert ei.value.code == "LLM_FAILED"
-    assert len(fake.calls) == 3  # max_retries=3 次重试
+    assert len(fake.calls) == 4  # 首次尝试 + 3 次重试（§9.4）
+
+
+def test_chat_json_retries_5xx_then_success(monkeypatch):
+    # 5xx → 可重试 → 重试后成功（APIStatusError 分支）
+    import httpx
+    from openai import APIStatusError
+
+    _req = SimpleNamespace(headers=httpx.Headers({}), method="POST", url="http://x")
+    _err = SimpleNamespace(request=_req, headers=httpx.Headers({}), status_code=500)
+
+    def fivexx():
+        raise APIStatusError("server error", response=_err, body=None)
+
+    fake = _FakeCompletions([fivexx, lambda: _resp(json.dumps({"ok": True}))])
+    client = _make_client(monkeypatch, fake)
+    parsed, _ = client.chat_json("sys", "user", schema=_FakeSchema)
+    assert parsed.ok is True
+    assert len(fake.calls) == 2  # 1 次失败 + 1 次成功
+
+
+def test_chat_json_4xx_no_retry(monkeypatch):
+    # 4xx（<500）→ 立即拒绝不重试（永久错误不浪费重试预算）
+    import httpx
+    from openai import APIStatusError
+
+    _req = SimpleNamespace(headers=httpx.Headers({}), method="POST", url="http://x")
+    _err = SimpleNamespace(request=_req, headers=httpx.Headers({}), status_code=400)
+
+    def fourxx():
+        raise APIStatusError("bad request", response=_err, body=None)
+
+    fake = _FakeCompletions([fourxx])
+    client = _make_client(monkeypatch, fake)
+    with pytest.raises(AppError) as ei:
+        client.chat_json("sys", "user", schema=_FakeSchema)
+    assert ei.value.code == "LLM_FAILED"
+    assert len(fake.calls) == 1  # 4xx 不重试
+
+
+def test_chat_json_input_too_long_rejected(monkeypatch):
+    # §9.3 输入长度预检：超限调用前拒绝，不裸奔
+    from app.core.config import get_settings
+
+    fake = _FakeCompletions([lambda: _resp(json.dumps({"ok": True}))])
+    client = _make_client(monkeypatch, fake)
+    limit = get_settings().llm.max_input_chars
+    with pytest.raises(AppError) as ei:
+        client.chat_json("s" * (limit + 1), "user", schema=_FakeSchema)
+    assert ei.value.code == "LLM_INPUT_TOO_LONG"
+    assert len(fake.calls) == 0  # 未发起调用
 
 
 def test_chat_json_validation_failed_carries_raw(monkeypatch):

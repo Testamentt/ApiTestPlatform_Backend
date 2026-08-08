@@ -84,11 +84,13 @@ class LlmSettings(BaseModel):
     model: str = "deepseek-chat"
     temperature: float = 0
     max_tokens: int = 4096
+    max_input_chars: int = 50000  # 调用前输入长度预检阈值（§9.3：超限拒绝，防上下文裸奔）
     connect_timeout: float = 5
     read_timeout: float = 60
     max_retries: int = 3
     retry_backoff: float = 1
     cost_per_1k_tokens: float = 0.001
+    task_soft_timeout_seconds: int = 540  # 生成任务软超时（< task_timeout_seconds，留 60s 清理窗口；RULES §8.2）
     task_timeout_seconds: int = 600
 
 
