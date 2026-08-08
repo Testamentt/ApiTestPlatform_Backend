@@ -39,6 +39,7 @@ class RedisSettings(BaseModel):
     port: int = 6379
     password: str = ""
     db: int = 0
+    socket_timeout: float = 2.0  # 健康检查探测超时（RULES §2.3：来自 config，禁止硬编码）
 
 
 class CelerySettings(BaseModel):
@@ -50,6 +51,7 @@ class CelerySettings(BaseModel):
     time_limit: int = 360
     visibility_timeout: int = 3600
     max_retries: int = 3
+    result_expires: int = 3600
 
 
 class ExecutionSettings(BaseModel):
@@ -59,6 +61,16 @@ class ExecutionSettings(BaseModel):
     base_url: str = "http://httpbin.org"
     pytest_timeout: int = 300
     command_whitelist: list[str] = ["python", "pytest"]
+
+
+class SwaggerSettings(BaseModel):
+    """Phase 2 影响分析配置。why：全带 default——settings.yaml/.env 缺失新字段时启动不阻塞（兼容 Phase 1 已部署配置）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_upload_bytes: int = 2_000_000
+    hash_version: int = 1
+    max_operation_ids_warn: int = 200
 
 
 class Settings(BaseModel):
@@ -73,6 +85,7 @@ class Settings(BaseModel):
     redis: RedisSettings = RedisSettings()
     celery: CelerySettings = CelerySettings()
     execution: ExecutionSettings = ExecutionSettings()
+    swagger: SwaggerSettings = SwaggerSettings()
 
     @property
     def broker_url(self) -> str:
