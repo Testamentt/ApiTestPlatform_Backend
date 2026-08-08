@@ -73,6 +73,25 @@ class SwaggerSettings(BaseModel):
     max_operation_ids_warn: int = 200
 
 
+class LlmSettings(BaseModel):
+    """Phase 3 AI 生成配置。why：密钥经环境变量名引用（api_key_env，只放 .env）；
+    cost 为 demo 均价估算（精算留生产）；task_timeout_seconds 是生成任务 Celery 硬超时。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    api_key_env: str = "DEEPSEEK_API_KEY"
+    base_url: str = "https://api.deepseek.com"
+    model: str = "deepseek-chat"
+    temperature: float = 0
+    max_tokens: int = 4096
+    connect_timeout: float = 5
+    read_timeout: float = 60
+    max_retries: int = 3
+    retry_backoff: float = 1
+    cost_per_1k_tokens: float = 0.001
+    task_timeout_seconds: int = 600
+
+
 class Settings(BaseModel):
     """全量配置。extra=forbid：未建模键（含将来 Phase 2+ 的 TESTPLATFORM_LLM_* 等）会启动即报错。
     why：env 合并是手动的（settings.yaml 默认值 + .env/os.environ 覆盖），故用 BaseModel 而非 BaseSettings——
@@ -86,6 +105,7 @@ class Settings(BaseModel):
     celery: CelerySettings = CelerySettings()
     execution: ExecutionSettings = ExecutionSettings()
     swagger: SwaggerSettings = SwaggerSettings()
+    llm: LlmSettings = LlmSettings()
 
     @property
     def broker_url(self) -> str:
