@@ -1,6 +1,6 @@
 # 配置管理设计（configuration.md）· Phase 1-2 简化版
 
-> 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §3.1（配置与密钥）。配置统一放 `config/`，Pydantic Settings 管理。
+> 规则引用：`RULES.md` §3.1（配置与密钥）。配置统一放 `config/`，Pydantic Settings 管理。
 > **Phase 1-2 简化**：app/database/redis/celery/execution/swagger 六段；llm/security/frontend 属 Phase 3+，当前不建模。
 
 ## 1. 配置分层与加载

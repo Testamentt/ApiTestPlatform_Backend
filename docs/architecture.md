@@ -1,6 +1,6 @@
 # 架构设计（architecture.md）· Phase 1 简化版
 
-> 规则引用：本项目的所有实现必须遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（§1-§18 权威规则）。本文是总体架构基准文档，描述 MVP 零前端、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
+> 规则引用：本项目的所有实现必须遵守 `RULES.md`（§1-§18 权威规则）。本文是总体架构基准文档，描述 MVP 零前端、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
 > **Phase 1-2 范围**：Phase 1「用例 + 任务执行」闭环（已完成）；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；generate（AI 生成）属 Phase 3。
 
 ## 1. 目标与非目标

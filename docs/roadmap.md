@@ -19,7 +19,7 @@
 ## 关键约束
 
 - 初始化分两阶段：**文档先行 → 用户确认 → 编码**（未确认不写代码）。
-- 全部实现遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（§1-§18 硬性规则；面试导向原则见 §0）。
+- 全部实现遵守 `RULES.md`（§1-§18 硬性规则；面试导向原则见 §0）。
 - 本地环境：Windows 10 / Python 3.12.6 / Redis 127.0.0.1:6379（requirepass 见本地 .env，勿提交）/ Docker 未安装。
 - Windows 本地 Celery worker 必须 `--pool=solo`。
 - 仓库结构：`backend/` 与 `frontend/` 两个独立 git 仓库（frontend 为 Phase 4 可选；前期界面 = Swagger UI）。

@@ -1,6 +1,6 @@
 # 执行引擎设计（execution-engine.md）· Phase 1 简化版
 
-> 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §2.3（统一超时）、§2.4（subprocess 规范，MVP 已放宽）、§8（Celery 任务治理）。
+> 规则引用：`RULES.md` §2.3（统一超时）、§2.4（subprocess 规范，MVP 已放宽）、§8（Celery 任务治理）。
 > **Phase 1 简化（面试导向）**：仅 `execute_cases` + `scan_stale_tasks` 两个 Celery 任务；subprocess 用 `subprocess.run(timeout)` + 白名单；报告用简单 HTML；无 Beat。
 
 ## 1. Celery 任务清单（Phase 1）

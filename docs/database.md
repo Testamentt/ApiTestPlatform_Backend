@@ -1,7 +1,7 @@
 # 数据库设计（database.md）· Phase 1-2 简化版
 
-> 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移）。本设计所有字段名/表名与 API、执行引擎文档保持一致。
-> **Phase 1-2 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `.claude/rules/RULES.md` §5.1/§5.2）。
+> 规则引用：`RULES.md` §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移）。本设计所有字段名/表名与 API、执行引擎文档保持一致。
+> **Phase 1-2 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `RULES.md` §5.1/§5.2）。
 
 ## 1. 设计原则（Phase 1 简化）
 

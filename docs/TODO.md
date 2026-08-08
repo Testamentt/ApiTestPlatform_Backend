@@ -5,7 +5,7 @@
 ## Phase 0 · 文档与基建（已完成）
 
 - [x] 项目文档（architecture / database / api / execution-engine / ai-generation / impact-analysis / configuration / roadmap / TODO）
-- [x] 规则与配置契约（.claude/rules/RULES.md §1-§18 + config/settings.example.yaml + .env.example）
+- [x] 规则与配置契约（RULES.md §1-§18 + config/settings.example.yaml + .env.example）
 - [x] 双仓库结构（backend/ + frontend/，frontend Phase 4 可选）
 - [x] 用户评审确认全部文档（进入编码的闸门）→ 2026-08-06 确认进入 Phase 1
 

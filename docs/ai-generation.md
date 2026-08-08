@@ -1,6 +1,6 @@
 # AI 用例生成设计（ai-generation.md）
 
-> 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §3.2（Prompt 管理）、§9（LLM 调用规范）、§10.1/§10.2（Prompt 注入防护与输出护栏）、§11.2（防幻觉护栏）。本文描述 Swagger 解析 → 结构化 Prompt → LLM 生成 → 严格校验 → draft 入库 → 人工确认 的完整链路。
+> 规则引用：`RULES.md` §3.2（Prompt 管理）、§9（LLM 调用规范）、§10.1/§10.2（Prompt 注入防护与输出护栏）、§11.2（防幻觉护栏）。本文描述 Swagger 解析 → 结构化 Prompt → LLM 生成 → 严格校验 → draft 入库 → 人工确认 的完整链路。
 
 ## 1. 总览
 

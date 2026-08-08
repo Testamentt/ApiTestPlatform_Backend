@@ -1,6 +1,6 @@
 # REST API 设计（api.md）· Phase 1 简化版
 
-> 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §6（错误处理）、§7（接口规范）。所有端点前缀 `/api/v1`。
+> 规则引用：`RULES.md` §6（错误处理）、§7（接口规范）。所有端点前缀 `/api/v1`。
 > **Phase 1 简化（面试导向）**：仅 cases/tasks/health 三类端点；无鉴权、无环境管理、无 parse/generate/impact（Phase 2/3）。
 
 ## 1. 通用约定

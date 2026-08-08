@@ -1,6 +1,6 @@
 # 变更影响分析设计（impact-analysis.md）· Phase 2 简化版
 
-> 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §5.2（索引）、§6.2（日志）。本文描述接口变更影响自动圈定的核心算法：版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归。对应规格书亮点 ②。
+> 规则引用：`RULES.md` §5.2（索引）、§6.2（日志）。本文描述接口变更影响自动圈定的核心算法：版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归。对应规格书亮点 ②。
 > **Phase 2 简化（面试导向，纯规则引擎无 AI）**：仅 `parse / impact/analyze / impact/{id}/regression` 三个端点；Git Webhook、字段级差异 UI、priority 字段均延后。
 
 ## 1. 数据源：api_definitions 版本快照
