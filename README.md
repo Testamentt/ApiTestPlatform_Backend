@@ -94,5 +94,4 @@ scripts\start_all.bat
 | [docs/impact-analysis.md](docs/impact-analysis.md) | 变更影响分析算法、Webhook、一键回归 |
 | [docs/configuration.md](docs/configuration.md) | 配置管理（Pydantic Settings） |
 | [docs/roadmap.md](docs/roadmap.md) | 迭代路线（活文档） |
-| [CLAUDE.md](CLAUDE.md) | Claude 协作指南 |
-| [.claude/rules/RULES.md](.claude/rules/RULES.md) | 项目规则（§1-§16 代码/技术 + §17 开发流程 R1-R6 + §18 文档沉淀） |
+| [tests/](tests/) | 单元 / 接口 / 任务测试（pytest 门禁，mock 隔离外部依赖） |

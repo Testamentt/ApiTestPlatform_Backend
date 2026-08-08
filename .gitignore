@@ -44,9 +44,6 @@ logs/
 CLAUDE.md
 memory.md
 
-# 测试（面试仓库不公开测试）
-tests/
-
 # 文档中的对话产物（过程记录，不公开；只保留设计/架构/数据库等文档）
 docs/plans/
 docs/reviews/
