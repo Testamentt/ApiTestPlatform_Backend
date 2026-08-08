@@ -1,16 +1,18 @@
 # 架构设计（architecture.md）· Phase 1 简化版
 
 > 规则引用：本项目的所有实现必须遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（§1-§18 权威规则）。本文是总体架构基准文档，描述 MVP 零前端、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
-> **Phase 1 简化**：仅「用例 + 任务执行」两域；parse/generate/impact 属 Phase 2/3。
+> **Phase 1-2 范围**：Phase 1「用例 + 任务执行」闭环（已完成）；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；generate（AI 生成）属 Phase 3。
 
 ## 1. 目标与非目标
 
 **目标**：交付可运行、可测试、可讲清楚（面试防守）的 MVP——「创建用例 → 异步执行 → 查看结果」闭环。
 
-**非目标（Phase 1 不包含）**：
+**非目标（当前不包含）**：
 - 前端界面（**MVP 界面 = FastAPI Swagger UI**，零前端代码；Vue 为 Phase 4 可选）
 - 鉴权与限流（**均不做**，演示开箱即用；Phase 4 加 Bearer Token）
-- 多环境管理（base_url 写死 config）、多环境生产部署
+- 多环境管理（base_url 写死 config）、AI 用例生成（Phase 3）
+
+**Phase 2 已新增**：影响分析（parse/impact，纯规则 Diff+SQL 秒回）——见 [impact-analysis.md](impact-analysis.md)。
 
 ## 2. 架构总览（MVP 零前端 + 后端三层）
 
@@ -80,6 +82,15 @@ Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `
    g. 正常结束 → junit_parser 累加各 testsuite → 组 result_summary {total,passed,failed,...}
    h. report_util 写 report.html（best-effort，无结果也生成）→ report_link → status=success
 4. 客户端轮询 GET /api/v1/tasks/{id} → 进度/结果/HTML 报告链接
+
+### Phase 2 影响分析链路（纯规则，同步 <1s，无 AI）
+
+```
+1. POST /api/v1/parse {document, version?} → 解析 → 分段 hashes + contracts → 落库 api_definitions（reparse 覆盖）→ 201
+2. POST /api/v1/impact/analyze {document} → 解析新版 → diff + breaking 联合判定
+   → SQL 反向检索（breaking 变更的 active 用例 / removed 的 orphaned / 未绑的 untested）→ 落库 impact_analyses → 200
+3. POST /api/v1/impact/{analysis_id}/regression → 宽容降级过滤失效用例 → 复用 Phase 1 执行引擎 → 202 {task_id} → 轮询
+```
 ```
 
 ## 6. 关键设计决策（面试防守）
@@ -106,13 +117,13 @@ backend/
 │   ├── main.py               # 应用入口（路由聚合 + 异常 handler + /static 挂载 + lifespan 建表）
 │   ├── celery_app.py         # Celery app（显式读 Settings 拼 broker/backend + worker_ready 触发 scan）
 │   ├── core/                 # config / database / logging / exceptions
-│   ├── api/v1/               # 路由 + deps（cases / tasks / health）
-│   ├── models/               # SQLAlchemy ORM（test_cases / tasks，仅 2 表）
-│   ├── schemas/              # Pydantic 出入参（response_model）
-│   ├── services/             # 业务编排（case_service / task_service / execution_service）
-│   ├── repositories/         # 数据访问（物理删除）
+│   ├── api/v1/               # 路由 + deps（cases / tasks / health / parse / impact）
+│   ├── models/               # SQLAlchemy ORM（test_cases / tasks / api_definitions / impact_analyses）
+│   ├── schemas/              # Pydantic 出入参（case / task / swagger / impact）
+│   ├── services/             # 业务编排（case / task / execution / swagger / impact）
+│   ├── repositories/         # 数据访问（case / task / api_definition / impact_analysis，物理删除）
 │   ├── tasks/                # Celery 任务（execute_cases / scan_stale_tasks）
-│   └── utils/                # subprocess_util / case_generator / junit_parser / report_util
+│   └── utils/                # subprocess_util / openapi_parser / case_generator / junit_parser / report_util
 ├── prompts/                  # Phase 3 再建（版本化 + 占位符注入）
 ├── docs/  tests/  scripts/
 └── .claude/                  # rules/RULES.md（§1-§18）、skills/
@@ -127,10 +138,10 @@ backend/
 
 ## 10. 相关文档
 
-- [database.md](database.md) — 数据模型（Phase 1：2 表）
-- [api.md](api.md) — REST API 设计（Phase 1：cases/tasks/health）
+- [database.md](database.md) — 数据模型（Phase 1-2：4 表 test_cases/tasks/api_definitions/impact_analyses）
+- [api.md](api.md) — REST API 设计（Phase 1-2：cases/tasks/health/parse/impact）
 - [execution-engine.md](execution-engine.md) — Celery 任务与执行引擎
 - [ai-generation.md](ai-generation.md) — AI 用例生成（Phase 3 前瞻）
-- [impact-analysis.md](impact-analysis.md) — 影响分析算法（Phase 2 前瞻）
+- [impact-analysis.md](impact-analysis.md) — 影响分析算法（Phase 2 已实现）
 - [configuration.md](configuration.md) — 配置管理
 - [roadmap.md](roadmap.md) — 迭代路线

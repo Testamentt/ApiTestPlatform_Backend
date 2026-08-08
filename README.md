@@ -14,7 +14,7 @@
 | 变更影响不可控 | 接口定义变更后回归范围凭经验判断，漏测风险高（1~2 h） | **接口变更影响自动圈定**：Git Webhook → Diff → 受影响用例反向检索 → 一键回归（<10 s，覆盖率 100%） |
 | 执行阻塞 | Web 服务同步调 pytest，长耗时导致请求超时、服务不可用（同步超时率 30%+） | **异步任务解耦 + 超时兜底**：Celery + Redis 异步队列，Web 响应稳定 <50 ms，300s 超时强杀 |
 
-> 实现进度：AI 生成（Phase 3）与影响圈定（Phase 2）为规划阶段，**Phase 1 已交付执行闭环**（创建用例 → 异步执行 → 查看结果），见 [docs/roadmap.md](docs/roadmap.md)。
+> 实现进度：**Phase 1 已交付执行闭环**（创建用例 → 异步执行 → 查看结果），**Phase 2 已交付影响分析**（parse/impact 纯规则圈定 + 一键回归）；AI 生成（Phase 3）为规划阶段，见 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 架构速览
 
@@ -25,7 +25,7 @@
 【MVP 界面】 FastAPI Swagger UI（/docs，零前端代码；Phase 4 可选 Vue 3）
    │ HTTP JSON
    ▼
-【Web 服务层】 FastAPI + SQLAlchemy   （用例 CRUD / 任务执行 / 健康检查）
+【Web 服务层】 FastAPI + SQLAlchemy   （用例 CRUD / 任务执行 / Swagger 解析 / 影响分析 / 健康检查）
    │ ① 创建任务记录（status=PENDING）  ② send_task 入队
    ▼
 【Redis Broker】（Celery 队列）
@@ -61,7 +61,7 @@ pip install -e ".[dev]"
 
 # 2. 配置
 copy config\settings.example.yaml config\settings.yaml
-copy .env.example .env        # 填入 Redis 密码（示例值 1234abcd）
+copy .env.example .env        # 填入 Redis 密码（占位符换成实际值）
 
 # 3. 启动后端 Web 服务（Swagger UI 即 MVP 界面：http://127.0.0.1:8000/docs）
 uvicorn app.main:app --port 8000
@@ -79,7 +79,7 @@ scripts\start_all.bat
 
 - ✅ **异步解耦 + 超时兜底**（Phase 1 已实现）：请求即返回 `task_id`（202），pytest 由独立 Worker 异步执行；`run_id` Lookup-Create 幂等防重复跑；300s 超时强杀进程树（`scan_stale_tasks` 从 DB 读 pid 权威兜底），死循环不卡系统。
 - 📊 **HTML 报告**（Phase 1 已实现）：任务执行后生成自包含 HTML 报告并挂载链接（MVP 替代 Allure，后续可换）。
-- 🧠 **接口变更影响圈定**（Phase 2 规划）：`operation_id` 静态血缘 + 新旧 OpenAPI Diff + SQL 反向检索，受影响的既有用例自动圈定，支持一键回归。
+- 🧠 **接口变更影响圈定**（Phase 2 已实现）：`operation_id` 血缘 + **分段 hash O(1) diff** + **breaking 联合判定** + SQL 反向检索，破坏性变更自动圈定受影响用例、给出孤儿迁移清单，一键回归（宽容降级）。
 - ✅ **AI 用例智能生成**（Phase 3 规划）：自研 OpenAPI 3.0 解析器 + 结构化 Prompt 生成正向/逆向/边界值用例；生成结果默认 `draft`，人工确认转 `active` 才可执行，杜绝幻觉污染。
 
 ## 文档索引
@@ -87,7 +87,7 @@ scripts\start_all.bat
 | 文档 | 内容 |
 | --- | --- |
 | [docs/architecture.md](docs/architecture.md) | MVP 零前端、后端三层、进程隔离、异步模型、核心决策 |
-| [docs/database.md](docs/database.md) | 数据模型（Phase 1：2 表字段级设计） |
+| [docs/database.md](docs/database.md) | 数据模型（Phase 1-2：4 表字段级设计） |
 | [docs/api.md](docs/api.md) | REST API 设计（端点总表） |
 | [docs/execution-engine.md](docs/execution-engine.md) | Celery 任务、subprocess 执行、超时劫持、HTML 报告 |
 | [docs/ai-generation.md](docs/ai-generation.md) | OpenAPI 解析、Prompt 设计、draft→active 审核流 |

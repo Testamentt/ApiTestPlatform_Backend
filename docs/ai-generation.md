@@ -8,8 +8,8 @@
 Swagger/OpenAPI 3.0 文档
   │ POST /api/v1/parse（同步预览）或 /parse/import（入库为版本快照）
   ▼
-OpenAPI 解析器（app/parser/openapi_parser.py）
-  │ 递归提取 $ref / allOf / oneOf / array → operation 结构化描述 + operation_hashes
+OpenAPI 解析器（app/utils/openapi_parser.py，Phase 2 已实现）
+  │ 递归提取 $ref / allOf / oneOf / array → operation 结构化描述 + 分段 operation_hashes
   ▼
 Prompt 组装（prompts/v1/system.md + user.md，占位符注入，禁止 f-string）
   ▼
@@ -73,7 +73,7 @@ Pydantic 严格校验（字段缺失/类型不符/多余字段一律判失败）
 }
 ```
 
-同步产出 `operation_hashes`（每个 operation 的 method+path+parameters+request_body+responses 状态码序列化后哈希），供影响分析复用（见 [impact-analysis.md](impact-analysis.md) §2）。
+同步产出**分段** `operation_hashes`（每个 operation 的 `{request, response}` 两段，响应含状态码指纹），供影响分析 O(1) diff 复用（见 [impact-analysis.md](impact-analysis.md) §1）。
 
 ## 3. 边界值推导规则
 

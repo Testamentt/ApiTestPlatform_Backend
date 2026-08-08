@@ -15,4 +15,6 @@ description: <一句话说明何时使用——触发描述；只有当任务匹
 
 ## 当前技能
 
-（暂无——后续按需添加。候选示例：`generate-test-case`（按 RULE §11 生成测试用例）、`review-code`（按 RULE §14 自查清单评审代码）等。写技能时请引用 `../rules/RULES.md` 对应章节，避免规则重复维护。）
+- `tech-deep-diver`（[tech-deep-diver/SKILL.md](tech-deep-diver/SKILL.md)）：技术深挖器——把黑盒代码变白盒知识，对零基础领域输出「3+1 面试官视角学习笔记」（生活化类比 / 代码分步解剖 / 面试官 3 连追问 / 5 分钟动手作业），面向后端零基础的测试开发工程师。
+
+候选示例：`generate-test-case`（按 RULE §11 生成测试用例）、`review-code`（按 RULE §14 自查清单评审代码）等。写技能时请引用 `../rules/RULES.md` 对应章节，避免规则重复维护。

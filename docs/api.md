@@ -29,8 +29,12 @@
 | GET | `/api/v1/tasks` | 任务列表（分页 + 过滤） | 分页任务 |
 | GET | `/api/v1/tasks/{task_id}` | 任务状态/结果摘要 | 任务全字段 |
 | GET | `/api/v1/tasks/{task_id}/results` | 任务结果（读 result_summary.results） | `{task, results: []}` |
+| POST | `/api/v1/parse` | 解析 Swagger/OpenAPI 3.x 入库（版本快照，**reparse 覆盖**） | 201 `{version_id, version, ...}` |
+| POST | `/api/v1/impact/analyze` | 新版 Swagger vs 最近版本 diff → 影响结果（breaking/orphaned/untested） | 200 影响分析 |
+| POST | `/api/v1/impact/{analysis_id}/regression` | 一键回归受影响用例（**宽容降级**） | 202 `{task_id}` |
 
-> Phase 2+ 端点（parse / generate / impact / webhook / environments）本期不暴露。
+> Phase 2+ 端点（generate / webhook / environments）本期不暴露。
+> **parse/analyze 为纯规则同步**（`def` 端点线程池，<1s），不引入 Celery 任务；regression 复用 Phase 1 执行引擎。
 
 ## 3. 分组详述
 
@@ -69,6 +73,25 @@
 ### 3.3 健康检查 `/api/v1/health`
 
 `{status: "ok", db: "up"|"down", redis: "up"|"down"}`。不做鉴权（供部署探针）。
+
+### 3.4 解析与影响分析（Phase 2，纯规则同步）
+
+**POST /parse** — 请求体：`{document: {...OpenAPI 3.x}, version?: "v1"}`（version 缺省 auto `v{n}`）。
+- 解析提取 operation_ids + **分段 hashes** + **contracts** → 落库 `api_definitions`。
+- **reparse 覆盖**：同 version 再解析先删旧插新（CI 幂等不膨胀）。
+- 大小 > `swagger.max_upload_bytes` → 413/422；非法文档（非 3.x / 无 paths）→ 422。
+- 响应 201：`{version_id, version, hash_version, operation_count, operation_ids, warnings}`——warnings 含 $ref 找不到 / 跨文件引用 / **operation_id 重复**（F4）。
+
+**POST /impact/analyze** — 请求体：`{document: {...新版}, new_version?, old_version?}`（old_version 缺省取最近版本）。
+- 解析新版 → 落库新版本 → 与旧版本 diff + **breaking 联合判定** → SQL 反向检索 → 落库 `impact_analyses` → 200。
+- 响应：`{analysis_id, old_version, new_version, added_ops, removed_ops, changed_ops, breaking_changed_ops, affected_cases, affected_summary, orphaned_case_ids, suggested_remap, untested_ops, warnings}`。
+- 首次分析（无旧版本）：added=untested=全部、无 affected，不报错。
+- 相同文档重复 analyze → `changed_ops` 空（identical）。
+
+**POST /impact/{analysis_id}/regression** — 一键回归。
+- 读 `affected_case_ids` 快照 → **宽容过滤**只执行当前仍 active 的 → 复用 `POST /tasks` 的 Lookup-Create 幂等 → 202。
+- 响应：`{analysis_id, task_id, task_status, executed_case_ids, executed_count, dropped_case_ids, dropped_count, dropped_reasons, affected_summary}`——summary 为**执行时真实口径** `{total: executed+dropped, executed, dropped}`（D6）；dropped 附 reason（case deleted / case draft）。
+- 无受影响用例 → 422；受影响用例全部失效 → 422。
 
 ## 4. 与 Celery 交互模式（统一异步模式）
 

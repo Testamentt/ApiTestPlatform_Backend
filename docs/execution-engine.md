@@ -21,13 +21,15 @@ worker_prefetch_multiplier = 1
 task_reject_on_worker_lost = True
 task_soft_time_limit = settings.celery.soft_time_limit      # 300
 task_time_limit = settings.celery.time_limit                # 360
+broker_transport_options = {"visibility_timeout": settings.celery.visibility_timeout}  # 已接线
+result_expires = settings.celery.result_expires             # 3600（来自 config）
 broker_connection_retry_on_startup = True
-result_expires = 3600                                          # result backend 仅短期状态
 ```
 
 - **acks_late + time_limit 必须配套**：acks_late 保证 worker 崩溃不丢任务；没有 time_limit 时卡死任务永不结束（RULES.md §16.7 面试防守点）。
-- **visibility_timeout（默认 1h）> time_limit（360s）**：否则运行中的任务被重复投递。
-- **重试**：`autoretry_for=(瞬时异常,)` + `retry_backoff=True`/`max_retries=3`；只对瞬时异常重试，业务/参数错误直接 failed。
+- **visibility_timeout（1h）> time_limit（360s）**：经 `broker_transport_options` 显式接线，否则运行中的任务被重复投递。
+- **软超时捕获**：`execute_cases_task` 捕获 `SoftTimeLimitExceeded` → `force_fail_timeout` 落 failed（error_stage=timeout）+ best-effort 杀树（RULES.md §8.2）。
+- **重试**：`autoretry_for=(瞬时异常,)` + `retry_backoff=True`/`max_retries=settings.celery.max_retries`；只对瞬时异常重试，业务/参数错误直接 failed。
 - **单写者**：Windows 本地 `--pool=solo`（或 `--concurrency=1`）串行化写 SQLite。
 
 ## 3. subprocess 统一封装（run_cmd，MVP 简化版）
@@ -50,10 +52,13 @@ result_expires = 3600                                          # result backend 
 4. `run_cmd` 的 `on_start` 回调写 tasks.pid + status=running + started_at —— commit
 5. run_cmd([python, -m, pytest, 全部 test_*.py, --junitxml=report.xml,
             -o, addopts=, -p, no:cacheprovider], timeout=settings.execution.pytest_timeout, check=False)
-6. 解析 report.xml（junit_parser 累加各 testsuite 总数）→ 组 result_summary {total,passed,failed,...}
-7. report_util 写 report.html（best-effort，无有效结果也生成「执行失败，无有效结果」）→ report_link
-8. 写 tasks.result_summary + report_link + status=success + finished_at —— commit
-9. 失败/超时 → status=failed + error_stage(parse/subprocess/timeout) + error_msg（含 stdout 尾部）—— commit，禁自动重试
+6. **returncode 终态检查**：非 (0,1)（2 中断/3 内部/4 usage/5 收集失败）→ failed(error_stage=subprocess)，
+   避免 pytest 自身异常产出缺测试的 junit 被误判 SUCCESS；1=有用例失败但 junit 有效，继续
+7. 解析 report.xml（junit_parser 累加各 testsuite 总数）→ 组 result_summary {total,passed,failed,...}
+8. report_util 写 report.html（best-effort，无有效结果也生成「执行失败，无有效结果」）→ report_link
+9. 写 tasks.result_summary + report_link + status=success + finished_at —— commit
+10. 失败/超时/软超时/未预期异常 → status=failed + error_stage(parse/subprocess/timeout/internal)
+    + error_msg（含 stdout 尾部）—— commit，禁自动重试
 ```
 
 **执行安全边界**：只运行**人工确认过的 active 用例**；test 文件由结构化字段渲染（非自由文本）；`run_cmd` 命令白名单 + `shell=False`。

@@ -14,13 +14,13 @@
 
 ## 当前目标
 
-**Phase 1 核心执行闭环已完成**（MVP 简化版，31 测试全绿 + 真实异步端到端验证通过，沉淀见 [sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)）；当前进入 **Phase 2 变更影响分析**（纯 Diff+SQL，先于 AI 生成）。
+**Phase 1 核心执行闭环已完成**（MVP 简化版，沉淀见 [sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)）；**Phase 2 变更影响分析已完成**（parse/impact/regression 三端点已接线，104 测试全绿，沉淀见 [sessions/2026-08-08-review-fixes.md](sessions/2026-08-08-review-fixes.md)）；当前进入 **Phase 3 AI 智能生成**（LLM，先做纯规则引擎后做生成）。
 
 ## 关键约束
 
 - 初始化分两阶段：**文档先行 → 用户确认 → 编码**（未确认不写代码）。
 - 全部实现遵守 [`.claude/rules/RULES.md`](../.claude/rules/RULES.md)（§1-§18 硬性规则；面试导向原则见 §0）。
-- 本地环境：Windows 10 / Python 3.12.6 / Redis 127.0.0.1:6379（requirepass=1234abcd）/ Docker 未安装。
+- 本地环境：Windows 10 / Python 3.12.6 / Redis 127.0.0.1:6379（requirepass 见本地 .env，勿提交）/ Docker 未安装。
 - Windows 本地 Celery worker 必须 `--pool=solo`。
 - 仓库结构：`backend/` 与 `frontend/` 两个独立 git 仓库（frontend 为 Phase 4 可选；前期界面 = Swagger UI）。
 
@@ -46,17 +46,11 @@
 
 这是面试官最想看的「异步解耦」效果，全程无需前端。
 
-### Phase 2 · 影响分析（1 周，核心卖点 1）
+### Phase 2 · 影响分析（已完成，核心卖点 1）
 
-| 任务 | 关键实现细节 |
-| --- | --- |
-| ① api_definitions 表：存储每次解析的 Swagger（operation_id / path / method / request_schema_hash） | `hashlib.md5` 对 parameters + requestBody 生成指纹 |
-| ② `POST /api/v1/parse`：解析 Swagger JSON 入库 | 递归处理 $ref / allOf / oneOf（AI 代码重点审查） |
-| ③ `POST /api/v1/impact/analyze`：传入新版 Swagger，返回变更 operation_id 列表 | 对比新旧 schema_hash |
-| ④ 反向检索：`SELECT * FROM test_cases WHERE operation_id IN (变更列表)` | **核心 SQL，面试必问** |
-| ⑤ 一键回归：自动创建任务执行受影响用例 | 复用 Phase 1 执行引擎 |
+> 纯规则引擎（无 AI）：版本快照 → 分段 hash O(1) diff → breaking 五场景联合判定 → SQL 反向检索 → 一键回归（宽容降级 + 真实口径 + 可追溯）。评审修复（2026-08-08）：修复 `_normalize` 剥离属性名导致字段级变更不可见、响应状态码删减/替换不圈定用例、版本碰撞守卫、API 接线（parse/impact 路由）+ 104 测试全绿。沉淀：[sessions/2026-08-08-review-fixes.md](sessions/2026-08-08-review-fixes.md)。
 
-**验收**：Swagger 1.0 建 3 个用例（绑 3 个 operation_id）→ 传 Swagger 2.0（改 1 个接口入参）→ diff 返回「变更 1 个接口、影响 1 个用例」→ 一键回归。面试官据此认定你有「精准回归」思维。
+**Phase 2 验收（面试演示用）**：Swagger 1.0 建 3 用例（绑 3 个 operation_id）→ 传 Swagger 2.0（改 1 个接口入参）→ `POST /api/v1/impact/analyze` 返回「变更 1 个接口、影响 1 个用例」→ `POST /api/v1/impact/{id}/regression` 一键回归。面试官据此认定你有「精准回归」思维。
 
 ### Phase 3 · AI 智能生成（1 周，核心卖点 2）
 
@@ -101,11 +95,18 @@
 - [x] 任务 Lookup-Create 幂等（run_id=sha256 + UNIQUE）+ Celery 异步（202 立即返回）
 - [x] 执行引擎（run_cmd 白名单/超时/on_start 落 pid + junit 累加解析 + HTML 报告）
 - [x] 超时劫持 scan_stale_tasks（DB pid 权威杀树，Worker 启动扫描一次，无 Beat）
-- [x] 31 测试全绿 + ruff 全绿 + 真实异步端到端验证
+- [x] 104 测试全绿 + ruff 全绿 + 真实异步端到端验证
+
+**Phase 2（变更影响分析，已完成）**
+- [x] api_definitions / impact_analyses 表（版本快照 + 分段 hash + contracts + 影响结果）
+- [x] `POST /api/v1/parse`：Swagger 解析入库（$ref/allOf/oneOf 递归 + reparse 覆盖）
+- [x] `POST /api/v1/impact/analyze`：O(1) diff + breaking 五场景联合判定 + SQL 反向检索
+- [x] `POST /api/v1/impact/{id}/regression`：一键回归（宽容降级 + 真实口径 + last_regression 可追溯）
+- [x] 字段级变更命中（`_normalize` 保留属性名）、响应状态码删减/替换圈定、版本碰撞守卫、v1/v2/v3 连续对比
 
 ## 待解决问题
 
 - [ ] 演示 target 稳定性：默认 httpbin.org 外网不稳，面试建议本地 mock（改 `execution.base_url` 即可）
-- [ ] Swagger/OpenAPI 样例接口（Phase 2 的 scripts/sample_swagger.py 可生成）
+- [ ] Swagger/OpenAPI 样例接口（Phase 3 的 scripts/sample_swagger.py 可生成）
 - [ ] 部署形态：本地直跑 vs Docker Compose（Phase 4）
 - [ ] Phase 4 是否做 Vue（面试不扣分，可跳过）

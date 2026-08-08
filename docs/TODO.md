@@ -22,13 +22,15 @@
 - [x] tests/unit + tests/api + tests/tasks（fakes: FakeSubprocess）+ 31 用例全绿 + ruff 全绿
 - [x] 验收：/docs「创建用例 → confirm → 触发执行(202) → 轮询 → results + HTML 报告」闭环 + 真实异步端到端验证
 
-## Phase 2 · 变更影响分析（当前，1 周，核心卖点 1）
+## Phase 2 · 变更影响分析（已完成，核心卖点 1）
 
-- [ ] api_definitions 表（operation_id / path / method / request_schema_hash，`hashlib.md5` 指纹）
-- [ ] `POST /api/v1/parse`：Swagger 解析入库（$ref / allOf / oneOf 递归）
-- [ ] `POST /api/v1/impact/analyze`：schema_hash 对比 → 变更 operation_id 列表
-- [ ] 反向检索：`SELECT * FROM test_cases WHERE operation_id IN (...)`（核心 SQL）
-- [ ] 一键回归：受影响用例创建执行任务（复用 Phase 1 引擎）
+> 纯规则引擎（无 AI）。沉淀：[docs/sessions/2026-08-08-review-fixes.md](sessions/2026-08-08-review-fixes.md)。
+
+- [x] api_definitions 表（operation_id / path / method / request_schema_hash，`hashlib.md5` 指纹）
+- [x] `POST /api/v1/parse`：Swagger 解析入库（$ref / allOf / oneOf 递归 + reparse 覆盖）
+- [x] `POST /api/v1/impact/analyze`：schema_hash 对比 → 变更 operation_id 列表 + breaking 五场景判定
+- [x] 反向检索：`SELECT * FROM test_cases WHERE operation_id IN (...)`（核心 SQL）
+- [x] 一键回归：受影响用例创建执行任务（复用 Phase 1 引擎，宽容降级 + 真实口径 + last_regression）
 
 ## Phase 3 · AI 智能生成（1 周，核心卖点 2）
 

@@ -1,7 +1,7 @@
-# 数据库设计（database.md）· Phase 1 简化版
+# 数据库设计（database.md）· Phase 1-2 简化版
 
 > 规则引用：[`.claude/rules/RULES.md`](../.claude/rules/RULES.md) §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移）。本设计所有字段名/表名与 API、执行引擎文档保持一致。
-> **Phase 1 简化（面试导向）**：仅 2 张表（`test_cases` + `tasks`）；软删除 / 多环境 / 结果明细表已砍，Phase 2+ 再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `.claude/rules/RULES.md` §5.1/§5.2）。
+> **Phase 1-2 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `.claude/rules/RULES.md` §5.1/§5.2）。
 
 ## 1. 设计原则（Phase 1 简化）
 
@@ -56,6 +56,37 @@
 
 > **Lookup-Create 模式**：`POST /api/v1/tasks` 先算 `run_id`，查 `tasks.run_id` 已存在则**直接返回已有任务**（不重复执行）；否则创建 + 派发。SQLite `UNIQUE(run_id)` 兜底并发。
 
+### 2.3 api_definitions（Swagger 版本快照，Phase 2 影响分析）
+
+| 字段 | 类型 | 约束/默认 | 说明 |
+| --- | --- | --- | --- |
+| id | INTEGER | PK, autoincrement | |
+| version | VARCHAR(64) | NOT NULL, **UNIQUE** | 用户标签或 auto `v{n}`；**reparse 覆盖**（同 version 再解析先删旧插新，CI 幂等不膨胀） |
+| hash_version | INTEGER | NOT NULL DEFAULT 1 | 哈希算法版本（config `swagger.hash_version`）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed |
+| operation_ids | JSON | NOT NULL | 血缘全集 `[operation_id, ...]` |
+| operation_hashes | JSON | NOT NULL | **分段** `{op_id: {"request": md5, "response": md5}}`；response 含状态码指纹（F1：200→202 必命中） |
+| operation_contracts | JSON | NOT NULL | `{op_id: {"required": [...], "signature": {field_path: {"type","enum"}}, "response_status_codes": [...]}}`——breaking 联合判定输入（F2/F1：含响应状态码集合，200→202 变化可判 breaking） |
+| created_at / updated_at | DATETIME | TimestampMixin | |
+
+索引：`UNIQUE(version)`。
+
+### 2.4 impact_analyses（影响分析结果，Phase 2）
+
+| 字段 | 类型 | 约束/默认 | 说明 |
+| --- | --- | --- | --- |
+| id | INTEGER | PK, autoincrement | |
+| old_version / new_version | VARCHAR(64) | NULL / NOT NULL | 对比版本对（首次分析 old 为空） |
+| added_ops / removed_ops / changed_ops | JSON | NOT NULL | 三态集合 |
+| breaking_changed_ops | JSON | NOT NULL | **唯一触发回归圈定**（required 收紧/type 变/字段删/枚举删减，F2） |
+| affected_case_ids | JSON | NOT NULL | breaking 变更的 **active** 用例 id 快照 |
+| affected_count | INTEGER | NOT NULL | 冗余计数；模型层 `@validates("affected_case_ids")` **整体赋值时同步**（写入口收敛整体替换） |
+| orphaned_case_ids | JSON | NOT NULL | removed 接口绑定的用例（迁移清单，不自动回归） |
+| suggested_remap | JSON | NOT NULL | `{removed_op: added_op}` 相似名配对（difflib，只建议不自动重绑） |
+| untested_ops | JSON | NOT NULL | 未绑 active 用例的接口清单（首次=全部，Phase 3 铺路） |
+| affected_summary | JSON | NOT NULL | `{total}`（快照期；回归时按执行时真实口径重算） |
+| last_regression_at / last_regression_task_id / last_regression_executed_count | DATETIME / VARCHAR / INTEGER | NULL | **回归结果持久化**（每次一键回归更新，可追溯） |
+| created_at / updated_at | DATETIME | TimestampMixin | |
+
 ## 3. 状态机
 
 ### 3.1 test_cases
@@ -93,10 +124,13 @@ pending/running ──(超时劫持 scan_stale_tasks)──▶ failed（error_st
 | `case_ids` JSON 快照 | 执行冻结语义：运行中用例被改/删不污染结果 |
 | 结果落 `result_summary` JSON（无 CaseResult 表） | Phase 1 简化：总览即可；Phase 2 需逐用例明细时再拆表 |
 | base_url 写死 `config/settings.yaml`（无 Environment 表） | MVP 简化：Phase 2 再补多环境管理 |
+| 分段 hash + operation_contracts（api_definitions） | O(1) diff（只存 hashes 不存原文）+ breaking 联合判定（F1/F2） |
+| `affected_case_ids` 快照 + `last_regression_*`（impact_analyses） | 回归依据冻结 + 结果持久化可追溯（F3）；count 由 @validates 写时同步 |
+| reparse 覆盖（version UNIQUE） | 同 version 再解析先删旧插新，CI 重复触发不膨胀版本表 |
 
-## 6. Phase 2+ 表（延迟，当前不建）
+## 6. 后续表（延迟，当前不建）
 
-- **environments**（Phase 2 多环境管理）：name/base_url/global_headers/timeout_seconds。
-- **case_results**（Phase 2 需逐用例明细时再拆）：task_id/case_id 外键，UNIQUE(task_id, case_id) 幂等。
-- **api_definitions / impact_analyses**（Phase 2 影响分析）：Swagger 版本快照 + operation_hashes + diff 结果。
+- **environments**（多环境管理）：name/base_url/global_headers/timeout_seconds。
+- **case_results**（需逐用例明细时再拆）：task_id/case_id 外键，UNIQUE(task_id, case_id) 幂等。
+- **api_definitions / impact_analyses**：**Phase 2 已建**（见 §2.3/§2.4）。
 - **generation_log**（Phase 3 LLM 成本日志）：usage 明细 + cost_estimate。
