@@ -1,9 +1,14 @@
-# 测试用假实现。why：隔离 subprocess（不真跑 pytest/网络）。
+# 测试用假实现。why：隔离 subprocess / LLM（不真跑 pytest/网络/真调 API）。
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
+from app.core.exceptions import AppError
+from app.utils.llm_client import LlmUsage
 from app.utils.subprocess_util import CmdResult
+from pydantic import ValidationError
 
 JUNIT_OK = """<?xml version="1.0" encoding="utf-8"?>
 <testsuites>
@@ -41,3 +46,30 @@ def make_fake_run_cmd(
         return CmdResult(returncode, stdout, stderr, 100, pid)
 
     return _run
+
+
+class FakeLlmClient:
+    """Fake LLM：内部调真实 schema.model_validate（不跳过校验链路，间隙 3）；
+    失败模式抛 AppError 带 raw_response；LlmUsage 固定 100/50/150。"""
+
+    def __init__(self, *, data=None, raise_error=None):
+        self.data = data
+        self.raise_error = raise_error
+        self.settings = SimpleNamespace(model="fake-model", cost_per_1k_tokens=0.001)
+        self.calls: list[dict] = []
+
+    def chat_json(self, system, user, *, schema):
+        self.calls.append({"system": system, "user": user})
+        if self.raise_error is not None:
+            raise self.raise_error
+        if self.data is None:
+            self.data = {
+                "cases": [{"name": "正向", "method": "GET", "path": "/users", "expected_status": 200}]
+            }
+        try:
+            parsed = schema.model_validate(self.data)  # 真实 Pydantic 校验链路
+        except ValidationError as e:
+            exc = AppError("LLM_VALIDATION_FAILED", status_code=502, detail=f"Pydantic 校验失败: {e}")
+            exc.raw_response = json.dumps(self.data, ensure_ascii=False)
+            raise exc from e
+        return parsed, LlmUsage(100, 50, 150)

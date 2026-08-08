@@ -19,3 +19,12 @@ class TaskStatus(StrEnum):
     RUNNING = "running"
     SUCCESS = "success"
     FAILED = "failed"
+
+
+class GenerationStatus(StrEnum):
+    """AI 生成任务状态机（对齐执行任务 TaskStatus 的简单四态）。"""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILED = "failed"

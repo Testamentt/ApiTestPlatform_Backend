@@ -14,11 +14,15 @@ from app.repositories.impact_analysis_repository import ImpactAnalysisRepository
 from app.schemas.impact import (
     AffectedCase,
     AnalyzeResult,
+    FixHint,
     RegressionResult,
 )
 from app.schemas.task import TaskCreate
 from app.services.task_service import TaskService
 from app.utils.impact_diff import build_suggested_remap, diff_operations
+from app.utils.llm_client import (
+    LlmClient,  # 类 import 不实例化（构造才读 env），惰性创建见 __init__/suggest_fix_hints
+)
 from app.utils.openapi_parser import parse_openapi
 
 logger = logging.getLogger(__name__)
@@ -31,6 +35,7 @@ class ImpactService:
         self.def_repo = ApiDefinitionRepository(session)
         self.case_repo = CaseRepository(session)
         self.task_service = TaskService(session)
+        self.llm = None  # 惰性创建：suggest_fix_hints 才实例化 LlmClient（不影响 analyze 纯规则 + 测试可注入）
 
     def analyze(
         self,
@@ -116,7 +121,33 @@ class ImpactService:
             suggested_remap=analysis.suggested_remap,
             untested_ops=analysis.untested_ops,
             warnings=parsed.warnings,
+            # 联动点 2：breaking 变更时提示「可按需生成修复建议」入口（细节 4）
+            has_fix_hint=bool(diff.breaking_changed),
+            fix_hint_endpoint=f"/api/v1/impact/{analysis.id}/fix-hints" if diff.breaking_changed else "",
         )
+
+    def suggest_fix_hints(self, analysis_id: int) -> dict | None:
+        """breaking 变更的一句话修复建议（best-effort，复用 llm_client）。
+        why：analyze 保持纯规则秒回；建议按需生成、失败置 None 不阻塞——不让 LLM 拖慢规则引擎，但给用户 AI 助手。"""
+        analysis = self.impact_repo.get_or_raise(analysis_id)
+        if not analysis.breaking_changed_ops:
+            raise AppError("NO_BREAKING_CHANGES", status_code=422, detail="无 breaking 变更，无需修复建议")
+        llm = self.llm or LlmClient()
+        system = "你是接口测试专家，针对破坏性接口变更给出一句话可执行的修复建议。"
+        user = (
+            "以下接口发生破坏性变更（字段被删 / required 收紧 / 类型变化 / 枚举删减）："
+            + ", ".join(analysis.breaking_changed_ops)
+            + "。请给出一句话建议。"
+        )
+        try:
+            parsed, _ = llm.chat_json(system, user, schema=FixHint)
+        except AppError as e:
+            logger.warning("fix-hints 生成失败（best-effort 置 None）: %s", e.detail)
+            return None
+        hint = {"breaking_changed_ops": analysis.breaking_changed_ops, "suggestion": parsed.suggestion}
+        analysis.ai_fix_hint = hint
+        self.session.commit()
+        return hint
 
     def regression(self, analysis_id: int) -> RegressionResult:
         """一键回归。宽容降级：快照里失效用例被过滤，只执行仍 active 的；summary 用执行时真实口径（D6）。"""

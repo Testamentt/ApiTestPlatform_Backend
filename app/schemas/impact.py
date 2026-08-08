@@ -2,7 +2,7 @@
 # RegressionResult 带执行时真实口径 summary + dropped 原因（D6/追问 3）。
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AnalyzeRequest(BaseModel):
@@ -32,6 +32,21 @@ class AnalyzeResult(BaseModel):
     suggested_remap: dict
     untested_ops: list[str]
     warnings: list[str] = []
+    has_fix_hint: bool = False  # breaking 变更时提示可按需生成修复建议（联动点 2）
+    fix_hint_endpoint: str = ""  # 可调用的建议端点路径
+
+
+class FixHint(BaseModel):
+    """LLM 修复建议输出 schema（extra="forbid" 严格校验）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    suggestion: str
+
+
+class FixHintResult(BaseModel):
+    analysis_id: int
+    ai_fix_hint: dict | None  # None = best-effort 失败（不阻塞 analyze 纯规则秒回）
 
 
 class RegressionResult(BaseModel):

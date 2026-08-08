@@ -28,7 +28,7 @@ def configure_celery(app: Celery) -> None:
         task_serializer="json",
         result_serializer="json",
         accept_content=["json"],
-        include=["app.tasks.execute_cases", "app.tasks.supervisor"],
+        include=["app.tasks.execute_cases", "app.tasks.supervisor", "app.tasks.generate_cases"],
     )
 
 

@@ -32,5 +32,14 @@ class TestCase(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, default=CaseSource.MANUAL, server_default=text("'manual'")
     )
+    # 【面试锚点】血缘可信度 0-100。计算口径：
+    # - 手工创建 = 100（Phase 1/2）
+    # - AI 生成（校验通过，parse warnings 为空）= 80（Phase 3）
+    # - AI 生成（校验通过，parse warnings 非空）= 60（Phase 3）
+    # 赋值位置：generation_service.generate 中逐 operation 落库时写入（可导航指针）。
+    # 低分用例需重点 Review（confirm 是进 active 的唯一入口，天然兜底）；动态降权 Phase 4。
+    trust_score: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=100, server_default=text("100")
+    )
 
     __table_args__ = (Index("idx_test_cases_status", "status"),)
