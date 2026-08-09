@@ -1,18 +1,19 @@
-# 架构设计（architecture.md）· Phase 1 简化版
+# 架构设计（architecture.md）· Phase 1-3 实现版
 
 > 规则引用：本项目的所有实现必须遵守 `RULES.md`（§1-§18 权威规则）。本文是总体架构基准文档，描述 MVP 零前端、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
-> **Phase 1-3 范围**：Phase 1「用例 + 任务执行」闭环（已完成）；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；Phase 3「AI 生成」——OpenAPI→LLM→draft 用例（复用解析器 + llm_client）。
+> **Phase 1-3 均已实现**：Phase 1「用例 + 任务执行」闭环；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；Phase 3「AI 生成」——OpenAPI→LLM→draft 用例（复用解析器 + llm_client + 三层防幻觉护栏）。
 
 ## 1. 目标与非目标
 
-**目标**：交付可运行、可测试、可讲清楚（面试防守）的 MVP——「创建用例 → 异步执行 → 查看结果」闭环。
+**目标**：交付可运行、可测试、可讲清楚（面试防守）的 MVP——「创建用例 → 异步执行 → 查看结果」闭环，扩展「接口变更自动圈定影响」与「AI 辅助用例生成」。
 
 **非目标（当前不包含）**：
 - 前端界面（**MVP 界面 = FastAPI Swagger UI**，零前端代码；Vue 为 Phase 4 可选）
 - 鉴权与限流（**均不做**，演示开箱即用；Phase 4 加 Bearer Token）
-- 多环境管理（base_url 写死 config）、AI 用例生成（Phase 3）
+- 多环境管理（base_url 写死 config）
 
 **Phase 2 已新增**：影响分析（parse/impact，纯规则 Diff+SQL 秒回）——见 [impact-analysis.md](impact-analysis.md)。
+**Phase 3 已新增**：AI 智能生成（generate/fix-hints，LLM 异步 + 三层防幻觉护栏）——见 [ai-generation.md](ai-generation.md)。
 
 ## 2. 架构总览（MVP 零前端 + 后端三层）
 
@@ -30,6 +31,8 @@
 │ 【Web 服务层】 FastAPI + SQLAlchemy（同步 def 端点 + 线程池）    │
 │   ├─ 用例 CRUD + 审核    /api/v1/cases                         │
 │   ├─ 任务触发/查询       /api/v1/tasks                          │
+│   ├─ Swagger 解析/影响    /api/v1/parse、/api/v1/impact/*        │
+│   ├─ AI 生成             /api/v1/generate（异步 202）            │
 │   └─ 健康检查            /api/v1/health                        │
 │     ① 写 DB 任务记录(status=PENDING)   ② send_task 入队       │
 └──────────────────────────┬───────────────────────────────────┘
@@ -41,10 +44,11 @@
                            ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ 【执行引擎层】 Celery Worker（独立进程，--pool=solo）            │
-│   ④ 动态生成 test_xxx.py → subprocess pytest                  │
+│   execute_cases: 动态生成 test_xxx.py → subprocess pytest      │
 │      （run_cmd 封装：白名单 + timeout + taskkill /T /F 兜底）   │
-│   ⑤ 解析 JUnit XML → 结果写 tasks.result_summary             │
-│   ⑥ 生成 HTML 报告链接                                       │
+│      解析 JUnit XML → 结果写 tasks.result_summary → HTML 报告  │
+│   generate_cases: parse → 逐 op LLM → draft 落库 → 审计        │
+│      （llm_client 唯一封装，短事务分界，三层防幻觉护栏）         │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -56,15 +60,15 @@
 
 ## 4. 异步任务与超时兜底模型
 
-统一异步模式（Phase 1 仅 execute）：
+统一异步模式（execute 执行 + generate 生成，两套独立任务表与状态机）：
 
-1. Web 层算 `run_id`（sha256(case_ids+timeout)）→ **查重：存在即返回已有任务**（Lookup-Create）→ 否则写 DB 记录（PENDING）→ `send_task` → **立即返回 202**
-2. 客户端轮询 `GET /api/v1/tasks/{id}` 获取状态与结果
+1. Web 层算 `run_id`（sha256(输入指纹)）→ **查重：存在即返回已有任务**（Lookup-Create）→ 否则写 DB 记录（PENDING）→ `send_task` → **立即返回 202**
+2. 客户端轮询 `GET /api/v1/tasks/{id}` 或 `GET /api/v1/generate/{id}` 获取状态与结果
 3. Worker 内短事务写入结果（先查→提交关事务→算→再开新事务写入，RULES.md §2.1）
 
-Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `task_reject_on_worker_lost=True`；`soft_time_limit`/`time_limit`（300/360）；`visibility_timeout`(1h) > `time_limit`。
-- **任务幂等**：`run_id`（sha256）+ `UNIQUE`，Lookup-Create 存在即返回，防重复执行。
-- **超时劫持**：Worker 启动扫描一次（无 Beat）；running 超时 → taskkill 杀树 → 迁移 `failed`（error_stage=timeout），**禁止自动重试**。
+Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `task_reject_on_worker_lost=True`；执行任务 `soft_time_limit`/`time_limit`（300/360）；生成任务 `soft_time_limit`/`time_limit`（540/600，软超时捕获 `force_fail_timeout` 落 FAILED）；`visibility_timeout`(1h) > 各任务 `time_limit`。
+- **任务幂等**：`run_id`（sha256）+ `UNIQUE`，Lookup-Create 存在即返回，防重复执行/重复调 LLM 花钱。
+- **超时劫持**：执行任务 Worker 启动扫描一次（无 Beat）；running 超时 → taskkill 杀树 → 迁移 `failed`（error_stage=timeout），**禁止自动重试**。生成任务软超时 → `force_fail_timeout` 落 FAILED。
 
 ## 5. 核心数据流时序（执行链路，Phase 1）
 
@@ -111,10 +115,13 @@ Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `
 
 | 决策 | 理由 |
 | --- | --- |
-| 异步解耦 | Web 只写 DB + send_task 立即返回 202；pytest 在独立 Worker，Web 不阻塞（面试锚点） |
-| 超时兜底双保险 | `run_cmd(timeout)` + **`scan_stale_tasks` 从 DB 读 pid 杀树**（权威） |
-| run_id Lookup-Create | sha256 + UNIQUE，存在即返回，防重复执行（面试锚点） |
-| `operation_id` NOT NULL | Phase 2 影响分析血缘（前瞻卖点） |
+| 异步解耦 | Web 只写 DB + send_task 立即返回 202；pytest/LLM 在独立 Worker，Web 不阻塞（面试锚点） |
+| 超时兜底双保险 | `run_cmd(timeout)` + **`scan_stale_tasks` 从 DB 读 pid 杀树**（权威）；生成任务软超时捕获落 FAILED |
+| run_id Lookup-Create | sha256 + UNIQUE，存在即返回，防重复执行/重复调 LLM 花钱（面试锚点） |
+| `operation_id` NOT NULL | Phase 2 影响分析血缘 + Phase 3 服务端注入（前瞻卖点） |
+| breaking 五场景判定 | required/type/enum/字段删除/状态码替换联合判定，放宽不误圈（精准回归卖点） |
+| 三层防幻觉护栏 | extra="forbid" 严格校验 + draft 恒为人工 confirm + operation_id 服务端注入 |
+| LLM 唯一封装 | llm_client 收敛超时/重试/长度预检/成本，测试可注入 Fake（评审红线） |
 | MVP 零前端 | 界面 = Swagger UI，零前端代码 |
 
 ## 7. 前端形态（MVP 零前端，面试导向）
@@ -138,24 +145,24 @@ backend/
 │   ├── repositories/         # 数据访问（case / task / api_definition / impact_analysis / generation_task，物理删除）
 │   ├── tasks/                # Celery 任务（execute_cases / scan_stale_tasks / generate_cases）
 │   └── utils/                # subprocess_util / openapi_parser / llm_client / impact_diff / case_generator / junit_parser / report_util
-├── prompts/v1/               # 版本化 Prompt（system.md + user.md，占位符注入，写死 v1）
+├── prompts/v1/               # 版本化 Prompt（system/user/fix_hint_{system,user}.md，占位符注入，写死 v1）
 ├── docs/  tests/  scripts/
-└── .claude/                  # rules/RULES.md（§1-§18）、skills/
+└── .claude/                  # rules/RULES.md（§1-§18）、skills/（仅本地，不入库）
 ```
 
-依赖单向：`api → service → repository → model`；外部调用（subprocess / HTTP）统一走 `app/utils/` 封装。`frontend/` 为独立 git 仓库（Phase 4 可选）。
+依赖单向：`api → service → repository → model`；外部调用（subprocess / HTTP / LLM）统一走 `app/utils/` 封装。`frontend/` 为独立 git 仓库（Phase 4 可选）。
 
 ## 9. 预期与风险
 
-- 预期：Web 响应稳定 <50ms；支持 10+ 用例并发；死循环用例被超时强杀，系统不卡死。
-- 风险：SQLite 双进程并发写（WAL + busy_timeout + 单 Worker 串行规避）；网络依赖（演示 httpbin.org，测试用 mock）；Windows 杀树不完全（scan_stale_tasks 兜底）。
+- 预期：Web 响应稳定 <50ms；支持 10+ 用例并发；死循环用例被超时强杀，系统不卡死；AI 生成 draft 供人工审核。
+- 风险：SQLite 双进程并发写（WAL + busy_timeout + 单 Worker 串行规避）；网络依赖（演示 httpbin.org 外网不稳，测试用 mock；LLM 依赖 DeepSeek 可用性，失败宽容降级记 log）；Windows 杀树不完全（scan_stale_tasks 兜底）。
 
 ## 10. 相关文档
 
-- [database.md](database.md) — 数据模型（Phase 1-2：4 表 test_cases/tasks/api_definitions/impact_analyses）
-- [api.md](api.md) — REST API 设计（Phase 1-2：cases/tasks/health/parse/impact）
-- [execution-engine.md](execution-engine.md) — Celery 任务与执行引擎
-- [ai-generation.md](ai-generation.md) — AI 用例生成（Phase 3 前瞻）
-- [impact-analysis.md](impact-analysis.md) — 影响分析算法（Phase 2 已实现）
+- [database.md](database.md) — 数据模型（Phase 1-3：6 表 test_cases/tasks/api_definitions/impact_analyses/generation_tasks/generation_logs）
+- [api.md](api.md) — REST API 设计（Phase 1-3：cases/tasks/health/parse/impact/generate）
+- [execution-engine.md](execution-engine.md) — Celery 任务与执行引擎（execute + generate）
+- [ai-generation.md](ai-generation.md) — AI 用例生成（Phase 3 已实现：Prompt 管理 + llm_client + 三层护栏 + 审计）
+- [impact-analysis.md](impact-analysis.md) — 影响分析算法（Phase 2 已实现，含 fix-hints）
 - [configuration.md](configuration.md) — 配置管理
 - [roadmap.md](roadmap.md) — 迭代路线

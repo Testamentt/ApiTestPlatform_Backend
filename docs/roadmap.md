@@ -90,7 +90,7 @@
 - [x] 2 张业务表字段级设计（test_cases/tasks）+ create_all 迁移策略（database.md，Phase 4 切 Alembic）
 - [x] REST 端点 + 统一异步模式（api.md）
 - [x] Celery 任务 + subprocess 执行 + 超时劫持（execution-engine.md）
-- [x] Prompt 版本化管理 + llm_client + 三层防幻觉护栏（ai-generation.md，Phase 3 前瞻）
+- [x] Prompt 版本化管理 + llm_client + 三层防幻觉护栏（ai-generation.md，Phase 3 已实现）
 - [x] 版本快照 + O(1) diff + SQL 反向检索（impact-analysis.md，Phase 2 前瞻）
 - [x] Pydantic 配置字段树 + 配置契约（configuration.md + config/）
 - [x] 双仓库结构（backend/ + frontend/，frontend 可选）

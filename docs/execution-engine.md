@@ -1,16 +1,15 @@
-# 执行引擎设计（execution-engine.md）· Phase 1 简化版
+# 执行引擎设计（execution-engine.md）· Phase 1-3 实现版
 
 > 规则引用：`RULES.md` §2.3（统一超时）、§2.4（subprocess 规范，MVP 已放宽）、§8（Celery 任务治理）。
-> **Phase 1 简化（面试导向）**：仅 `execute_cases` + `scan_stale_tasks` 两个 Celery 任务；subprocess 用 `subprocess.run(timeout)` + 白名单；报告用简单 HTML；无 Beat。
+> **Phase 1-3（面试导向）**：`execute_cases`（用例执行）+ `generate_cases`（AI 生成）两个 Worker 任务 + `scan_stale_tasks` 超时劫持；subprocess 用 `subprocess.run(timeout)` + 白名单；报告用简单 HTML；无 Beat。
 
-## 1. Celery 任务清单（Phase 1）
+## 1. Celery 任务清单（Phase 1-3）
 
 | 任务名 | 输入 | 输出/副作用 | 状态流转 |
 | --- | --- | --- | --- |
 | `execute_cases(task_id)` | task_id（从 DB 读上下文） | 动态生成 test_xxx.py → subprocess pytest → JUnit 解析 → 写 tasks.result_summary + report_link | pending→running→success/failed |
+| `generate_cases(task_id)` | task_id（从 DB 读 document） | parse → 逐 operation LLM 生成 → draft 落库 + generation_logs 审计 → result_summary | pending→running→success/failed（见 [ai-generation.md](ai-generation.md)） |
 | `scan_stale_tasks()` | 无 | 扫描 running 超时任务 → taskkill → 迁移 failed | 运维任务（Worker 启动触发一次，**无 Beat**） |
-
-> `generate_cases` / `impact_analyze` 属 Phase 2/3，本期不建。
 
 ## 2. Celery 配置要点（值全部来自 Settings，禁止硬编码）
 
@@ -19,17 +18,19 @@
 task_acks_late = True
 worker_prefetch_multiplier = 1
 task_reject_on_worker_lost = True
-task_soft_time_limit = settings.celery.soft_time_limit      # 300
+task_soft_time_limit = settings.celery.soft_time_limit      # 300（执行任务默认）
 task_time_limit = settings.celery.time_limit                # 360
 broker_transport_options = {"visibility_timeout": settings.celery.visibility_timeout}  # 已接线
 result_expires = settings.celery.result_expires             # 3600（来自 config）
 broker_connection_retry_on_startup = True
+# generate_cases_task 单独覆盖：
+#   soft_time_limit=llm.task_soft_timeout_seconds(540) / time_limit=llm.task_timeout_seconds(600)
 ```
 
 - **acks_late + time_limit 必须配套**：acks_late 保证 worker 崩溃不丢任务；没有 time_limit 时卡死任务永不结束（RULES.md §16.7 面试防守点）。
-- **visibility_timeout（1h）> time_limit（360s）**：经 `broker_transport_options` 显式接线，否则运行中的任务被重复投递。
-- **软超时捕获**：`execute_cases_task` 捕获 `SoftTimeLimitExceeded` → `force_fail_timeout` 落 failed（error_stage=timeout）+ best-effort 杀树（RULES.md §8.2）。
-- **重试**：`autoretry_for=(瞬时异常,)` + `retry_backoff=True`/`max_retries=settings.celery.max_retries`；只对瞬时异常重试，业务/参数错误直接 failed。
+- **visibility_timeout（1h）> time_limit**：经 `broker_transport_options` 显式接线（3600 > 600），否则运行中的任务被重复投递。
+- **软超时捕获**：`execute_cases_task`/`generate_cases_task` 均捕获 `SoftTimeLimitExceeded` → `force_fail_timeout` 落 failed（error_stage=timeout）+ best-effort 清理（RULES.md §8.2）。
+- **重试**：执行任务 `autoretry_for=(瞬时异常,)` + `retry_backoff=True`/`max_retries=settings.celery.max_retries`；生成任务**不设 autoretry**（LLM 瞬时重试已在 llm_client 内部收敛，Celery 层重跑会重复生成 draft）；业务/参数错误直接 failed。
 - **单写者**：Windows 本地 `--pool=solo`（或 `--concurrency=1`）串行化写 SQLite。
 
 ## 3. subprocess 统一封装（run_cmd，MVP 简化版）
@@ -62,6 +63,12 @@ broker_connection_retry_on_startup = True
 ```
 
 **执行安全边界**：只运行**人工确认过的 active 用例**；test 文件由结构化字段渲染（非自由文本）；`run_cmd` 命令白名单 + `shell=False`。
+
+## 4.1 generate_cases 执行流程（短事务分界）
+
+> 完整设计见 [ai-generation.md](ai-generation.md) §7。要点：
+> PENDING→RUNNING 置位（短事务）→ `parse_openapi`（无 Session，CPU 密集不占连接）→ 定向过滤 operation_ids（未命中记 skipped）→ 逐 operation **串行**调 LLM（宽容：单接口失败/校验失败记 `generation_logs` 继续，不拖垮整批）→ draft 落库（operation_id 服务端注入 + trust_score）+ 审计 → result_summary + SUCCESS。
+> 终态兜底：解析失败 FAILED(parse)；意外异常外层兜底 FAILED(internal)；软超时 `force_fail_timeout` FAILED(timeout)——保证不卡 RUNNING（RULES §8.2/§8.3）。
 
 ## 5. 超时劫持机制（scan_stale_tasks，MVP 简化版）
 

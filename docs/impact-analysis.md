@@ -1,7 +1,7 @@
-# 变更影响分析设计（impact-analysis.md）· Phase 2 简化版
+# 变更影响分析设计（impact-analysis.md）· Phase 2-3 实现版
 
-> 规则引用：`RULES.md` §5.2（索引）、§6.2（日志）。本文描述接口变更影响自动圈定的核心算法：版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归。对应规格书亮点 ②。
-> **Phase 2 简化（面试导向，纯规则引擎无 AI）**：仅 `parse / impact/analyze / impact/{id}/regression` 三个端点；Git Webhook、字段级差异 UI、priority 字段均延后。
+> 规则引用：`RULES.md` §5.2（索引）、§6.2（日志）。本文描述接口变更影响自动圈定的核心算法：版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归 + fix-hints 修复建议。对应规格书亮点 ②。
+> **Phase 2 已实现（面试导向，纯规则引擎无 AI）**：`parse / impact/analyze / impact/{id}/regression` 三端点；**Phase 3 新增 `impact/{id}/fix-hints`**（breaking 修复建议，轻量 LLM，best-effort）；Git Webhook、字段级差异 UI、priority 字段均延后。
 
 ## 1. 数据源：api_definitions 版本快照
 
@@ -84,6 +84,20 @@ POST /impact/{analysis_id}/regression
   → mark_regression 落库 last_regression_* + 结构化日志审计（analysis_id/task_id/executed/dropped/reasons）
   → 202 {task_id}
 ```
+
+## 6.1 fix-hints 修复建议（Phase 3 联动，best-effort）
+
+```
+POST /impact/{analysis_id}/fix-hints
+  → 读 breaking_changed_ops（无则 422）
+  → 短事务分界：先查关事务再调 LLM（§2.1）
+  → prompts/v1/fix_hint_* 模板渲染（breaking_ops 经 repr 定界注入，§3.2/§10.1）
+  → llm_client.chat_json(FixHint schema) → 审计写 generation_logs(model='fix_hint'，成功/失败均落库，§9.6)
+  → 成功：ai_fix_hint = {breaking_changed_ops, suggestion}；失败：置 None 不阻塞（best-effort）
+```
+
+- `AnalyzeResult` 返回 `has_fix_hint` + `fix_hint_endpoint` 提示入口——analyze 保持纯规则秒回，建议按需生成。
+- 设计权衡：fix-hints 为轻量同步建议（Web 请求线程 best-effort，失败置 None），非用例生成，故不引入 Celery（已满足短事务分界，文档明示该权衡）。
 
 ## 7. 宽容解析（带 warnings，不静默）
 
