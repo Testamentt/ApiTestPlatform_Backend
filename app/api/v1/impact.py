@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db
+from app.api.v1.deps import get_db, verify_token
 from app.schemas.common import ApiResponse
 from app.schemas.impact import (
     AnalyzeRequest,
@@ -15,7 +15,7 @@ from app.schemas.impact import (
 )
 from app.services.impact_service import ImpactService
 
-router = APIRouter(tags=["impact"])
+router = APIRouter(tags=["impact"], dependencies=[Depends(verify_token)])
 
 
 @router.post("/impact/analyze", response_model=ApiResponse[AnalyzeResult])

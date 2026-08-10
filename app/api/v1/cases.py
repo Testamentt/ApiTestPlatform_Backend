@@ -4,12 +4,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db
+from app.api.v1.deps import get_db, verify_token
 from app.schemas.case import CaseCreate, CaseRead, CaseUpdate, ConfirmBody, ConfirmResult
 from app.schemas.common import ApiResponse, Page
 from app.services.case_service import CaseService
 
-router = APIRouter(tags=["cases"])
+router = APIRouter(tags=["cases"], dependencies=[Depends(verify_token)])
 
 
 @router.get("/cases", response_model=ApiResponse[Page[CaseRead]])
@@ -30,15 +30,11 @@ def list_cases(
         operation_id=operation_id,
         keyword=keyword,
     )
-    return ApiResponse(
-        data=Page(items=items, total=total, page=page, page_size=page_size)
-    )
+    return ApiResponse(data=Page(items=items, total=total, page=page, page_size=page_size))
 
 
 @router.post("/cases", response_model=ApiResponse[CaseRead], status_code=201)
-def create_case(
-    payload: CaseCreate, db: Session = Depends(get_db)
-) -> ApiResponse[CaseRead]:
+def create_case(payload: CaseCreate, db: Session = Depends(get_db)) -> ApiResponse[CaseRead]:
     case = CaseService(db).create_case(payload)
     return ApiResponse(data=case)
 

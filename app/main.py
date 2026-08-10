@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -33,7 +34,23 @@ def create_app() -> FastAPI:
     # why：StaticFiles 挂载要求目录已存在，故在 create_app 时确保目录就绪
     Path("data").mkdir(exist_ok=True)
     Path(settings.execution.workspace_dir).mkdir(exist_ok=True)
-    app = FastAPI(title=settings.app.name, version=settings.app.version, lifespan=lifespan)
+    # why：docs_url 用配置开关（§10.5 生产设 docs_enabled=false 即关 /docs），默认开供演示开箱即用
+    app = FastAPI(
+        title=settings.app.name,
+        version=settings.app.version,
+        lifespan=lifespan,
+        docs_url="/docs" if settings.app.docs_enabled else None,
+        redoc_url="/redoc" if settings.app.docs_enabled else None,
+    )
+    # why：CORS 按需挂载——frontend.cors_origins 为空（MVP 零前端）时不发 CORS 头，符合 §10.5 白名单原则
+    if settings.frontend.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.frontend.cors_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+            allow_credentials=False,
+        )
     app.include_router(api_router)
 
     @app.exception_handler(AppError)
@@ -52,9 +69,7 @@ def create_app() -> FastAPI:
             content={"code": "INTERNAL_ERROR", "message": "服务器内部错误", "detail": None},
         )
 
-    app.mount(
-        "/static", StaticFiles(directory=settings.execution.workspace_dir), name="static"
-    )
+    app.mount("/static", StaticFiles(directory=settings.execution.workspace_dir), name="static")
 
     @app.get("/", include_in_schema=False)
     def _root() -> RedirectResponse:

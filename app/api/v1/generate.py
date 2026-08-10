@@ -4,12 +4,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db
+from app.api.v1.deps import get_db, verify_token
 from app.schemas.common import ApiResponse
 from app.schemas.generate import GenerateRequest, GenerateTaskRead
 from app.services.generation_service import GenerationService
 
-router = APIRouter(tags=["generate"])
+router = APIRouter(tags=["generate"], dependencies=[Depends(verify_token)])
 
 
 @router.post("/generate", response_model=ApiResponse[GenerateTaskRead], status_code=202)

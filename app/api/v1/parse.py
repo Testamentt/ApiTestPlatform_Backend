@@ -4,18 +4,16 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.v1.deps import get_db
+from app.api.v1.deps import get_db, verify_token
 from app.schemas.common import ApiResponse
 from app.schemas.swagger import ParseRequest, ParseResult
 from app.services.swagger_service import SwaggerService
 
-router = APIRouter(tags=["swagger"])
+router = APIRouter(tags=["swagger"], dependencies=[Depends(verify_token)])
 
 
 @router.post("/parse", response_model=ApiResponse[ParseResult], status_code=201)
-def parse_swagger(
-    payload: ParseRequest, db: Session = Depends(get_db)
-) -> ApiResponse[ParseResult]:
+def parse_swagger(payload: ParseRequest, db: Session = Depends(get_db)) -> ApiResponse[ParseResult]:
     definition, warnings = SwaggerService(db).parse_document(payload.document, payload.version)
     return ApiResponse(
         data=ParseResult(

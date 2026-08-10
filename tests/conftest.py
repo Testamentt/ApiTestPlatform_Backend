@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from app.api.v1.deps import get_db
+from app.api.v1.deps import get_db, verify_token
 from app.celery_app import celery_app
 from app.core.database import Base
 from app.main import app
@@ -41,6 +41,8 @@ def client(session_factory):
             db.close()
 
     app.dependency_overrides[get_db] = _override_get_db
+    # Phase 4：现有测试绕过鉴权（test_auth.py 用独立 auth_client 走真实 verify_token）
+    app.dependency_overrides[verify_token] = lambda: None
     # 不用上下文管理器：避免触发 lifespan 去动真实 DB
     yield TestClient(app)
     app.dependency_overrides.clear()
