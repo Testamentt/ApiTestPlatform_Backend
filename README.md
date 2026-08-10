@@ -14,13 +14,13 @@
 | 变更影响不可控 | 接口定义变更后回归范围凭经验判断，漏测风险高（1~2 h） | **接口变更影响自动圈定**：Git Webhook → Diff → 受影响用例反向检索 → 一键回归（<10 s，覆盖率 100%） |
 | 执行阻塞 | Web 服务同步调 pytest，长耗时导致请求超时、服务不可用（同步超时率 30%+） | **异步任务解耦 + 超时兜底**：Celery + Redis 异步队列，Web 响应稳定 <50 ms，300s 超时强杀 |
 
-> 实现进度：**Phase 1 已交付执行闭环**（创建用例 → 异步执行 → 查看结果），**Phase 2 已交付影响分析**（parse/impact 纯规则圈定 + 一键回归），**Phase 3 已交付 AI 智能生成**（generate/fix-hints + 三层防幻觉护栏 + trust_score）；Phase 4 生产化与前端为可选，见 [docs/roadmap.md](docs/roadmap.md)。
+> 实现进度：**Phase 1 执行闭环** / **Phase 2 影响分析** / **Phase 3 AI 智能生成** 已交付；**Phase 4 生产化已交付**——Docker Compose 一键跑 + GitHub Actions CI 门禁 + Bearer Token 鉴权。详见 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 架构速览
 
 ```
 用户 / CI 系统
-   │ REST /api/v1（Phase 4 加 Bearer Token）
+   │ REST /api/v1（Bearer Token 鉴权，Phase 4）
    ▼
 【MVP 界面】 FastAPI Swagger UI（/docs，零前端代码；Phase 4 可选 Vue 3）
    │ HTTP JSON
@@ -48,9 +48,9 @@ TestPlatform/                # 容器目录（非 git 仓库）
 
 ## 快速开始
 
-> ⚠️ 需要本地 Redis（127.0.0.1:6379）；Windows 下 Worker 必须 `--pool=solo`。
+> ⚠️ 需要本地 Redis（127.0.0.1:6379）；Windows 下 Worker 必须 `--pool=solo`；面试演示可直接用 Docker Compose 一键起（见下）。
 
-**环境要求**：Python 3.12+、Redis（本地 127.0.0.1:6379）。
+**环境要求**：Python 3.12+、Redis（本地 127.0.0.1:6379）；或装 Docker Desktop 走 `docker compose up`（推荐演示）。
 
 ```bash
 # 以下命令在 backend/ 仓库内执行；前端为独立仓库 ../frontend
@@ -72,7 +72,11 @@ celery -A app.celery_app:celery_app worker --pool=solo
 # 5. 一键拉起 Web + Worker（两个独立窗口，各自看日志）
 scripts\start_all.bat
 
-# （Phase 4 可选）Vue 前端：cd ../frontend && npm install && npm run dev
+# 6. （推荐面试演示）Docker Compose 一键跑：FastAPI + Redis + Worker + SQLite
+#    需先装 Docker Desktop；Swagger 界面带 Authorize 按钮，token 默认 testplatform-dev-token
+docker compose up --build
+
+# （Phase 4 可选延后）Vue 前端：cd ../frontend && npm install && npm run dev
 ```
 
 ## 核心特性
@@ -81,6 +85,8 @@ scripts\start_all.bat
 - 📊 **HTML 报告**（Phase 1 已实现）：任务执行后生成自包含 HTML 报告并挂载链接（MVP 替代 Allure，后续可换）。
 - 🧠 **接口变更影响圈定**（Phase 2 已实现）：`operation_id` 血缘 + **分段 hash O(1) diff** + **breaking 联合判定** + SQL 反向检索，破坏性变更自动圈定受影响用例、给出孤儿迁移清单，一键回归（宽容降级）。
 - ✅ **AI 用例智能生成**（Phase 3 已实现）：自研 OpenAPI 3.0 解析器 + 结构化 Prompt 生成正向/逆向/边界值用例；`llm_client` 唯一封装（结构化输出 + 长度预检 + 成本审计）、三层防幻觉护栏（严格校验 + draft 恒为 + operation_id 服务端注入）、`trust_score` 血缘可信度、`POST /generate` 异步生成 + `POST /impact/{id}/fix-hints` 修复建议，155 测试全绿。
+- 🐳 **容器化部署**（Phase 4 已实现）：多阶段 Dockerfile（非 root）+ `docker compose up` 一键拉起 FastAPI + Redis + Worker + SQLite（named volume 持久化、单写者 Worker）；GitHub Actions 三 job 门禁（ruff + pytest + coverage 60/80 + docker 镜像构建验证）。
+- 🔐 **Bearer Token 鉴权**（Phase 4 已实现）：`security.api_token` 配置 + HTTPBearer 统一依赖注入（无凭证 401 / 凭证错误 403），health 免鉴权作探针；Swagger UI 自带 Authorize 按钮；`/docs` 由 `app.docs_enabled` 开关控制（生产可关）。
 
 ## 文档索引
 
@@ -92,6 +98,6 @@ scripts\start_all.bat
 | [docs/execution-engine.md](docs/execution-engine.md) | Celery 任务、subprocess 执行、超时劫持、HTML 报告 |
 | [docs/ai-generation.md](docs/ai-generation.md) | OpenAPI 解析、Prompt 设计、draft→active 审核流 |
 | [docs/impact-analysis.md](docs/impact-analysis.md) | 变更影响分析算法、Webhook、一键回归 |
-| [docs/configuration.md](docs/configuration.md) | 配置管理（Pydantic Settings） |
+| [docs/configuration.md](docs/configuration.md) | 配置管理（Pydantic Settings，Phase 1-4 九段） |
 | [docs/roadmap.md](docs/roadmap.md) | 迭代路线（活文档） |
 | [tests/](tests/) | 单元 / 接口 / 任务测试（pytest 门禁，mock 隔离外部依赖） |

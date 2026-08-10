@@ -1,15 +1,15 @@
-# 架构设计（architecture.md）· Phase 1-3 实现版
+# 架构设计（architecture.md）· Phase 1-4 实现版
 
 > 规则引用：本项目的所有实现必须遵守 `RULES.md`（§1-§18 权威规则）。本文是总体架构基准文档，描述 MVP 零前端、后端三层、进程隔离与异步模型；与规则冲突时以 RULES.md 为准。
-> **Phase 1-3 均已实现**：Phase 1「用例 + 任务执行」闭环；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；Phase 3「AI 生成」——OpenAPI→LLM→draft 用例（复用解析器 + llm_client + 三层防幻觉护栏）。
+> **Phase 1-4 均已实现**：Phase 1「用例 + 任务执行」闭环；Phase 2「影响分析」——parse/impact 纯规则引擎（Diff+SQL）；Phase 3「AI 生成」——OpenAPI→LLM→draft 用例（复用解析器 + llm_client + 三层防幻觉护栏）；Phase 4「生产化」——Docker Compose 一键跑 + GitHub Actions CI + Bearer Token 鉴权（见 [roadmap.md](roadmap.md)）。
 
 ## 1. 目标与非目标
 
 **目标**：交付可运行、可测试、可讲清楚（面试防守）的 MVP——「创建用例 → 异步执行 → 查看结果」闭环，扩展「接口变更自动圈定影响」与「AI 辅助用例生成」。
 
 **非目标（当前不包含）**：
-- 前端界面（**MVP 界面 = FastAPI Swagger UI**，零前端代码；Vue 为 Phase 4 可选）
-- 鉴权与限流（**均不做**，演示开箱即用；Phase 4 加 Bearer Token）
+- 前端界面（**MVP 界面 = FastAPI Swagger UI**，零前端代码；Vue 为 Phase 4 可选，本轮未做）
+- **限流**（Phase 4 已补 Bearer Token 鉴权；Token/IP 限流仍延后，见 roadmap「待解决问题」）
 - 多环境管理（base_url 写死 config）
 
 **Phase 2 已新增**：影响分析（parse/impact，纯规则 Diff+SQL 秒回）——见 [impact-analysis.md](impact-analysis.md)。
@@ -126,14 +126,16 @@ Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `
 
 ## 7. 前端形态（MVP 零前端，面试导向）
 
-- **MVP 界面 = FastAPI Swagger UI（`/docs`）**：所有操作（创建用例 / 审核 draft / 触发执行 / 查看任务 / HTML 报告链接）直接在 Swagger UI 完成，零前端代码。开发环境开放；生产环境 `/docs` 关闭或鉴权保护（RULES.md §10.5）。
+- **MVP 界面 = FastAPI Swagger UI（`/docs`）**：所有操作（创建用例 / 审核 draft / 触发执行 / 查看任务 / HTML 报告链接）直接在 Swagger UI 完成，零前端代码。**Phase 4 起自带 Authorize 按钮**（Bearer Token 鉴权）；`/docs` 由 `app.docs_enabled` 配置开关控制，生产设 `TESTPLATFORM_APP_DOCS_ENABLED=false` 即关（RULES.md §10.5）。
 - **Vue 3（Phase 4 可选）**：`frontend/` 独立仓库，若做仅 2 页（用例列表 + 任务看板）。
 
 ## 8. 目录结构（backend/ 仓库，对齐 RULES.md §4）
 
 ```
 backend/
-├── pyproject.toml / .env / config/settings.yaml / alembic(Phase 4)
+├── pyproject.toml / .env / config/settings.yaml / alembic(延后)
+├── Dockerfile / docker-compose.yml / .dockerignore   # Phase 4 容器化（一键 docker compose up，§3.3）
+├── .github/workflows/ci.yml                          # Phase 4 CI（门禁测试 + slow + docker-build 验证）
 ├── app/
 │   ├── main.py               # 应用入口（路由聚合 + 异常 handler + /static 挂载 + lifespan 建表）
 │   ├── celery_app.py         # Celery app（显式读 Settings 拼 broker/backend + worker_ready 触发 scan）

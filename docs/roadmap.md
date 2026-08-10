@@ -14,13 +14,13 @@
 
 ## 当前目标
 
-**Phase 1 核心执行闭环已完成**（MVP 简化版）；**Phase 2 变更影响分析已完成**（parse/impact/regression 三端点已接线）；**Phase 3 AI 智能生成已完成**（155 测试全绿 + ruff 全绿 + e2e 冒烟，评审修复见会话沉淀）；当前进入 **Phase 4 生产化与前端增强**（可选）。
+**Phase 1 核心执行闭环已完成**（MVP 简化版）；**Phase 2 变更影响分析已完成**（parse/impact/regression 三端点已接线）；**Phase 3 AI 智能生成已完成**（155 测试全绿 + ruff 全绿 + e2e 冒烟，评审修复见会话沉淀）；**Phase 4 生产化已完成**（Docker Compose + GitHub Actions CI + Bearer Token 鉴权，见下方 Phase 4 验收）。
 
 ## 关键约束
 
 - 初始化分两阶段：**文档先行 → 用户确认 → 编码**（未确认不写代码）。
 - 全部实现遵守 `RULES.md`（§1-§18 硬性规则；面试导向原则见 §0）。
-- 本地环境：Windows 10 / Python 3.12.6 / Redis 127.0.0.1:6379（requirepass 见本地 .env，勿提交）/ Docker 未安装。
+- 本地环境：Windows 10 / Python 3.12.6 / Redis 127.0.0.1:6379（requirepass 见本地 .env，勿提交）/ Docker 未安装（Dockerfile/compose 由 CI docker-build job 验证；面试演示前装 Docker Desktop）。
 - Windows 本地 Celery worker 必须 `--pool=solo`。
 - 仓库结构：`backend/` 与 `frontend/` 两个独立 git 仓库（frontend 为 Phase 4 可选；前期界面 = Swagger UI）。
 
@@ -32,7 +32,7 @@
 | **Phase 1 · 核心执行闭环** | 已完成（MVP 简化） | 跑通「创建用例 → 异步执行 → 查看结果」，全程 Swagger UI，**不写一行前端** | 见下方验收清单 |
 | **Phase 2 · 影响分析**（核心卖点 1） | 1 周 | 接口变更自动圈定受影响用例（**纯规则引擎，无 AI**） | 新旧 Swagger → diff → 圈定受影响用例 → 一键回归 |
 | **Phase 3 · AI 智能生成**（核心卖点 2） | 已完成 | OpenAPI → LLM → draft 用例 → 人工确认转 active | 生成 5 个 draft → 审核 → active |
-| **Phase 4 · 生产化与前端增强**（可选） | 锦上添花 | Docker Compose + GitHub Actions；Vue 可选（仅 2 页） | 一键 `docker compose up` 跑通 |
+| **Phase 4 · 生产化与前端增强** | ✅ 已完成 ①②④ | Docker Compose + GitHub Actions + Bearer Token；Vue/PostgreSQL 可选延后 | 一键 `docker compose up` 跑通（CI docker-build job 已验证） |
 
 ### Phase 1 · 核心执行闭环（已完成，MVP 简化）
 
@@ -69,19 +69,20 @@
 
 > 砍掉/延后（Phase 4）：AI 采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、多版本 prompt、动态信任降权、前端展示。
 
-### Phase 4 · 生产化与前端增强（可选，锦上添花）
+### Phase 4 · 生产化与前端增强（✅ 已完成 ①②④；③⑤⑥ 可选延后）
 
-| 任务 | 说明 |
+| 任务 | 状态 |
 | --- | --- |
-| ① Docker Compose（FastAPI + Redis + Worker + SQLite） | **必须做**，面试一键跑起来 |
-| ② GitHub Actions（两段式 CI） | 简历「已容器化部署 + CI 门禁」 |
-| ③ 迁移 PostgreSQL（可选） | 一句话带过即可 |
-| ④ 基础鉴权（Bearer Token，值在配置中） | **方案 A：Phase 1 无鉴权**（面试演示开箱即用），Phase 4 补上 |
-| ⑤ Vue 前端（可选，若做仅 2 页：用例列表 + 任务看板） | 其他功能继续用 Swagger UI |
-| ⑥ JWT 鉴权替换 Bearer Token（可选） | — |
+| ① Docker Compose（FastAPI + Redis + Worker + SQLite） | ✅ **已完成**：多阶段 Dockerfile（非 root）+ compose（dbdata named volume + healthcheck + worker `--pool=solo` 单写者） |
+| ② GitHub Actions（三 job） | ✅ **已完成**：门禁（ruff + pytest + coverage 60/80）+ slow e2e + docker-build 镜像构建验证 |
+| ③ 迁移 PostgreSQL（可选） | ⏳ 延后（一句话带过即可） |
+| ④ 基础鉴权（Bearer Token，值在配置中） | ✅ **已完成**：`security.api_token` 配置 + HTTPBearer 统一依赖注入（401/403 区分），health 免鉴权；`app.docs_enabled` 开关 |
+| ⑤ Vue 前端（可选，若做仅 2 页：用例列表 + 任务看板） | ⏳ 延后（frontend/ 空壳，其余继续 Swagger UI） |
+| ⑥ JWT 鉴权替换 Bearer Token（可选） | ⏳ 延后 |
 
-> 若不做 Vue，Phase 4 缩减为「Docker Compose + GitHub Actions」，简历写「已容器化部署」。
+> 简历卖点：**「已容器化部署（Docker Compose）+ CI 门禁（GitHub Actions 三 job + coverage 门槛）+ Bearer Token 鉴权」**。
 > **自愈看板（Vue 页）不再做**——是 AI UI 项目的卖点，不重复造轮子。
+> **限流**（RULES §10.3 提及 Phase 4）延后到 Phase 4 之后——本轮聚焦三项，Redis 固定窗口计数作为后续项。
 
 ## 已达成结论
 
@@ -118,9 +119,15 @@
 - [x] 联动：定向生成（untested_ops 智能决策）/ fix-hints（审计落库）/ CaseRead 暴露 trust_score
 - [x] 155 测试全绿 + ruff 全绿 + e2e 冒烟（`pytest -m slow`）
 
+**Phase 4（生产化，已完成）**
+- [x] Dockerfile（多阶段 + 非 root）+ docker-compose.yml（api/worker/redis + dbdata named volume + healthcheck）+ .dockerignore
+- [x] GitHub Actions 三 job（门禁 ruff+pytest+coverage 60/80 / slow e2e / docker-build 验证）
+- [x] Bearer Token 鉴权（security.api_token + HTTPBearer 统一依赖注入，401/403 区分，health 免鉴权）+ `app.docs_enabled` 开关 + CORS 白名单
+- [x] pyproject 补 openai 声明 + pytest-cov；全项目 coverage 91% / 核心模块 89%
+
 ## 待解决问题
 
 - [ ] 演示 target 稳定性：默认 httpbin.org 外网不稳，面试建议本地 mock（改 `execution.base_url` 即可）
 - [ ] Swagger/OpenAPI 样例接口（Phase 3 的 scripts/sample_swagger.py 可生成）
-- [ ] 部署形态：本地直跑 vs Docker Compose（Phase 4）
-- [ ] Phase 4 是否做 Vue（面试不扣分，可跳过）
+- [x] 部署形态：已定 **Docker Compose**（Dockerfile/compose 由 CI docker-build job 验证）；面试前装 Docker Desktop 本地跑通
+- [x] 鉴权：Bearer Token 已完成；**限流 / JWT / Vue / PostgreSQL** 均延后

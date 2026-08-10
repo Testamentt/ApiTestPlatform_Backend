@@ -1,7 +1,7 @@
-# REST API 设计（api.md）· Phase 1-3 实现版
+# REST API 设计（api.md）· Phase 1-4 实现版
 
 > 规则引用：`RULES.md` §6（错误处理）、§7（接口规范）。所有端点前缀 `/api/v1`。
-> **Phase 1-3 已实现（面试导向）**：cases/tasks/health + parse/impact/regression/fix-hints + generate；无鉴权、无环境管理（Phase 4）。
+> **Phase 1-4 已实现（面试导向）**：cases/tasks/health + parse/impact/regression/fix-hints + generate；Phase 4 补 Bearer Token 鉴权（health 免鉴权作探针），无环境管理（后续）。
 
 ## 1. 通用约定
 
@@ -11,7 +11,7 @@
 - **错误响应**：`{code, message, detail}`；业务错误由 service 层 `raise AppError`，注册统一 exception handler（兜底 500 不泄漏堆栈）。参数校验保留 FastAPI 默认 422。
 - **分页**：列表统一 `page`（默认 1）/`page_size`（默认 20，上限 100），响应 `{items, total, page, page_size}`。
 - **状态码语义**：POST 创建 201、DELETE 204、异步任务 202、错误走异常体系（400/404/422/500）。
-- **鉴权**：**Phase 1 无鉴权**（面试演示开箱即用）；Phase 4 加 Bearer Token（方案 A，见 roadmap）。
+- **鉴权（Phase 4）**：Bearer Token——除 `health` 外全部端点需 `Authorization: Bearer <token>`（值走配置 `security.api_token`，dev 默认仅供演示）。无凭证 → `401 {code: "AUTH_REQUIRED"}`；凭证错误 → `403 {code: "AUTH_INVALID"}`（§10.3）。Swagger UI 自带 Authorize 按钮。CORS 白名单走 `frontend.cors_origins`（默认空不放开跨域，§10.5）。
 - **日志**：标准 logging，日志带 uuid 前缀串联即可（不引入 request_id 中间件/contextvar，MVP 简化）。
 
 ## 2. 端点总表（Phase 1）
@@ -119,6 +119,6 @@
 
 ## 5. 前端使用说明（MVP 零前端）
 
-- **MVP 界面 = Swagger UI（`/docs`）**：所有操作直接在 Swagger UI 完成——创建用例（operation_id 写死如 `httpbin_get`）、确认 active、触发执行（返回 `task_id` 后轮询 `GET /tasks/{id}` 看 `pending→running→success`）、查看 results + HTML 报告链接。
+- **MVP 界面 = Swagger UI（`/docs`）**：所有操作直接在 Swagger UI 完成——先点右上角 **Authorize** 输入 Bearer Token（Phase 4 鉴权），再创建用例（operation_id 写死如 `httpbin_get`）、确认 active、触发执行（返回 `task_id` 后轮询 `GET /tasks/{id}` 看 `pending→running→success`）、查看 results + HTML 报告链接。
 - **Vue（Phase 4 可选）**：`frontend/` 独立仓库，若做仅 2 页（用例列表 + 任务看板），其余继续用 Swagger UI。
 - 演示流：`POST /cases`（2 条）→ `POST /cases/{id}/confirm` → `POST /tasks`（202 task_id）→ 轮询 `GET /tasks/{id}` → `GET /tasks/{id}/results` → 打开 `report_link`。

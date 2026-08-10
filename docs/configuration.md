@@ -1,7 +1,7 @@
-# 配置管理设计（configuration.md）· Phase 1-3 简化版
+# 配置管理设计（configuration.md）· Phase 1-4 实现版
 
 > 规则引用：`RULES.md` §3.1（配置与密钥）。配置统一放 `config/`，Pydantic Settings 管理。
-> **Phase 1-3 简化**：app/database/redis/celery/execution/swagger/llm 七段；security/frontend 属 Phase 4+，当前不建模。
+> **Phase 1-4 已实现**：app/database/redis/celery/execution/swagger/llm/security/frontend 九段；全带 default，缺失不阻塞启动。
 
 ## 1. 配置分层与加载
 
@@ -35,6 +35,7 @@ def get_settings() -> Settings:
 | app.version | 0.1.0 | |
 | app.host | 0.0.0.0 | |
 | app.port | 8000 | |
+| app.docs_enabled | true | **/docs 开关**（§10.5：生产设 `TESTPLATFORM_APP_DOCS_ENABLED=false` 即关；默认开供演示开箱即用） |
 
 ### 2.2 Database
 | 字段 | 默认值 | 说明 |
@@ -95,9 +96,19 @@ def get_settings() -> Settings:
 | llm.task_soft_timeout_seconds | 540 | **生成任务软超时**（Celery `soft_time_limit`，留 60s 清理窗口；§8.2 捕获落 FAILED） |
 | llm.task_timeout_seconds | 600 | **生成任务硬超时**（Celery `time_limit`，200 接口串行 ≈400s 兜底） |
 
+### 2.8 Security（Phase 4 Bearer Token 鉴权）
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| security.api_token | testplatform-dev-token | **dev 默认仅供本地演示**（开箱即用）；生产/CI 必须 `TESTPLATFORM_SECURITY_API_TOKEN` 覆盖（§3.1 禁写死密钥） |
+
+### 2.9 Frontend（Phase 4 CORS 白名单）
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| frontend.cors_origins | [] | **CORS 白名单**（MVP 零前端默认空 = 不挂中间件不发 CORS 头，§10.5）；前端做时填来源如 `[http://localhost:5173]` |
+
 > **新增字段全部带 default**：`settings.yaml`/`.env` 缺失时 pydantic 用默认值，**启动不阻塞**（兼容已部署的 Phase 1 配置）。
 
-## 3. .env.example 变量清单（Phase 1-3）
+## 3. .env.example 变量清单（Phase 1-4）
 
 ```bash
 # ---- App ----
@@ -144,20 +155,27 @@ TESTPLATFORM_LLM_RETRY_BACKOFF=1                       # 指数退避基数
 TESTPLATFORM_LLM_COST_PER_1K_TOKENS=0.001              # 成本估算单价（demo 均价）
 TESTPLATFORM_LLM_TASK_SOFT_TIMEOUT_SECONDS=540         # 生成任务软超时（捕获落 FAILED）
 TESTPLATFORM_LLM_TASK_TIMEOUT_SECONDS=600              # 生成任务硬超时
+
+# ---- Security（Phase 4 Bearer Token 鉴权）----
+TESTPLATFORM_SECURITY_API_TOKEN=testplatform-dev-token  # dev 默认仅供演示；生产必须覆盖（§3.1）
+
+# ---- Frontend（Phase 4 CORS 白名单）----
+# TESTPLATFORM_FRONTEND_CORS_ORIGINS=["http://localhost:5173"]   # 前端做时填来源（空=不挂中间件）
 ```
 
-> security（TESTPLATFORM_API_TOKEN）、frontend（CORS）相关变量在 Phase 4 再加回。
+> security/frontend 变量已在 Phase 4 实现（见上表）。CORS 空 = 不挂中间件（§10.5）。
 
 ## 4. settings.example.yaml 契约
 
-`config/settings.example.yaml` 列出 Phase 1 全部配置段 + 默认值 + 说明，注释标明「复制为 settings.yaml 使用（已被 .gitignore 忽略）」。与 `.env.example` 一一对应。
+`config/settings.example.yaml` 列出 Phase 1-4 全部配置段 + 默认值 + 说明，注释标明「复制为 settings.yaml 使用（已被 .gitignore 忽略）」。与 `.env.example` 一一对应；容器镜像用 example 兜底为 settings.yaml，运行配置走 env 覆盖。
 
 ## 5. 本地与生产差异
 
 | 维度 | 本地（Windows） | 生产（Docker） |
 | --- | --- | --- |
-| 数据库 | SQLite（data/platform.db） | PostgreSQL（postgresql:// 连接串） |
-| Redis | 3.2 本地（127.0.0.1:6379） | Redis 7+（compose 服务） |
-| Worker | `--pool=solo` | `--pool=prefork --concurrency=4` |
+| 数据库 | SQLite（data/platform.db） | SQLite（/app/data/platform.db，named volume 持久化，§3.3） |
+| Redis | 3.2 本地（127.0.0.1:6379） | Redis 7（compose 服务，内网隔离无密码） |
+| Worker | `--pool=solo` | `--pool=solo --concurrency=1`（单写者串行写 SQLite，§3.3） |
 | base_url | httpbin.org（演示） | 内网被测服务地址 |
-| /docs | 开放 | 关闭或鉴权保护 |
+| /docs | 默认开（docs_enabled=true） | 生产 `TESTPLATFORM_APP_DOCS_ENABLED=false` 关闭（§10.5） |
+| 鉴权 | Bearer Token（dev 默认 token） | Bearer Token（env 注入生产 token） |
