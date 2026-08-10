@@ -1,0 +1,26 @@
+# Docker build context 排除项（镜像只需 app + prompts + 配置，运行数据不入镜像）
+.venv
+.git
+.gitignore
+data
+.workspace
+.env
+.env.*
+!.env.example
+config/settings.yaml
+docs
+tests
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+*.log
+allure-results
+allure-report
+.idea
+.vscode
+Dockerfile
+docker-compose.yml

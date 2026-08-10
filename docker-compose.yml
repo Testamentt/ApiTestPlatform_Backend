@@ -1,0 +1,53 @@
+# docker compose up 一键启动：FastAPI + Redis + Celery Worker + SQLite（面试演示，RULES §3.3 硬规则）。
+# 本地开发仍可直跑（README 快速开始）；容器形态用于「一键拉起」演示。
+# 注意：Worker 固定 --pool=solo --concurrency=1 单写者串行写 SQLite，禁止改大（§3.3/§8 防并发写）。
+services:
+  redis:
+    image: redis:7-alpine
+    # 容器内网隔离无密码；若需密码，compose 透传 TESTPLATFORM_REDIS_PASSWORD（宿主 .env）
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment: &appenv
+      # 容器内绝对路径，摆脱 CWD 依赖（config 默认 sqlite:///./data 是相对 CWD 的）
+      TESTPLATFORM_DATABASE_URL: sqlite:////app/data/platform.db
+      TESTPLATFORM_REDIS_HOST: redis
+      TESTPLATFORM_REDIS_PASSWORD: ${TESTPLATFORM_REDIS_PASSWORD:-}
+      TESTPLATFORM_SECURITY_API_TOKEN: ${TESTPLATFORM_SECURITY_API_TOKEN:-testplatform-dev-token}
+      TESTPLATFORM_APP_DOCS_ENABLED: ${TESTPLATFORM_APP_DOCS_ENABLED:-true}
+    volumes: &appvol
+      # SQLite named volume 持久化；-wal/-shm 附属文件与 db 同目录同卷，禁止拆分挂载（§3.3）
+      - dbdata:/app/data
+      # 测试报告（.workspace/reports）持久化，面试演示可追溯
+      - reports:/app/.workspace
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # slim 镜像无 curl，用 python urllib 探活；health 免鉴权（部署探针）
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build: .
+    # 单写者：Windows 亦可用 --pool=solo；并发写 SQLite 会锁库，面试演示必须串行
+    command: celery -A app.celery_app:celery_app worker --pool=solo --concurrency=1
+    environment: *appenv
+    volumes: *appvol
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  dbdata:
+  reports:
