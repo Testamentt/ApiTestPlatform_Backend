@@ -1,0 +1,58 @@
+# CI 门禁（面试导向）：门禁测试 + 慢测试 + Docker 镜像构建验证。
+# 本机无 Docker 时，docker-build job 即 Dockerfile/compose 的正确性验证闭环。
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# 重复 push 自动取消在跑 job（省 CI 分钟）
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-fast:
+    name: 门禁测试（ruff + pytest + coverage）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安装依赖
+        run: pip install -e ".[dev]"
+      - name: Lint（ruff）
+        run: |
+          ruff check app tests
+          ruff format --check .
+      - name: 快速测试 + 全项目覆盖率（pytest 默认排除 slow）
+        run: pytest --cov=app --cov-report=term-missing
+      - name: 核心模块覆盖率门槛（services+utils ≥80，§11.3）
+        run: coverage report --include='app/services/*.py,app/utils/*.py' --fail-under=80
+
+  test-slow:
+    name: 慢测试（e2e 冒烟）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: 安装依赖
+        run: pip install -e ".[dev]"
+      - name: e2e 冒烟（mock 隔离，无需 Redis/LLM）
+        run: pytest -m slow
+
+  docker-build:
+    name: Docker 镜像构建验证
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 校验 compose 配置
+        run: docker compose config
+      - name: 构建镜像（验证多阶段 + 非 editable 安装路径）
+        run: docker build -t testplatform:ci .
