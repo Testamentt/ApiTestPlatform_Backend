@@ -23,6 +23,9 @@ class AppSettings(BaseModel):
     version: str = "0.1.0"
     host: str = "0.0.0.0"
     port: int = 8000
+    docs_enabled: bool = (
+        True  # Swagger UI /docs 开关（§10.5：生产设 TESTPLATFORM_APP_DOCS_ENABLED=false 即关）
+    )
 
 
 class DatabaseSettings(BaseModel):
@@ -90,8 +93,28 @@ class LlmSettings(BaseModel):
     max_retries: int = 3
     retry_backoff: float = 1
     cost_per_1k_tokens: float = 0.001
-    task_soft_timeout_seconds: int = 540  # 生成任务软超时（< task_timeout_seconds，留 60s 清理窗口；RULES §8.2）
+    task_soft_timeout_seconds: int = (
+        540  # 生成任务软超时（< task_timeout_seconds，留 60s 清理窗口；RULES §8.2）
+    )
     task_timeout_seconds: int = 600
+
+
+class SecuritySettings(BaseModel):
+    """Phase 4 Bearer Token 鉴权配置。why：api_token 的 dev 默认仅供本地演示开箱即用；
+    生产/CI 必须经 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（§3.1 禁写死密钥，dev 占位默认值不泄真实密钥）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    api_token: str = "testplatform-dev-token"
+
+
+class FrontendSettings(BaseModel):
+    """Phase 4 CORS 配置（预留）。why：MVP 零前端，默认空白名单不发 CORS 头（§10.5 禁止 *）；
+    前端做时把来源填进 cors_origins 即自动挂 CORSMiddleware。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    cors_origins: list[str] = []
 
 
 class Settings(BaseModel):
@@ -108,6 +131,8 @@ class Settings(BaseModel):
     execution: ExecutionSettings = ExecutionSettings()
     swagger: SwaggerSettings = SwaggerSettings()
     llm: LlmSettings = LlmSettings()
+    security: SecuritySettings = SecuritySettings()
+    frontend: FrontendSettings = FrontendSettings()
 
     @property
     def broker_url(self) -> str:
@@ -137,7 +162,7 @@ def _parse_value(raw: str) -> Any:
     if raw.lower() in ("true", "false"):
         return raw.lower() == "true"
     if raw.startswith("[") and raw.endswith("]"):
-        return [item.strip().strip('"\'') for item in raw[1:-1].split(",") if item.strip()]
+        return [item.strip().strip("\"'") for item in raw[1:-1].split(",") if item.strip()]
     try:
         return int(raw)
     except ValueError:
@@ -150,7 +175,7 @@ def _merge_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
     env: dict[str, str] = {}
     for key, value in os.environ.items():
         if key.startswith("TESTPLATFORM_"):
-            env[key[len("TESTPLATFORM_"):].lower()] = value
+            env[key[len("TESTPLATFORM_") :].lower()] = value
     for key, value in env.items():
         section, _, field = key.partition("_")
         data.setdefault(section, {})

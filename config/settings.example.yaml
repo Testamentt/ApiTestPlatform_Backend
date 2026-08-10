@@ -1,15 +1,15 @@
-# settings.example.yaml — 配置契约（Phase 1-3）
+# settings.example.yaml — 配置契约（Phase 1-4）
 # 复制为 settings.yaml 使用（settings.yaml 已被 .gitignore 忽略）
 # 环境变量（TESTPLATFORM_ 前缀）优先级最高，可覆盖以下任意字段
 # 密钥一律不写在此文件，只放 .env（见 .env.example）
-# Phase 4 再加回：security / frontend 段
 
 app:
   name: testplatform          # 应用名
-  debug: false                # 开发模式（开启 /docs）
+  debug: false                # 开发模式（控制日志级别）
   version: 0.1.0
   host: 0.0.0.0
   port: 8000
+  docs_enabled: true          # Swagger UI /docs 开关（§10.5：生产设 false 即关）
 
 database:
   url: sqlite:///./data/platform.db   # 生产: postgresql://user:pass@host:5432/db
@@ -56,3 +56,9 @@ llm:                                  # Phase 3 AI 生成（全带 default，缺
   cost_per_1k_tokens: 0.001           # 成本估算单价（demo 均价，$/1K tokens）
   task_soft_timeout_seconds: 540      # 生成任务软超时（< 硬超时，留清理窗口）
   task_timeout_seconds: 600           # 生成任务硬超时（200 接口串行 ≈400s 兜底）
+
+security:                             # Phase 4 Bearer Token 鉴权
+  api_token: testplatform-dev-token   # dev 默认仅供本地演示；生产必须 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（§3.1）
+
+frontend:                             # Phase 4 CORS 白名单（MVP 零前端，默认空=不挂中间件）
+  cors_origins: []                    # 前端做时填来源，如 [http://localhost:5173]
