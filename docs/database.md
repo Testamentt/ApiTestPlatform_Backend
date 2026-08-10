@@ -149,8 +149,13 @@ pending/running ──(超时劫持 scan_stale_tasks)──▶ failed（error_st
 
 ## 4. 迁移策略
 
-- **MVP（Phase 1）**：`init_db()` 调 `Base.metadata.create_all(engine)`，main lifespan 启动时同步执行一次（阻塞无妨）。测试库用内存 SQLite + create_all。
-- **Phase 4**：切 Alembic（`alembic init` + baseline + autogenerate），RULES.md §5.1 已放宽标注。
+- **MVP（Phase 1-4 现状，无增量迁移）**：`init_db()` 调 `Base.metadata.create_all(engine)`，main lifespan 启动时同步执行一次（阻塞无妨）。测试库用内存 SQLite + create_all。
+- **Alembic 未纳入**（Phase 4 已确认维持 create_all，见 `sessions/2026-08-10-phase4-production.md`）：**create_all 只建不存在的表，不会 ALTER 已存在表**。模型新增列后，旧 dev 库缺列 → 接口 500（2026-08-10 实测 `trust_score` 漂移导致 `GET /cases` 500）。
+- **处置标准（模型变更后二选一）**：
+  1. **重置（推荐）**：`scripts\reset_db.bat` 删除 `data/platform.db*`，重启后 create_all 重建全量新 schema。dev 数据可丢弃（`data/` 已 gitignore）。
+  2. **无损补列（需保留数据）**：手动 `ALTER TABLE <t> ADD COLUMN <col> <type> <default>`（trust_score 即用此法：`INTEGER NOT NULL DEFAULT 100`）。
+- 新环境（clone 后 `data/` 为空）首次启动 create_all 建全库，不会踩；踩只发生在「本地旧库 + 新模型」。
+- **复杂变更**（改列/删列/加约束）create_all 无法表达，需人工迁移或另行评估 Alembic（当前未纳入，面试导向权衡见 §1）。
 
 ## 5. 关键设计决策与理由
 

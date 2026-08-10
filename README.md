@@ -76,6 +76,8 @@ scripts\start_all.bat
 #    需先装 Docker Desktop；Swagger 界面带 Authorize 按钮，token 默认 testplatform-dev-token
 docker compose up --build
 
+> ⚠️ **schema 漂移**：`create_all` 只建新表、不 ALTER 旧表。模型新增列后，已有 `data/platform.db` 会缺列（2026-08-10 实测 `trust_score` → `GET /cases` 500）。处置：运行 `scripts\reset_db.bat` 重置 dev 库（数据可丢，已 gitignore），或手动 `ALTER TABLE` 补列。详见 [docs/database.md §4](docs/database.md)。
+
 # （Phase 4 可选延后）Vue 前端：cd ../frontend && npm install && npm run dev
 ```
 
