@@ -25,7 +25,9 @@ class CaseRepository(BaseRepository[TestCase]):
         """不限状态按 id 查。why：回归降级判定 dropped 原因（不存在 vs 非 active）。"""
         return list(self.session.scalars(select(TestCase).where(TestCase.id.in_(case_ids))))
 
-    def find_by_operation_ids(self, operation_ids: list[str], *, active_only: bool = True) -> list[TestCase]:
+    def find_by_operation_ids(
+        self, operation_ids: list[str], *, active_only: bool = True
+    ) -> list[TestCase]:
         """按 operation_id 血缘反向检索（命中 idx_test_cases_operation_id）。why：影响圈定只取 active。"""
         stmt = select(TestCase).where(TestCase.operation_id.in_(operation_ids))
         if active_only:

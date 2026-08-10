@@ -17,7 +17,9 @@ def active_case_factory(client):
     return _make
 
 
-def test_create_task_202_and_execute(client, patch_sessionlocal, fake_execution, active_case_factory):
+def test_create_task_202_and_execute(
+    client, patch_sessionlocal, fake_execution, active_case_factory
+):
     cid = active_case_factory()
     r = client.post("/api/v1/tasks", json={"case_ids": [cid]})
     assert r.status_code == 202
@@ -29,7 +31,9 @@ def test_create_task_202_and_execute(client, patch_sessionlocal, fake_execution,
     assert t["report_link"].startswith("/static/reports/")
 
 
-def test_lookup_create_returns_same_task(client, patch_sessionlocal, fake_execution, active_case_factory):
+def test_lookup_create_returns_same_task(
+    client, patch_sessionlocal, fake_execution, active_case_factory
+):
     cid = active_case_factory()
     r1 = client.post("/api/v1/tasks", json={"case_ids": [cid]})
     r2 = client.post("/api/v1/tasks", json={"case_ids": [cid]})

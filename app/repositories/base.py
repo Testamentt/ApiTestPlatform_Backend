@@ -28,7 +28,9 @@ class BaseRepository(Generic[ModelT]):
     def get_or_raise(self, obj_id: int) -> ModelT:
         obj = self.get(obj_id)
         if obj is None:
-            raise AppError("NOT_FOUND", status_code=404, detail=f"{self.model.__name__} {obj_id} 不存在")
+            raise AppError(
+                "NOT_FOUND", status_code=404, detail=f"{self.model.__name__} {obj_id} 不存在"
+            )
         return obj
 
     def page(

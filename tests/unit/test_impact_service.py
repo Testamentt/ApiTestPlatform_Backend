@@ -25,7 +25,11 @@ def _doc(operation_id="listUsers", body_schema=None):
 def _seed_active_case(session_factory, operation_id="listUsers"):
     with session_factory() as s:
         case = TestCase(
-            name="c", operation_id=operation_id, method="GET", path="/users", status=CaseStatus.ACTIVE
+            name="c",
+            operation_id=operation_id,
+            method="GET",
+            path="/users",
+            status=CaseStatus.ACTIVE,
         )
         s.add(case)
         s.commit()
@@ -34,6 +38,7 @@ def _seed_active_case(session_factory, operation_id="listUsers"):
 
 
 # ---------- analyze ----------
+
 
 def test_analyze_first_time_all_added(session_factory):
     with session_factory() as s:
@@ -101,6 +106,7 @@ def test_affected_count_synced(session_factory):
 
 
 # ---------- regression ----------
+
 
 def test_regression_no_affected_raises(session_factory):
     with session_factory() as s:

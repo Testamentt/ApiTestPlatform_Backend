@@ -129,13 +129,11 @@ class ExecutionService:
     def _build_workspace(self, task_id: int, cases: list[TestCase]) -> Path:
         # why：绝对路径——pytest 的 cwd 就是 workspace，相对路径会被再次拼接导致翻倍；
         # 先清空再重建，避免复用 task_id 时残留旧 test 文件 / report.xml（真实正确性 + 测试隔离）
-        workspace = (Path(get_settings().execution.workspace_dir).resolve() / "tasks" / str(task_id))
+        workspace = Path(get_settings().execution.workspace_dir).resolve() / "tasks" / str(task_id)
         shutil.rmtree(workspace, ignore_errors=True)
         workspace.mkdir(parents=True, exist_ok=True)
         for case in cases:
-            (workspace / f"test_{case.id}.py").write_text(
-                render_test_file(case), encoding="utf-8"
-            )
+            (workspace / f"test_{case.id}.py").write_text(render_test_file(case), encoding="utf-8")
         return workspace
 
     def _fail(self, task_id: int, stage: str, msg: str) -> None:

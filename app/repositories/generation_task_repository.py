@@ -15,7 +15,9 @@ class GenerationTaskRepository(BaseRepository[GenerationTask]):
     def find_by_run_id(self, run_id: str) -> GenerationTask | None:
         return self.session.scalar(select(GenerationTask).where(GenerationTask.run_id == run_id))
 
-    def update_status(self, task: GenerationTask, *, to: GenerationStatus, from_: GenerationStatus) -> GenerationTask:
+    def update_status(
+        self, task: GenerationTask, *, to: GenerationStatus, from_: GenerationStatus
+    ) -> GenerationTask:
         """简单状态机守卫。why：只允许顺序迁移（PENDING→RUNNING→SUCCESS/FAILED），禁止任意跳转。"""
         if task.status != from_.value:
             raise AppError(

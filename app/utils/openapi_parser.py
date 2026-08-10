@@ -11,10 +11,23 @@ from app.core.exceptions import AppError
 
 # 影响用例请求/断言的「结构键」白名单；description/example/default/x-* 等文档键不参与 hash（防误报）
 _STRUCT_KEYS = {
-    "type", "properties", "items", "required", "enum", "format",
-    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
-    "minLength", "maxLength", "pattern", "minItems", "maxItems",
-    "uniqueItems", "nullable",
+    "type",
+    "properties",
+    "items",
+    "required",
+    "enum",
+    "format",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "minLength",
+    "maxLength",
+    "pattern",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "nullable",
 }
 # 宽容解析的占位键与跨文件引用原文，参与 hash 以暴露差异
 _EXTRA_KEYS = {"$ref", "x-circular", "x-broken-ref"}
@@ -49,7 +62,11 @@ def parse_openapi(document: dict) -> ParsedApi:
         raise AppError("INVALID_SWAGGER", status_code=422, detail="缺少 paths（OpenAPI 3.x 结构）")
     openapi = str(document.get("openapi", "")).split(".")[0]
     if openapi != "3":
-        raise AppError("INVALID_SWAGGER", status_code=422, detail=f"仅支持 OpenAPI 3.x，当前 {document.get('openapi')}")
+        raise AppError(
+            "INVALID_SWAGGER",
+            status_code=422,
+            detail=f"仅支持 OpenAPI 3.x，当前 {document.get('openapi')}",
+        )
 
     components = document.get("components") or {}
     schemas = components.get("schemas") or {}
@@ -63,7 +80,9 @@ def parse_openapi(document: dict) -> ParsedApi:
         for method, op in item.items():
             if method.lower() not in _METHODS or not isinstance(op, dict):
                 continue
-            operations.append(_extract_operation(path, method.upper(), op, schemas, param_components, warnings))
+            operations.append(
+                _extract_operation(path, method.upper(), op, schemas, param_components, warnings)
+            )
 
     if not operations:
         raise AppError("INVALID_SWAGGER", status_code=422, detail="paths 下无有效 operation")
@@ -80,10 +99,15 @@ def parse_openapi(document: dict) -> ParsedApi:
     )
 
 
-def _extract_operation(path: str, method: str, op: dict, schemas: dict, param_components: dict, warnings: list[str]) -> ParsedOperation:
+def _extract_operation(
+    path: str, method: str, op: dict, schemas: dict, param_components: dict, warnings: list[str]
+) -> ParsedOperation:
     """单个 operation 提取：operationId（缺失自动生成+归一化）+ 参数/请求体/响应（$ref 展开）+ contract。"""
     operation_id = op.get("operationId") or _autogen_operation_id(method, path)
-    parameters = [_resolve_parameter(p, schemas, param_components, warnings) for p in (op.get("parameters") or [])]
+    parameters = [
+        _resolve_parameter(p, schemas, param_components, warnings)
+        for p in (op.get("parameters") or [])
+    ]
     request_body = None
     rb = op.get("requestBody")
     if isinstance(rb, dict):
@@ -91,7 +115,9 @@ def _extract_operation(path: str, method: str, op: dict, schemas: dict, param_co
         rb_schema = content.get("schema")
         request_body = {
             "required": bool(rb.get("required")),
-            "schema": _resolve_schema(rb_schema, schemas, set(), warnings) if isinstance(rb_schema, dict) else {},
+            "schema": _resolve_schema(rb_schema, schemas, set(), warnings)
+            if isinstance(rb_schema, dict)
+            else {},
         }
     responses: dict = {}
     for code, r in (op.get("responses") or {}).items():
@@ -115,7 +141,11 @@ def _extract_operation(path: str, method: str, op: dict, schemas: dict, param_co
 def _resolve_parameter(p, schemas: dict, param_components: dict, warnings: list[str]) -> dict:
     """参数解析：支持 components/parameters 引用（一级循环，防死循环靠 visited 集合）。"""
     visited: set[str] = set()
-    while isinstance(p, dict) and "$ref" in p and str(p["$ref"]).startswith("#/components/parameters/"):
+    while (
+        isinstance(p, dict)
+        and "$ref" in p
+        and str(p["$ref"]).startswith("#/components/parameters/")
+    ):
         name = p["$ref"].rsplit("/", 1)[-1]
         if name in visited:
             break
@@ -129,7 +159,9 @@ def _resolve_parameter(p, schemas: dict, param_components: dict, warnings: list[
         "name": p.get("name", "") if isinstance(p, dict) else "",
         "in": p.get("in", "") if isinstance(p, dict) else "",
         "required": bool(p.get("required")) if isinstance(p, dict) else False,
-        "schema": _resolve_schema(p.get("schema", {}), schemas, set(), warnings) if isinstance(p, dict) else {},
+        "schema": _resolve_schema(p.get("schema", {}), schemas, set(), warnings)
+        if isinstance(p, dict)
+        else {},
     }
 
 
@@ -157,7 +189,9 @@ def _resolve_schema(schema, schemas: dict, visited: set[str], warnings: list[str
         if k in ("items", "additionalProperties"):
             out[k] = _resolve_schema(v, schemas, visited, warnings)
         elif k == "properties":
-            out[k] = {kk: _resolve_schema(vv, schemas, visited, warnings) for kk, vv in (v or {}).items()}
+            out[k] = {
+                kk: _resolve_schema(vv, schemas, visited, warnings) for kk, vv in (v or {}).items()
+            }
         elif k == "allOf" and isinstance(v, list):
             # 合并各分支 properties + required（对齐 ai-generation §2）
             merged = {"type": "object", "properties": {}, "required": []}
@@ -197,11 +231,19 @@ def _normalize(value):
 def _build_request_core(op: ParsedOperation) -> dict:
     """请求侧 hash 输入：参数元信息（name/in/required）显式保留，schema 过白名单。"""
     params = [
-        {"name": p["name"], "in": p["in"], "required": p["required"], "schema": _normalize(p.get("schema", {}))}
+        {
+            "name": p["name"],
+            "in": p["in"],
+            "required": p["required"],
+            "schema": _normalize(p.get("schema", {})),
+        }
         for p in op.parameters
     ]
     body = (
-        {"required": op.request_body["required"], "schema": _normalize(op.request_body.get("schema", {}))}
+        {
+            "required": op.request_body["required"],
+            "schema": _normalize(op.request_body.get("schema", {})),
+        }
         if op.request_body
         else None
     )
@@ -233,7 +275,9 @@ def _autogen_operation_id(method: str, path: str) -> str:
     return f"{method}_{norm}"
 
 
-def _extract_contract(parameters: list[dict], request_body: dict | None, responses: dict | None = None) -> dict:
+def _extract_contract(
+    parameters: list[dict], request_body: dict | None, responses: dict | None = None
+) -> dict:
     """请求侧契约：required 集合 + 字段级 type/enum 签名——breaking 联合判定的输入（F2）。
     额外记录响应状态码集合：200→202 等状态码变化会让下游按旧码断言静默失败，须纳入 breaking（F1）。"""
     required: list[str] = []

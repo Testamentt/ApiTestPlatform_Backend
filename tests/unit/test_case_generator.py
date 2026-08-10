@@ -9,8 +9,13 @@ from app.utils.case_generator import render_test_file
 
 def test_renders_valid_python():
     case = TestCase(
-        id=1, name="get users", method="GET", path="/get",
-        operation_id="httpbin_get", expected_status=200, status="active",
+        id=1,
+        name="get users",
+        method="GET",
+        path="/get",
+        operation_id="httpbin_get",
+        expected_status=200,
+        status="active",
     )
     src = render_test_file(case)
     compile(src, "<test>", "exec")  # 语法必须合法
@@ -20,8 +25,14 @@ def test_renders_valid_python():
 
 def test_body_injected():
     case = TestCase(
-        id=2, name="post", method="POST", path="/post", operation_id="x",
-        body={"a": 1}, expected_status=201, status="active",
+        id=2,
+        name="post",
+        method="POST",
+        path="/post",
+        operation_id="x",
+        body={"a": 1},
+        expected_status=201,
+        status="active",
     )
     src = render_test_file(case)
     assert "{'a': 1}" in src
@@ -38,8 +49,13 @@ def test_name_injection_escaped():
     # 修复后 name 只出现在文件头注释（repr 转义 + 注释不解析转义序列），注入必然失效。
     malicious = 'x"""\nimport os\nos.system("echo PWNED")\n# '
     case = TestCase(
-        id=9, name=malicious, method="GET", path="/get",
-        operation_id="httpbin_get", expected_status=200, status="active",
+        id=9,
+        name=malicious,
+        method="GET",
+        path="/get",
+        operation_id="httpbin_get",
+        expected_status=200,
+        status="active",
     )
     src = render_test_file(case)
     tree = ast.parse(src)  # 语法必须合法（旧实现此步即 SyntaxError）
@@ -49,7 +65,8 @@ def test_name_injection_escaped():
     assert node_types == ["Import", "FunctionDef"]
     # AST 中不存在对 os.system 的调用
     system_calls = [
-        n for n in ast.walk(tree)
+        n
+        for n in ast.walk(tree)
         if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "system"
     ]
     assert not system_calls, "注入的 os.system 调用出现在可执行代码中"

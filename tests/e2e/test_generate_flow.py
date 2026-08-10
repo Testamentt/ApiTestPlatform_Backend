@@ -28,7 +28,9 @@ def _patch_isolations(monkeypatch, session_factory):
     monkeypatch.setattr("app.tasks.generate_cases.SessionLocal", session_factory)
     monkeypatch.setattr("app.tasks.execute_cases.SessionLocal", session_factory)
     monkeypatch.setattr("app.services.generation_service.LlmClient", lambda: FakeLlmClient())
-    monkeypatch.setattr("app.services.execution_service.run_cmd", make_fake_run_cmd(junit_xml=JUNIT_OK))
+    monkeypatch.setattr(
+        "app.services.execution_service.run_cmd", make_fake_run_cmd(junit_xml=JUNIT_OK)
+    )
 
 
 def test_ai_generate_to_confirm_to_execute(client, session_factory, monkeypatch):

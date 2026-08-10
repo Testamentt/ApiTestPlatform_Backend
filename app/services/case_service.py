@@ -56,7 +56,5 @@ class CaseService:
     def delete_case(self, case_id: int) -> None:
         self.repo.delete(self.repo.get_or_raise(case_id))
 
-    def list_cases(
-        self, *, page: int, page_size: int, **filters
-    ) -> tuple[list[TestCase], int]:
+    def list_cases(self, *, page: int, page_size: int, **filters) -> tuple[list[TestCase], int]:
         return self.repo.list_by_filters(page=page, page_size=page_size, **filters)

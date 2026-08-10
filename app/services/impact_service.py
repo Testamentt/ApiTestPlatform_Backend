@@ -56,7 +56,9 @@ class ImpactService:
             )
         parsed = parse_openapi(document)  # 无 Session 解析（短事务分界）
 
-        old_def = self.def_repo.get_by_version(old_version) if old_version else self.def_repo.get_latest()
+        old_def = (
+            self.def_repo.get_by_version(old_version) if old_version else self.def_repo.get_latest()
+        )
         old_label = old_def.version if old_def else None
         diff = diff_operations(
             old_def.operation_ids if old_def else [],
@@ -65,7 +67,9 @@ class ImpactService:
             parsed.operation_ids,
             parsed.operation_hashes,
             parsed.operation_contracts,
-            hash_version_equal=(old_def is None or old_def.hash_version == settings.swagger.hash_version),
+            hash_version_equal=(
+                old_def is None or old_def.hash_version == settings.swagger.hash_version
+            ),
         )
 
         new_label = self.def_repo.resolve_version(new_version)
@@ -86,7 +90,9 @@ class ImpactService:
         )
 
         # 反向检索：affected=breaking 变更的 active 用例；orphaned=removed 绑定的用例（迁移清单）
-        affected_cases = self.case_repo.find_by_operation_ids(diff.breaking_changed, active_only=True)
+        affected_cases = self.case_repo.find_by_operation_ids(
+            diff.breaking_changed, active_only=True
+        )
         orphaned_cases = self.case_repo.find_by_operation_ids(diff.removed, active_only=True)
         bound = self.case_repo.bound_operation_ids(parsed.operation_ids)
         untested_ops = sorted(set(parsed.operation_ids) - bound)  # D3：未绑用例接口清单
@@ -117,7 +123,8 @@ class ImpactService:
             changed_ops=analysis.changed_ops,
             breaking_changed_ops=analysis.breaking_changed_ops,
             affected_cases=[
-                AffectedCase(case_id=c.id, name=c.name, method=c.method, path=c.path) for c in affected_cases
+                AffectedCase(case_id=c.id, name=c.name, method=c.method, path=c.path)
+                for c in affected_cases
             ],
             affected_summary=analysis.affected_summary,
             orphaned_case_ids=analysis.orphaned_case_ids,
@@ -126,7 +133,9 @@ class ImpactService:
             warnings=parsed.warnings,
             # 联动点 2：breaking 变更时提示「可按需生成修复建议」入口（细节 4）
             has_fix_hint=bool(diff.breaking_changed),
-            fix_hint_endpoint=f"/api/v1/impact/{analysis.id}/fix-hints" if diff.breaking_changed else "",
+            fix_hint_endpoint=f"/api/v1/impact/{analysis.id}/fix-hints"
+            if diff.breaking_changed
+            else "",
         )
 
     def suggest_fix_hints(self, analysis_id: int) -> dict | None:
@@ -136,7 +145,9 @@ class ImpactService:
         文档承诺 model='fix_hint' 区分来源）。fix-hints 为轻量同步建议（Web 请求线程 best-effort，失败置 None）。"""
         analysis = self.impact_repo.get_or_raise(analysis_id)
         if not analysis.breaking_changed_ops:
-            raise AppError("NO_BREAKING_CHANGES", status_code=422, detail="无 breaking 变更，无需修复建议")
+            raise AppError(
+                "NO_BREAKING_CHANGES", status_code=422, detail="无 breaking 变更，无需修复建议"
+            )
         ops = list(analysis.breaking_changed_ops)
         # 短事务分界：先关事务再调 LLM——禁止持 DB Session/连接期间调 LLM（§2.1）
         self.session.commit()
@@ -148,8 +159,12 @@ class ImpactService:
             parsed, usage = llm.chat_json(system, user, schema=FixHint)
         except AppError as e:
             # best-effort 失败置 None，但同样落审计（§9.6 结构化日志兜底）
-            self._write_fix_hint_log(usage=None, latency_ms=int((monotonic() - start) * 1000),
-                                     error=str(e.detail), status="error")
+            self._write_fix_hint_log(
+                usage=None,
+                latency_ms=int((monotonic() - start) * 1000),
+                error=str(e.detail),
+                status="error",
+            )
             logger.warning("fix-hints 生成失败（best-effort 置 None）: %s", e.detail)
             return None
         latency_ms = int((monotonic() - start) * 1000)
@@ -164,8 +179,9 @@ class ImpactService:
             raise
         return hint
 
-    def _write_fix_hint_log(self, *, usage, latency_ms: int, cost: float = 0.0,
-                            error: str | None = None, status: str) -> None:
+    def _write_fix_hint_log(
+        self, *, usage, latency_ms: int, cost: float = 0.0, error: str | None = None, status: str
+    ) -> None:
         """fix-hints 审计落库。why：§9.6 每次 LLM 调用记 usage/cost 到 generation_logs；
         无关联生成任务（generation_task_id 可空），model='fix_hint' 区分来源（文档契约）。"""
         usage_dict = None
@@ -215,7 +231,9 @@ class ImpactService:
                 "NO_ACTIVE_CASES", status_code=422, detail=f"受影响用例全部失效: {dropped}"
             )
 
-        task = self.task_service.create_execution_task(TaskCreate(case_ids=active_ids))  # Lookup-Create 幂等
+        task = self.task_service.create_execution_task(
+            TaskCreate(case_ids=active_ids)
+        )  # Lookup-Create 幂等
         summary = {
             "total": len(active_ids) + len(dropped),  # 执行时真实口径，不用旧快照（D6）
             "executed": len(active_ids),
@@ -225,7 +243,11 @@ class ImpactService:
         # 审计日志：保留 analysis/task/executed/dropped/reasons，无独立 event 表（可追溯）
         logger.info(
             "impact.regression analysis=%s task=%s executed=%s dropped=%s reasons=%s",
-            analysis.id, task.id, active_ids, dropped, dropped_reasons,
+            analysis.id,
+            task.id,
+            active_ids,
+            dropped,
+            dropped_reasons,
         )
         return RegressionResult(
             analysis_id=analysis.id,

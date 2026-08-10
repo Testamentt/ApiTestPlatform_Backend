@@ -24,18 +24,22 @@ def _swagger_doc(operations):
     return {"openapi": "3.0.3", "info": {"title": "t", "version": "1"}, "paths": paths}
 
 
-DOC = _swagger_doc([
-    {"path": "/users", "method": "GET", "operation_id": "listUsers"},
-    {"path": "/users", "method": "POST", "operation_id": "createUser"},
-    {"path": "/users/{id}", "method": "DELETE", "operation_id": "deleteUser"},
-])
+DOC = _swagger_doc(
+    [
+        {"path": "/users", "method": "GET", "operation_id": "listUsers"},
+        {"path": "/users", "method": "POST", "operation_id": "createUser"},
+        {"path": "/users/{id}", "method": "DELETE", "operation_id": "deleteUser"},
+    ]
+)
 
 
 def _seed_task(session_factory, *, document=None, operation_ids=None, status="pending"):
     with session_factory() as s:
         t = GenerationTask(
-            run_id="run_gen", document=document or DOC,
-            operation_ids=operation_ids, status=status,
+            run_id="run_gen",
+            document=document or DOC,
+            operation_ids=operation_ids,
+            status=status,
         )
         s.add(t)
         s.commit()
@@ -46,15 +50,23 @@ def _seed_task(session_factory, *, document=None, operation_ids=None, status="pe
 def _seed_impact(session_factory, *, untested_ops):
     with session_factory() as s:
         a = ImpactAnalysis(
-            new_version="v1", added_ops=[], removed_ops=[], changed_ops=[],
-            breaking_changed_ops=[], affected_case_ids=[], orphaned_case_ids=[],
-            suggested_remap={}, untested_ops=untested_ops, affected_summary={},
+            new_version="v1",
+            added_ops=[],
+            removed_ops=[],
+            changed_ops=[],
+            breaking_changed_ops=[],
+            affected_case_ids=[],
+            orphaned_case_ids=[],
+            suggested_remap={},
+            untested_ops=untested_ops,
+            affected_summary={},
         )
         s.add(a)
         s.commit()
 
 
 # ---------- create_generation_task ----------
+
 
 def test_create_idempotent(session_factory, monkeypatch):
     with session_factory() as s:
@@ -112,6 +124,7 @@ def test_create_explicit_operation_ids(session_factory, monkeypatch):
 
 # ---------- run_generation ----------
 
+
 def test_run_generation_success(session_factory):
     task_id = _seed_task(session_factory)
     run_generation(session_factory, task_id, llm=FakeLlmClient())
@@ -119,11 +132,13 @@ def test_run_generation_success(session_factory):
         task = s.get(GenerationTask, task_id)
         assert task.status == GenerationStatus.SUCCESS.value
         assert task.result_summary["draft_created"] == 3  # 3 个 operation 各 1 条
-        cases = list(s.scalars(
-            select(TestCase).where(TestCase.source == "ai")
-        ))
+        cases = list(s.scalars(select(TestCase).where(TestCase.source == "ai")))
         assert len(cases) == 3
-        assert {c.operation_id for c in cases} == {"listUsers", "createUser", "deleteUser"}  # 服务端注入
+        assert {c.operation_id for c in cases} == {
+            "listUsers",
+            "createUser",
+            "deleteUser",
+        }  # 服务端注入
         assert all(c.trust_score == 80 for c in cases)  # 无 warnings → 80
         assert all(c.status == "draft" for c in cases)  # draft 恒为
         assert s.query(GenerationLog).count() == 3  # 逐 operation 审计日志
@@ -153,15 +168,19 @@ def test_run_generation_skipped_filter(session_factory):
     with session_factory() as s:
         task = s.get(GenerationTask, task_id)
         assert task.result_summary["skipped_by_filter"] == 1
-        assert task.result_summary["skipped_detail"] == ["operation_id 'ghostOp' not found in document"]
+        assert task.result_summary["skipped_detail"] == [
+            "operation_id 'ghostOp' not found in document"
+        ]
 
 
 def test_run_generation_warnings_trust_score(session_factory):
     # 解析有 warnings（重复 operation_id）→ trust_score=60
-    dup_doc = _swagger_doc([
-        {"path": "/a", "method": "GET", "operation_id": "dup"},
-        {"path": "/b", "method": "POST", "operation_id": "dup"},
-    ])
+    dup_doc = _swagger_doc(
+        [
+            {"path": "/a", "method": "GET", "operation_id": "dup"},
+            {"path": "/b", "method": "POST", "operation_id": "dup"},
+        ]
+    )
     task_id = _seed_task(session_factory, document=dup_doc)
     run_generation(session_factory, task_id, llm=FakeLlmClient())
     with session_factory() as s:
@@ -173,11 +192,16 @@ def test_run_generation_sanitizes_llm_output(session_factory):
     # §10.2：LLM 输出中的 <script> 等危险标签/控制字符入库前清洗
     task_id = _seed_task(session_factory, operation_ids=["listUsers"])
     evil = {
-        "cases": [{
-            "name": "<script>alert(1)</script>正向",
-            "method": "GET", "path": "/users",
-            "params": {}, "body": None, "expected_status": 200,
-        }]
+        "cases": [
+            {
+                "name": "<script>alert(1)</script>正向",
+                "method": "GET",
+                "path": "/users",
+                "params": {},
+                "body": None,
+                "expected_status": 200,
+            }
+        ]
     }
     run_generation(session_factory, task_id, llm=FakeLlmClient(data=evil))
     with session_factory() as s:

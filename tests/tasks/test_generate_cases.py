@@ -20,9 +20,11 @@ def _swagger_doc(operations):
     return {"openapi": "3.0.3", "info": {"title": "t", "version": "1"}, "paths": paths}
 
 
-DOC = _swagger_doc([
-    {"path": "/users", "method": "GET", "operation_id": "listUsers"},
-])
+DOC = _swagger_doc(
+    [
+        {"path": "/users", "method": "GET", "operation_id": "listUsers"},
+    ]
+)
 
 
 def _seed_task(session_factory, *, document=None):

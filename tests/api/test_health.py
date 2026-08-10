@@ -29,9 +29,7 @@ def test_health_ok(client, monkeypatch):
 
 
 def test_health_redis_down_degraded(client, monkeypatch):
-    monkeypatch.setattr(
-        "app.api.v1.health.redis.Redis", lambda **kw: _FakeRedis(ok=False)
-    )
+    monkeypatch.setattr("app.api.v1.health.redis.Redis", lambda **kw: _FakeRedis(ok=False))
     r = client.get("/api/v1/health")
     data = r.json()
     assert data["redis"] == "down"

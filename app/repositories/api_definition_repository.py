@@ -13,14 +13,10 @@ class ApiDefinitionRepository(BaseRepository[ApiDefinition]):
 
     def get_latest(self) -> ApiDefinition | None:
         """最近版本。why：id desc（created_at 有同秒风险）。"""
-        return self.session.scalar(
-            select(ApiDefinition).order_by(ApiDefinition.id.desc()).limit(1)
-        )
+        return self.session.scalar(select(ApiDefinition).order_by(ApiDefinition.id.desc()).limit(1))
 
     def get_by_version(self, version: str) -> ApiDefinition | None:
-        return self.session.scalar(
-            select(ApiDefinition).where(ApiDefinition.version == version)
-        )
+        return self.session.scalar(select(ApiDefinition).where(ApiDefinition.version == version))
 
     def resolve_version(self, requested: str | None) -> str:
         """version 解析：用户指定或 auto `v{n}`。why：auto 递增时跳过已存在版本，

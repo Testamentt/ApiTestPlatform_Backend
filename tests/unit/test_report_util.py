@@ -9,7 +9,11 @@ from app.utils.report_util import write_report_html
 def test_write_report_html_renders_results(tmp_path):
     task = SimpleNamespace(id=1, status="success")
     summary = {
-        "total": 2, "passed": 1, "failed": 1, "skipped": 0, "duration_ms": 100,
+        "total": 2,
+        "passed": 1,
+        "failed": 1,
+        "skipped": 0,
+        "duration_ms": 100,
         "results": [
             {"case_id": 1, "name": "a", "status": "pass", "failure_msg": ""},
             {"case_id": 2, "name": "b", "status": "fail", "failure_msg": "assert 200 != 500"},

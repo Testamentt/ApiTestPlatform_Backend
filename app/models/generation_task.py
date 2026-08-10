@@ -17,12 +17,17 @@ class GenerationTask(TimestampMixin, Base):
 
     run_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(
-        String(16), nullable=False, default=GenerationStatus.PENDING, server_default=text("'pending'")
+        String(16),
+        nullable=False,
+        default=GenerationStatus.PENDING,
+        server_default=text("'pending'"),
     )
     celery_task_id: Mapped[str | None] = mapped_column(String(64))
     document: Mapped[dict] = mapped_column(JSON, nullable=False)
     operation_ids: Mapped[list | None] = mapped_column(JSON)  # 定向子集；NULL=全量/untested
-    operation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    operation_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     prompt_version: Mapped[str | None] = mapped_column(String(16))
     error_stage: Mapped[str | None] = mapped_column(String(32))  # parse/llm/validate
     error_msg: Mapped[str | None] = mapped_column(Text)

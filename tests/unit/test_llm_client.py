@@ -31,7 +31,9 @@ class _FakeCompletions:
 def _resp(content, tokens=(100, 50, 150)):
     return SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
-        usage=SimpleNamespace(prompt_tokens=tokens[0], completion_tokens=tokens[1], total_tokens=tokens[2]),
+        usage=SimpleNamespace(
+            prompt_tokens=tokens[0], completion_tokens=tokens[1], total_tokens=tokens[2]
+        ),
     )
 
 

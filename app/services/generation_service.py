@@ -41,9 +41,23 @@ def compute_run_id(document: dict, operation_ids: list[str] | None) -> str:
 
 # 进 Prompt 的结构约束白名单；description/example/title/default/x-* 等文档字段剥离（§10.1）
 _PROMPT_STRUCT_KEYS = {
-    "type", "properties", "items", "required", "enum", "format",
-    "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum",
-    "minLength", "maxLength", "pattern", "minItems", "maxItems", "uniqueItems", "nullable",
+    "type",
+    "properties",
+    "items",
+    "required",
+    "enum",
+    "format",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "minLength",
+    "maxLength",
+    "pattern",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "nullable",
 }
 
 _SCRIPT_TAG_RE = re.compile(r"<[^>]*script[^>]*>", re.IGNORECASE)
@@ -76,13 +90,18 @@ def _operation_to_json(op: ParsedOperation) -> str:
     等文档字段），防注入（RULES §10.1）。"""
     params = [
         {
-            "name": p["name"], "in": p["in"], "required": p["required"],
+            "name": p["name"],
+            "in": p["in"],
+            "required": p["required"],
             "schema": _strip_doc_fields(p.get("schema", {})),
         }
         for p in op.parameters
     ]
     body = (
-        {"required": op.request_body["required"], "schema": _strip_doc_fields(op.request_body.get("schema", {}))}
+        {
+            "required": op.request_body["required"],
+            "schema": _strip_doc_fields(op.request_body.get("schema", {})),
+        }
         if op.request_body
         else None
     )
@@ -226,15 +245,27 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             if e.code == "LLM_VALIDATION_FAILED":
                 # 校验失败同样落库（不建坏用例）+ raw_response + 具体错误（间隙 2）
                 _write_log(
-                    session_factory, task_id=task_id, op_id=op_id, model=llm.settings.model,
-                    status="validation_failed", confidence=0.0,
-                    latency_ms=latency_ms, raw=getattr(e, "raw_response", None), error=str(e.detail),
+                    session_factory,
+                    task_id=task_id,
+                    op_id=op_id,
+                    model=llm.settings.model,
+                    status="validation_failed",
+                    confidence=0.0,
+                    latency_ms=latency_ms,
+                    raw=getattr(e, "raw_response", None),
+                    error=str(e.detail),
                 )
                 reason = "校验失败: " + str(e.detail)[:100]
             else:
                 _write_log(
-                    session_factory, task_id=task_id, op_id=op_id, model=llm.settings.model,
-                    status="error", confidence=0.0, latency_ms=latency_ms, error=str(e.detail),
+                    session_factory,
+                    task_id=task_id,
+                    op_id=op_id,
+                    model=llm.settings.model,
+                    status="error",
+                    confidence=0.0,
+                    latency_ms=latency_ms,
+                    error=str(e.detail),
                 )
                 reason = "LLM 失败: " + str(e.detail)[:100]
             rejected += 1
@@ -322,7 +353,8 @@ class GenerationService:
         settings = get_settings()
         if len(json.dumps(document)) > settings.swagger.max_upload_bytes:
             raise AppError(
-                "SWAGGER_TOO_LARGE", status_code=422,
+                "SWAGGER_TOO_LARGE",
+                status_code=422,
                 detail=f"文档超过 {settings.swagger.max_upload_bytes} 字节上限",
             )
 
@@ -342,7 +374,9 @@ class GenerationService:
                     operation_ids = valid
                 # 全部不在当前文档 → 回退全量（防过期快照静默跳过）
             else:
-                raise AppError("NO_UNTESTED_OPS", status_code=422, detail="所有接口已有 active 用例，无需生成")
+                raise AppError(
+                    "NO_UNTESTED_OPS", status_code=422, detail="所有接口已有 active 用例，无需生成"
+                )
 
         run_id = compute_run_id(document, operation_ids)
         existing = self.repo.find_by_run_id(run_id)

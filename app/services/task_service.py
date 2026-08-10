@@ -24,9 +24,7 @@ class TaskService:
     @staticmethod
     def compute_run_id(case_ids: list[int], timeout_seconds: int) -> str:
         """why：排序 + 序列化保证同输入同指纹；sha256 作为幂等键。"""
-        key = json.dumps(
-            {"case_ids": sorted(case_ids), "timeout": timeout_seconds}, sort_keys=True
-        )
+        key = json.dumps({"case_ids": sorted(case_ids), "timeout": timeout_seconds}, sort_keys=True)
         return hashlib.sha256(key.encode()).hexdigest()
 
     def create_execution_task(self, payload: TaskCreate) -> Task:
@@ -72,6 +70,4 @@ class TaskService:
     def get_task_results(self, task_id: int) -> TaskResults:
         task = self.get_task(task_id)
         results = (task.result_summary or {}).get("results", [])
-        return TaskResults(
-            task=task, results=[TaskResultItem(**item) for item in results]
-        )
+        return TaskResults(task=task, results=[TaskResultItem(**item) for item in results])

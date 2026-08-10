@@ -30,7 +30,9 @@ class ImpactAnalysis(TimestampMixin, Base):
     last_regression_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_regression_task_id: Mapped[str | None] = mapped_column(String(64))
     last_regression_executed_count: Mapped[int | None] = mapped_column(Integer)
-    ai_fix_hint: Mapped[dict | None] = mapped_column(JSON)  # Phase 3：breaking 变更的一句话 LLM 修复建议（best-effort，可空）
+    ai_fix_hint: Mapped[dict | None] = mapped_column(
+        JSON
+    )  # Phase 3：breaking 变更的一句话 LLM 修复建议（best-effort，可空）
 
     @validates("affected_case_ids")
     def _sync_affected_count(self, key, value):

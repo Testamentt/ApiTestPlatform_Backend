@@ -16,10 +16,12 @@ def _swagger_doc(operations):
     return {"openapi": "3.0.3", "info": {"title": "t", "version": "1"}, "paths": paths}
 
 
-DOC = _swagger_doc([
-    {"path": "/users", "method": "GET", "operation_id": "listUsers"},
-    {"path": "/users", "method": "POST", "operation_id": "createUser"},
-])
+DOC = _swagger_doc(
+    [
+        {"path": "/users", "method": "GET", "operation_id": "listUsers"},
+        {"path": "/users", "method": "POST", "operation_id": "createUser"},
+    ]
+)
 
 
 @pytest.fixture()
@@ -32,11 +34,20 @@ def no_dispatch(monkeypatch):
 
 def _seed_impact(session_factory, *, untested_ops):
     with session_factory() as s:
-        s.add(ImpactAnalysis(
-            new_version="v1", added_ops=[], removed_ops=[], changed_ops=[],
-            breaking_changed_ops=[], affected_case_ids=[], orphaned_case_ids=[],
-            suggested_remap={}, untested_ops=untested_ops, affected_summary={},
-        ))
+        s.add(
+            ImpactAnalysis(
+                new_version="v1",
+                added_ops=[],
+                removed_ops=[],
+                changed_ops=[],
+                breaking_changed_ops=[],
+                affected_case_ids=[],
+                orphaned_case_ids=[],
+                suggested_remap={},
+                untested_ops=untested_ops,
+                affected_summary={},
+            )
+        )
         s.commit()
 
 

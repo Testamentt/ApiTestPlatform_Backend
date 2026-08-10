@@ -64,12 +64,16 @@ class FakeLlmClient:
             raise self.raise_error
         if self.data is None:
             self.data = {
-                "cases": [{"name": "正向", "method": "GET", "path": "/users", "expected_status": 200}]
+                "cases": [
+                    {"name": "正向", "method": "GET", "path": "/users", "expected_status": 200}
+                ]
             }
         try:
             parsed = schema.model_validate(self.data)  # 真实 Pydantic 校验链路
         except ValidationError as e:
-            exc = AppError("LLM_VALIDATION_FAILED", status_code=502, detail=f"Pydantic 校验失败: {e}")
+            exc = AppError(
+                "LLM_VALIDATION_FAILED", status_code=502, detail=f"Pydantic 校验失败: {e}"
+            )
             exc.raw_response = json.dumps(self.data, ensure_ascii=False)
             raise exc from e
         return parsed, LlmUsage(100, 50, 150)

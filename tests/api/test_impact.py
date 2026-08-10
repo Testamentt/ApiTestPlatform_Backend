@@ -28,6 +28,7 @@ def _bound_active_case(client, operation_id="listUsers"):
 
 # ---------- parse ----------
 
+
 def test_parse_201_creates_version(client):
     r = client.post("/api/v1/parse", json={"document": _doc()})
     assert r.status_code == 201
@@ -64,6 +65,7 @@ def test_parse_too_large_422(client, monkeypatch):
 
 
 # ---------- analyze ----------
+
 
 def test_analyze_first_time_all_added(client):
     r = client.post("/api/v1/impact/analyze", json={"document": _doc()})
@@ -109,12 +111,15 @@ def test_analyze_version_collision_409(client):
 
 # ---------- regression ----------
 
+
 def test_regression_executes_affected(client, patch_sessionlocal, fake_execution):
     v1 = _doc(body_schema={"type": "object", "properties": {"age": {"type": "integer"}}})
     v2 = _doc(body_schema={"type": "object", "properties": {"age": {"type": "string"}}})
     client.post("/api/v1/parse", json={"document": v1})
     _bound_active_case(client)
-    analysis_id = client.post("/api/v1/impact/analyze", json={"document": v2}).json()["data"]["analysis_id"]
+    analysis_id = client.post("/api/v1/impact/analyze", json={"document": v2}).json()["data"][
+        "analysis_id"
+    ]
 
     r = client.post(f"/api/v1/impact/{analysis_id}/regression")
     assert r.status_code == 202
@@ -131,7 +136,9 @@ def test_regression_executes_affected(client, patch_sessionlocal, fake_execution
 def test_regression_no_affected_422(client):
     doc = _doc()
     client.post("/api/v1/parse", json={"document": doc})
-    analysis_id = client.post("/api/v1/impact/analyze", json={"document": doc}).json()["data"]["analysis_id"]
+    analysis_id = client.post("/api/v1/impact/analyze", json={"document": doc}).json()["data"][
+        "analysis_id"
+    ]
     r = client.post(f"/api/v1/impact/{analysis_id}/regression")
     assert r.status_code == 422
 
@@ -141,7 +148,9 @@ def test_regression_all_cases_dropped_422(client):
     v2 = _doc(body_schema={"type": "object", "properties": {"age": {"type": "string"}}})
     client.post("/api/v1/parse", json={"document": v1})
     cid = _bound_active_case(client)
-    analysis_id = client.post("/api/v1/impact/analyze", json={"document": v2}).json()["data"]["analysis_id"]
+    analysis_id = client.post("/api/v1/impact/analyze", json={"document": v2}).json()["data"][
+        "analysis_id"
+    ]
     client.delete(f"/api/v1/cases/{cid}")  # 受影响用例被删 → 宽容降级后全部失效
     r = client.post(f"/api/v1/impact/{analysis_id}/regression")
     assert r.status_code == 422
@@ -154,7 +163,9 @@ def test_regression_partial_drop(client, patch_sessionlocal, fake_execution):
     client.post("/api/v1/parse", json={"document": v1})
     c1 = _bound_active_case(client, "listUsers")
     _bound_active_case(client, "listUsers")  # 第二个 active 用例（回归中保留）
-    analysis_id = client.post("/api/v1/impact/analyze", json={"document": v2}).json()["data"]["analysis_id"]
+    analysis_id = client.post("/api/v1/impact/analyze", json={"document": v2}).json()["data"][
+        "analysis_id"
+    ]
     client.delete(f"/api/v1/cases/{c1}")  # 回归前删除其中一个 → 宽容降级
 
     r = client.post(f"/api/v1/impact/{analysis_id}/regression")

@@ -41,8 +41,11 @@ def test_generation_log_foreign_key_and_confidence(session_factory):
         s.commit()
         s.refresh(task)
         log = GenerationLog(
-            generation_task_id=task.id, operation_id="op", model="m",
-            prompt_version="v1", status="success",
+            generation_task_id=task.id,
+            operation_id="op",
+            model="m",
+            prompt_version="v1",
+            status="success",
         )
         s.add(log)
         s.commit()

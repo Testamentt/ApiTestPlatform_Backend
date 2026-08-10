@@ -48,7 +48,9 @@ class LlmClient:
             cleaned = _MD_FENCE_END_RE.sub("", cleaned)
         return cleaned.strip() or raw
 
-    def chat_json(self, system: str, user: str, *, schema: type[BaseModel]) -> tuple[BaseModel, LlmUsage]:
+    def chat_json(
+        self, system: str, user: str, *, schema: type[BaseModel]
+    ) -> tuple[BaseModel, LlmUsage]:
         """结构化输出调用：response_format 强制 JSON → _extract_json 清洗 → schema 严格校验。
         返回 (已校验模型, usage)；校验失败抛 LLM_VALIDATION_FAILED（携带 raw_response），瞬时异常重试后抛 LLM_FAILED。"""
         s = self.settings
@@ -84,7 +86,9 @@ class LlmClient:
                 if u is None:
                     usage = LlmUsage(0, 0, 0)
                 else:
-                    usage = LlmUsage(u.prompt_tokens or 0, u.completion_tokens or 0, u.total_tokens or 0)
+                    usage = LlmUsage(
+                        u.prompt_tokens or 0, u.completion_tokens or 0, u.total_tokens or 0
+                    )
                 return parsed, usage
             except (RateLimitError, APIConnectionError, APITimeoutError) as e:
                 last_exc = e  # 瞬时：限流/连接/超时 → 重试
@@ -102,4 +106,6 @@ class LlmClient:
                 raise exc from e  # 校验失败不可重试（RULES §9.4）
             if attempt < s.max_retries:
                 time.sleep(s.retry_backoff * (3**attempt))  # 指数退避 1s/3s/9s（§9.4）
-        raise AppError("LLM_FAILED", status_code=502, detail=f"LLM 重试耗尽: {last_exc}") from last_exc
+        raise AppError(
+            "LLM_FAILED", status_code=502, detail=f"LLM 重试耗尽: {last_exc}"
+        ) from last_exc

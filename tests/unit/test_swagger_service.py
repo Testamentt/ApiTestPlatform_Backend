@@ -15,7 +15,15 @@ def _doc(operation_id="listUsers", **over):
     return {
         "openapi": "3.0.3",
         "info": {"title": "t", "version": "1.0"},
-        "paths": {"/users": {"get": {"operationId": operation_id, "responses": {"200": {"description": "ok"}}, **over}}},
+        "paths": {
+            "/users": {
+                "get": {
+                    "operationId": operation_id,
+                    "responses": {"200": {"description": "ok"}},
+                    **over,
+                }
+            }
+        },
     }
 
 
@@ -64,7 +72,9 @@ def test_parse_warns_when_operation_count_exceeds(session_factory, monkeypatch, 
     from app.services import swagger_service
 
     fake = SimpleNamespace(
-        swagger=SimpleNamespace(max_upload_bytes=2_000_000, hash_version=1, max_operation_ids_warn=1)
+        swagger=SimpleNamespace(
+            max_upload_bytes=2_000_000, hash_version=1, max_operation_ids_warn=1
+        )
     )
     monkeypatch.setattr(swagger_service, "get_settings", lambda: fake)
     doc = {

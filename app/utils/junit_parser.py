@@ -55,9 +55,7 @@ def parse_junit_xml(path: Path) -> tuple[JunitSummary, list[dict]]:
             msg = ""
             if el is not None:
                 msg = (el.attrib.get("message", "") or el.text or "")[:500]
-            entries.append(
-                {"case_id": int(match.group(1)), "status": status, "failure_msg": msg}
-            )
+            entries.append({"case_id": int(match.group(1)), "status": status, "failure_msg": msg})
 
     summary = JunitSummary(
         total=total,

@@ -12,8 +12,12 @@ def _seed_task(session_factory, *, case_status="active"):
     factory = session_factory
     with factory() as s:
         case = TestCase(
-            name="c", operation_id="op", method="GET", path="/get",
-            expected_status=200, status=case_status,
+            name="c",
+            operation_id="op",
+            method="GET",
+            path="/get",
+            expected_status=200,
+            status=case_status,
         )
         s.add(case)
         s.commit()
@@ -68,7 +72,9 @@ def test_execute_parse_failure_falls_back(session_factory, patch_sessionlocal, m
         assert "pytest exploded" in task.error_msg
 
 
-def test_execute_collection_error_fails_on_returncode(session_factory, patch_sessionlocal, monkeypatch):
+def test_execute_collection_error_fails_on_returncode(
+    session_factory, patch_sessionlocal, monkeypatch
+):
     # pytest 收集失败（syntax error）退出码 5：即使 junit 缺失也须置 failed，不得误判 SUCCESS
     from ..fakes import make_fake_run_cmd
 
@@ -85,7 +91,9 @@ def test_execute_collection_error_fails_on_returncode(session_factory, patch_ses
         assert "退出码 5" in task.error_msg
 
 
-def test_execute_returncode_1_is_success_when_junit_valid(session_factory, patch_sessionlocal, monkeypatch):
+def test_execute_returncode_1_is_success_when_junit_valid(
+    session_factory, patch_sessionlocal, monkeypatch
+):
     # pytest 退出码 1 = 有用例失败：junit 已含结果，任务仍算执行完成（SUCCESS + failed 计数）
     from ..fakes import JUNIT_FAIL, make_fake_run_cmd
 

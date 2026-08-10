@@ -59,7 +59,9 @@ class CaseRead(BaseModel):
     assertions: list | None
     status: str
     source: str
-    trust_score: int  # 血缘可信度（手工100 / AI 校验通过80 / AI 带 warnings60），审核按此优先 Review
+    trust_score: (
+        int  # 血缘可信度（手工100 / AI 校验通过80 / AI 带 warnings60），审核按此优先 Review
+    )
     created_at: datetime
     updated_at: datetime
 

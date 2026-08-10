@@ -31,9 +31,7 @@ def test_scan_marks_stale_failed_and_kills(session_factory, monkeypatch):
     killed = []
 
     monkeypatch.setattr("app.tasks.supervisor.SessionLocal", session_factory)
-    monkeypatch.setattr(
-        "app.tasks.supervisor.kill_process_tree", lambda pid: killed.append(pid)
-    )
+    monkeypatch.setattr("app.tasks.supervisor.kill_process_tree", lambda pid: killed.append(pid))
 
     count = scan_stale_tasks.delay().get()
     assert count == 1
