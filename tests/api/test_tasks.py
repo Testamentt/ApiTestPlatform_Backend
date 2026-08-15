@@ -28,7 +28,7 @@ def test_create_task_202_and_execute(
     t = client.get(f"/api/v1/tasks/{tid}").json()["data"]
     assert t["status"] == "success"
     assert t["result_summary"]["passed"] == 1
-    assert t["report_link"].startswith("/static/reports/")
+    assert t["report_link"].startswith("/static/")
 
 
 def test_lookup_create_returns_same_task(

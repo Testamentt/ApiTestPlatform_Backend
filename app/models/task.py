@@ -16,6 +16,10 @@ class Task(TimestampMixin, Base):
 
     run_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     case_ids: Mapped[list] = mapped_column(JSON, nullable=False)
+    # why：任务级执行超时（review M3）——此前只进幂等键不生效，语义误导；真正控制 subprocess 超时
+    timeout_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=300, server_default=text("300")
+    )
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default=TaskStatus.PENDING, server_default=text("'pending'")
     )

@@ -46,6 +46,7 @@ class ExecutionService:
             if task is None or task.status != TaskStatus.PENDING:
                 self.logger.info("task %s 跳过（不存在或非 pending）", task_id)
                 return
+            task_timeout = task.timeout_seconds or get_settings().execution.pytest_timeout
             cases = list(
                 session.scalars(
                     select(TestCase).where(
@@ -90,7 +91,7 @@ class ExecutionService:
         try:
             result = run_cmd(
                 cmd,
-                timeout=get_settings().execution.pytest_timeout,
+                timeout=task_timeout,
                 check=False,
                 cwd=workspace,
                 on_start=_mark_running,
@@ -185,7 +186,7 @@ class ExecutionService:
                     / str(task_id)
                 )
                 write_report_html(task, result_summary, report_dir)
-                report_link = f"/static/reports/{task_id}/report.html"
+                report_link = f"/static/{task_id}/report.html"  # /static 只挂 reports/（review H2）
             except Exception:
                 self.logger.exception("生成 HTML 报告失败（best-effort）")
             try:

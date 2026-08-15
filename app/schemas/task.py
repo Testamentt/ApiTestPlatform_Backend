@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskCreate(BaseModel):
-    case_ids: list[int] = Field(min_length=1)
+    case_ids: list[int] = Field(min_length=1, max_length=500)  # 上限防 IN(...) 撑爆（review M5）
     timeout_seconds: int | None = Field(default=300, ge=1, le=3600)
 
 
@@ -17,6 +17,7 @@ class TaskRead(BaseModel):
     id: int
     run_id: str
     case_ids: list
+    timeout_seconds: int
     status: str
     pid: int | None
     celery_task_id: str | None
