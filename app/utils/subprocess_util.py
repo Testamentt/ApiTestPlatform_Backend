@@ -22,6 +22,18 @@ class CmdResult:
     pid: int
 
 
+def _name_allowed(name: str, whitelist: list[str]) -> bool:
+    """白名单匹配：支持尾缀 `*` 前缀模式。why：Linux/Docker 下 sys.executable 常为
+    python3.12（非 python），精确匹配会误杀容器内全部执行任务（review H1）。"""
+    for entry in whitelist:
+        if entry.endswith("*"):
+            if name.startswith(entry[:-1]):
+                return True
+        elif name == entry:
+            return True
+    return False
+
+
 def _validate_args(args: list[str]) -> None:
     """why：命令白名单 + 参数逐项校验，防止任意命令执行。"""
     if not args:
@@ -29,7 +41,7 @@ def _validate_args(args: list[str]) -> None:
     name = os.path.basename(args[0]).lower()
     if name.endswith(".exe"):
         name = name[:-4]
-    if name not in get_settings().execution.command_whitelist:
+    if not _name_allowed(name, get_settings().execution.command_whitelist):
         raise AppError("COMMAND_NOT_ALLOWED", detail=f"命令 {args[0]} 不在白名单")
     for arg in args[1:]:
         if not isinstance(arg, str) or len(arg) > 1024:

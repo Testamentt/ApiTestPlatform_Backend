@@ -35,7 +35,7 @@ execution:
   workspace_dir: .workspace           # 动态测试文件 / report.xml / HTML 报告
   base_url: http://httpbin.org        # 被测接口 base_url（写死，Phase 2 再补多环境）
   pytest_timeout: 300                 # subprocess 超时阈值（来自 config，禁止硬编码）
-  command_whitelist: [python, pytest] # run_cmd 命令白名单
+  command_whitelist: [python, python3*, pytest] # run_cmd 白名单；* 尾缀=前缀匹配（兼容 Linux/Docker 的 python3.12）
 
 swagger:                              # Phase 2 影响分析（全带 default，缺失不阻塞启动）
   max_upload_bytes: 2000000           # Swagger 文档大小上限（超限拒绝解析）
