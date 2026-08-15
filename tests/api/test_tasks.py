@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from app.core.exceptions import AppError
 from app.utils.subprocess_util import CmdResult
+
 from tests.fakes import JUNIT_OK, make_fake_run_cmd
 
 
@@ -130,8 +131,14 @@ def test_task_timeout_controls_subprocess(
 
     monkeypatch.setattr("app.services.execution_service.run_cmd", _fake_run)
     cid = active_case_factory()
-    tid = client.post(
-        "/api/v1/tasks", json={"case_ids": [cid], "timeout_seconds": 120}
-    ).json()["data"]["id"]
+    tid = client.post("/api/v1/tasks", json={"case_ids": [cid], "timeout_seconds": 120}).json()[
+        "data"
+    ]["id"]
     assert captured["timeout"] == 120
     assert client.get(f"/api/v1/tasks/{tid}").json()["data"]["timeout_seconds"] == 120
+
+
+def test_page_size_too_large_422(client):
+    # why：分页上限（review M5）——page_size 越界拒绝，禁无上限全量返回
+    r = client.get("/api/v1/tasks?page_size=1000")
+    assert r.status_code == 422

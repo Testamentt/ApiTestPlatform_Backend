@@ -1,7 +1,7 @@
 # 用例路由。why：路由只做参数解析/转发，业务逻辑在 service（RULES.md §4）。
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, verify_token
@@ -14,8 +14,8 @@ router = APIRouter(tags=["cases"], dependencies=[Depends(verify_token)])
 
 @router.get("/cases", response_model=ApiResponse[Page[CaseRead]])
 def list_cases(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     status: str | None = None,
     method: str | None = None,
     operation_id: str | None = None,

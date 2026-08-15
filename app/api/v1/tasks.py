@@ -1,7 +1,7 @@
 # 任务路由。why：POST /tasks 走 Lookup-Create（存在即返回）+ Celery 异步，立即 202。
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.v1.deps import get_db, verify_token
@@ -20,8 +20,8 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> ApiRespon
 
 @router.get("/tasks", response_model=ApiResponse[Page[TaskRead]])
 def list_tasks(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     status: str | None = None,
     db: Session = Depends(get_db),
 ) -> ApiResponse[Page[TaskRead]]:
