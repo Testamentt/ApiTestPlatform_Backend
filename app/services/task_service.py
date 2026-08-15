@@ -39,14 +39,53 @@ class TaskService:
             )
         timeout = payload.timeout_seconds or 300
         run_id = self.compute_run_id(payload.case_ids, timeout)
-        # Lookup-Create：指纹已存在直接返回，不重复执行
+        # Lookup-Create 幂等：SUCCESS 直接复用；FAILED 重置重试；PENDING/RUNNING 返回现状（review H4）
         existing = self.task_repo.find_by_run_id(run_id)
         if existing:
+            if existing.status == TaskStatus.SUCCESS.value:
+                return existing  # §8.3：已成功不重复执行
+            if existing.status == TaskStatus.FAILED.value:
+                # why：失败任务允许同输入重试——重置 PENDING 重新入队；任务函数有 PENDING 状态守卫，重复派发安全
+                existing.status = TaskStatus.PENDING.value
+                existing.error_stage = None
+                existing.error_msg = None
+                existing.pid = None
+                existing.celery_task_id = None
+                existing.finished_at = None
+                try:
+                    self.session.commit()
+                except Exception:
+                    self.session.rollback()
+                    raise
+                self._dispatch_or_fail(existing)
+                return existing
             return existing
-        task = Task(run_id=run_id, case_ids=payload.case_ids, status=TaskStatus.PENDING)
+        task = Task(
+            run_id=run_id,
+            case_ids=payload.case_ids,
+            status=TaskStatus.PENDING,
+            timeout_seconds=timeout,
+        )
         self.task_repo.add(task)
         # why：持久化 celery_task_id（RULES §8.3）——任务卡死时可通过 Celery 定位/revoke
-        celery_task_id = dispatch_execution(task.id)
+        self._dispatch_or_fail(task)
+        return task
+
+    def _dispatch_or_fail(self, task: Task) -> None:
+        """why：入队失败（Redis/Celery 不可用）不能留 PENDING 孤儿（review M2）——
+        置 FAILED(dispatch) 后抛业务异常（503 结构化响应），同输入再提交走重试路径。"""
+        try:
+            celery_task_id = dispatch_execution(task.id)
+        except Exception as e:
+            task.status = TaskStatus.FAILED.value
+            task.error_stage = "dispatch"
+            task.error_msg = f"任务入队失败（Celery/Redis 不可用）: {e}"
+            try:
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+                raise
+            raise AppError("DISPATCH_FAILED", status_code=503, detail=task.error_msg) from e
         if celery_task_id:
             task.celery_task_id = celery_task_id
             try:
@@ -54,7 +93,6 @@ class TaskService:
             except Exception:
                 self.session.rollback()
                 raise
-        return task
 
     def get_task(self, task_id: int) -> Task:
         return self.task_repo.get_or_raise(task_id)

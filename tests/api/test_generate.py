@@ -107,3 +107,41 @@ def test_get_generation(client, no_dispatch):
 
 def test_get_generation_missing_404(client):
     assert client.get("/api/v1/generate/99999").status_code == 404
+
+
+def test_create_generate_dispatch_failure_marks_failed(client, session_factory, monkeypatch):
+    # why：入队失败（Celery/Redis 不可用）落 FAILED(dispatch) 而非 PENDING 孤儿（review M2）
+    def _boom(*args, **kwargs):
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr("app.services.generation_service.GenerationService._dispatch", _boom)
+    r = client.post("/api/v1/generate", json={"document": DOC})
+    assert r.status_code == 503
+    assert r.json()["code"] == "DISPATCH_FAILED"
+    with session_factory() as s:
+        task = s.query(GenerationTask).one()
+        assert task.status == "failed"
+        assert task.error_stage == "dispatch"
+
+
+def test_failed_generate_retry_same_input(client, session_factory, monkeypatch):
+    # why：失败生成任务同输入重试——重置 PENDING 重新入队（review H4），同一任务行复用
+    def _boom(*args, **kwargs):
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr("app.services.generation_service.GenerationService._dispatch", _boom)
+    r1 = client.post("/api/v1/generate", json={"document": DOC})
+    assert r1.status_code == 503
+
+    monkeypatch.setattr(
+        "app.services.generation_service.GenerationService._dispatch",
+        lambda self, tid: None,
+    )
+    r2 = client.post("/api/v1/generate", json={"document": DOC})
+    assert r2.status_code == 202
+    with session_factory() as s:
+        task = s.query(GenerationTask).one()  # 同 run_id → 同一行
+        assert task.status == "pending"
+        assert task.error_stage is None
+        assert task.error_msg is None
+    assert r2.json()["data"]["id"] == task.id

@@ -381,7 +381,24 @@ class GenerationService:
         run_id = compute_run_id(document, operation_ids)
         existing = self.repo.find_by_run_id(run_id)
         if existing:
-            return existing  # Lookup-Create：存在即返回
+            if existing.status == GenerationStatus.SUCCESS.value:
+                return existing  # §8.3：已成功不重复生成
+            if existing.status == GenerationStatus.FAILED.value:
+                # why：失败任务允许同输入重试——重置 PENDING 重新入队（review H4）；
+                # run_generation 有 PENDING 状态守卫（重复派发安全），否则 run_id 被 FAILED 永久占用
+                existing.status = GenerationStatus.PENDING.value
+                existing.error_stage = None
+                existing.error_msg = None
+                existing.celery_task_id = None
+                existing.finished_at = None
+                try:
+                    self.session.commit()
+                except Exception:
+                    self.session.rollback()
+                    raise
+                self._dispatch_or_fail(existing)
+                return existing
+            return existing  # PENDING/RUNNING：执行中或排队中，返回现状
 
         task = GenerationTask(
             run_id=run_id,
@@ -390,23 +407,37 @@ class GenerationService:
             status=GenerationStatus.PENDING,
         )
         self.repo.add(task)
-        self._dispatch(task.id)
+        self._dispatch_or_fail(task)
         return task
 
     def get_generation_task(self, task_id: int) -> GenerationTask:
         return self.repo.get_or_raise(task_id)
 
-    def _dispatch(self, task_id: int) -> None:
-        # why：延迟导入防循环引用（celery 任务模块会反向 import 本包）；测试 monkeypatch 隔离
-        from app.tasks.generate_cases import generate_cases_task  # noqa: PLC0415
-
-        result = generate_cases_task.delay(task_id)
-        # why：持久化 celery_task_id（RULES §8.3）——任务卡死时可通过 Celery 定位/revoke
-        task = self.session.get(GenerationTask, task_id)
-        if task is not None:
-            task.celery_task_id = result.id
+    def _dispatch_or_fail(self, task: GenerationTask) -> None:
+        """why：入队失败（Celery/Redis 不可用）不能留 PENDING 孤儿（review M2）——
+        置 FAILED(dispatch) 后抛业务异常（503 结构化响应），同输入再提交走重试路径。"""
+        try:
+            result = self._dispatch(task.id)
+        except Exception as e:
+            task.status = GenerationStatus.FAILED.value
+            task.error_stage = "dispatch"
+            task.error_msg = f"生成任务入队失败（Celery/Redis 不可用）: {e}"
             try:
                 self.session.commit()
             except Exception:
                 self.session.rollback()
                 raise
+            raise AppError("DISPATCH_FAILED", status_code=503, detail=task.error_msg) from e
+        if result is not None:
+            task.celery_task_id = result
+            try:
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+                raise
+
+    def _dispatch(self, task_id: int) -> str | None:
+        # why：延迟导入防循环引用（celery 任务模块会反向 import 本包）；测试 monkeypatch 隔离
+        from app.tasks.generate_cases import generate_cases_task  # noqa: PLC0415
+
+        return generate_cases_task.delay(task_id).id
