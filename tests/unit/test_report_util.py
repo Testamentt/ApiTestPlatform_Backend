@@ -35,3 +35,28 @@ def test_write_report_html_no_results(tmp_path):
     assert path.exists()
     html = path.read_text(encoding="utf-8")
     assert "执行失败，无有效结果" in html
+
+
+def test_write_report_html_escapes_user_content(tmp_path):
+    # why：用例名/失败信息是用户与 pytest 可控内容，不转义即存储型 XSS（review H2）
+    task = SimpleNamespace(id=1, status="success")
+    summary = {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0,
+        "results": [
+            {
+                "case_id": 1,
+                "name": "<script>alert(1)</script>",
+                "status": "pass",
+                "failure_msg": 'assert <b>200</b> != 500 "&"',
+            },
+        ],
+    }
+    path = write_report_html(task, summary, tmp_path / "reports")
+    html = path.read_text(encoding="utf-8")
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "&lt;b&gt;200&lt;/b&gt;" in html
+    assert "&amp;" in html

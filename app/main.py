@@ -69,7 +69,11 @@ def create_app() -> FastAPI:
             content={"code": "INTERNAL_ERROR", "message": "服务器内部错误", "detail": None},
         )
 
-    app.mount("/static", StaticFiles(directory=settings.execution.workspace_dir), name="static")
+    # why：/static 只挂 reports/ 子目录——测试文件（tasks/{id}/test_*.py）含请求参数/请求体，
+    # 全目录挂载会无鉴权暴露敏感数据（review H2）；report_link 仍为 /static/{task_id}/report.html
+    reports_dir = Path(settings.execution.workspace_dir) / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/static", StaticFiles(directory=reports_dir), name="static")
 
     @app.get("/", include_in_schema=False)
     def _root() -> RedirectResponse:

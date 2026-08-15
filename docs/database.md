@@ -50,7 +50,7 @@
 | error_msg | TEXT | NULL | 失败原因（含 stdout 尾部） |
 | started_at / finished_at | DATETIME | NULL | |
 | result_summary | JSON | NULL | `{total, passed, failed, skipped, duration_ms, results:[{case_id, status, failure_msg}]}`（name 由接口层默认空串兜底，junit 不提取） |
-| report_link | VARCHAR(1024) | NULL | `/static/reports/{task_id}/report.html`（简单 HTML 报告） |
+| report_link | VARCHAR(1024) | NULL | `/static/{task_id}/report.html`（简单 HTML 报告） |
 | created_at / updated_at | DATETIME | NOT NULL, server_default=now / onupdate | |
 
 索引：`idx_tasks_status(status)`、`UNIQUE(run_id)`。

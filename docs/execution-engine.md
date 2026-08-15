@@ -98,7 +98,7 @@ scan_stale_tasks():
 ## 7. HTML 报告（替代 Allure，MVP）
 
 - 任务结束后 `report_util.write_report_html` 写 `.workspace/reports/{task_id}/report.html`（自包含 HTML：总数/通过/失败/逐用例列表 + 失败信息）。
-- `tasks.report_link = /static/reports/{task_id}/report.html`（main.py 挂 `/static`）。
+- `tasks.report_link = /static/{task_id}/report.html`（main.py 挂 `/static` 至 `workspace/reports/`，测试文件目录不暴露）。
 - **必须处理无有效结果**：pytest 失败（如测试文件语法错误）导致 report.xml 缺失时，生成「执行失败，无有效结果」报告；调用 wrapped in try（best-effort，失败不影响任务状态更新）。
 - 面试话术：「对接了报告，MVP 用简单 HTML，后续可换 Allure。」
 - 「自愈看板」：**不做**——AI UI 项目卖点，不重复造轮子。
