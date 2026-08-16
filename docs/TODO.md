@@ -6,7 +6,7 @@
 
 - [x] 项目文档（architecture / database / api / execution-engine / ai-generation / impact-analysis / configuration / roadmap / TODO）
 - [x] 规则与配置契约（RULES.md §1-§18 + config/settings.example.yaml + .env.example）
-- [x] 双仓库结构（backend/ + frontend/，frontend Phase 4 可选）
+- [x] 双仓库结构（backend/ + frontend/，frontend Phase 4 已实现）
 - [x] 用户评审确认全部文档（进入编码的闸门）→ 2026-08-06 确认进入 Phase 1
 
 ## Phase 1 · 核心执行闭环（已完成，MVP 简化）

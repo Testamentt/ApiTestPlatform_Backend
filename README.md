@@ -11,7 +11,7 @@
 | 痛点 | 现状 | 本平台方案 |
 | --- | --- | --- |
 | 用例编写耗时 | 单接口覆盖正向/逆向/边界值/异常场景，手动编写重复性极高（10~15 min/接口） | **AI 辅助用例智能生成**：解析 OpenAPI → 结构化 Prompt → LLM 生成 → 人工审核（2~3 min/接口） |
-| 变更影响不可控 | 接口定义变更后回归范围凭经验判断，漏测风险高（1~2 h） | **接口变更影响自动圈定**：Git Webhook → Diff → 受影响用例反向检索 → 一键回归（<10 s，覆盖率 100%） |
+| 变更影响不可控 | 接口定义变更后回归范围凭经验判断，漏测风险高（1~2 h） | **接口变更影响自动圈定**：上传新版 Swagger → Diff → 受影响用例反向检索 → 一键回归（<10 s） |
 | 执行阻塞 | Web 服务同步调 pytest，长耗时导致请求超时、服务不可用（同步超时率 30%+） | **异步任务解耦 + 超时兜底**：Celery + Redis 异步队列，Web 响应稳定 <50 ms，任务级超时（默认 300s）强杀 |
 
 > 实现进度：**Phase 1 执行闭环** / **Phase 2 影响分析** / **Phase 3 AI 智能生成** / **Phase 4 生产化 + Vue 前端** 均已交付——Docker Compose 一键跑 + GitHub Actions CI 门禁 + Bearer Token 鉴权 + Vue 3 前端四页（仪表盘/用例/任务/AI 生成）。详见 [docs/roadmap.md](docs/roadmap.md)。
@@ -19,7 +19,7 @@
 ## 架构速览
 
 ```
-用户 / CI 系统 / Vue 前端（frontend/，Phase 4 已实现 4 页）
+用户 / Vue 前端（frontend/） / CI 探针（/health）
    │ REST /api/v1（Bearer Token 鉴权，Phase 4）
    ▼
 【界面层】 双界面：FastAPI Swagger UI（/docs）+ Vue 3 前端（frontend/，dev 走 Vite 代理）
@@ -102,5 +102,7 @@ docker compose up --build
 | [docs/ai-generation.md](docs/ai-generation.md) | OpenAPI 解析、Prompt 设计、draft→active 审核流 |
 | [docs/impact-analysis.md](docs/impact-analysis.md) | 变更影响分析算法、Webhook、一键回归 |
 | [docs/configuration.md](docs/configuration.md) | 配置管理（Pydantic Settings，Phase 1-4 九段） |
-| [docs/roadmap.md](docs/roadmap.md) | 迭代路线（活文档） |
+| [docs/roadmap.md](docs/roadmap.md) | 迭代路线（活文档：方向/状态/下一步；完成台账见 TODO.md） |
+| [docs/TODO.md](docs/TODO.md) | 分阶段完成项勾选台账 |
 | [tests/](tests/) | 单元 / 接口 / 任务测试（pytest 门禁，mock 隔离外部依赖） |
+| [frontend/README.md](/frontend/README.md) | Vue 前端使用说明（4 页 / 启动 / 契约） |

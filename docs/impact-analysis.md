@@ -126,7 +126,7 @@ POST /impact/{analysis_id}/fix-hints
 |---|---|
 | O(1) diff？ | 只存 version+hashes，diff=集合差+哈希比较 |
 | 200→202 会漏检？ | 响应 hash 含状态码指纹（F1） |
-| breaking 漏报？ | required+type/enum 签名联合判定四场景（F2） |
+| breaking 漏报？ | required+type/enum 签名联合判定五场景（含响应状态码替换，F1/F2） |
 | 接口改名血缘断裂？ | orphaned 迁移清单 + suggested_remap 可操作建议 |
 | 回归可追溯？ | last_regression_* 落库 + 结构化日志 + 真实口径 summary |
 | 为什么不用 AI？ | 确定性规则零成本零幻觉；AI 留给 Phase 3 生成 |
