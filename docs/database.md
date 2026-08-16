@@ -43,10 +43,11 @@
 | id | INTEGER | PK | |
 | run_id | VARCHAR(64) | NOT NULL, **UNIQUE** | `sha256(sorted case_ids + timeout_seconds)` 指纹（Lookup-Create 幂等键） |
 | case_ids | JSON | NOT NULL | 用例 id 快照（执行时冻结） |
+| timeout_seconds | INTEGER | NOT NULL DEFAULT 300 | **任务级执行超时**（review M3/B4）：真正控制 subprocess 超时与僵尸扫描阈值（缺省 `execution.pytest_timeout`），API 可配 1–3600 |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'pending' | pending/running/success/failed（StrEnum） |
 | pid | INTEGER | NULL | **subprocess 主进程 PID，超时劫持权威 kill 依据**（mark_running 写入） |
 | celery_task_id | VARCHAR(64) | NULL | Celery task uuid |
-| error_stage | VARCHAR(32) | NULL | parse/subprocess/timeout（失败阶段定位） |
+| error_stage | VARCHAR(32) | NULL | parse/subprocess/timeout/internal/dispatch（失败阶段定位） |
 | error_msg | TEXT | NULL | 失败原因（含 stdout 尾部） |
 | started_at / finished_at | DATETIME | NULL | |
 | result_summary | JSON | NULL | `{total, passed, failed, skipped, duration_ms, results:[{case_id, status, failure_msg}]}`（name 由接口层默认空串兜底，junit 不提取） |
@@ -55,7 +56,7 @@
 
 索引：`idx_tasks_status(status)`、`UNIQUE(run_id)`。
 
-> **Lookup-Create 模式**：`POST /api/v1/tasks` 先算 `run_id`，查 `tasks.run_id` 已存在则**直接返回已有任务**（不重复执行）；否则创建 + 派发。SQLite `UNIQUE(run_id)` 兜底并发。
+> **Lookup-Create 模式（review H4 修订）**：`POST /api/v1/tasks` 先算 `run_id`，查 `tasks.run_id`——已 **SUCCESS** 直接复用（不重复执行）；已 **FAILED** 重置 PENDING 重新入队（同输入可重试）；PENDING/RUNNING 返回现状。SQLite `UNIQUE(run_id)` 兜底并发。入队失败（Redis/Celery 不可用）→ 落 `FAILED(error_stage="dispatch")` + 503，不残留 PENDING 孤儿。
 
 ### 2.3 api_definitions（Swagger 版本快照，Phase 2 影响分析）
 
@@ -101,7 +102,7 @@
 | operation_ids | JSON | NULL | 定向生成子集；NULL=全量/untested |
 | operation_count | INTEGER | NOT NULL DEFAULT 0 | |
 | prompt_version | VARCHAR(16) | NULL | 预留列；版本溯源由 `generation_logs.prompt_version` 与 `result_summary.prompt_version` 承载（任务列当前恒 NULL） |
-| error_stage / error_msg | VARCHAR/TEXT | NULL | parse/llm/validate |
+| error_stage / error_msg | VARCHAR/TEXT | NULL | parse/internal/timeout/dispatch（单接口失败不入任务级，记 generation_logs） |
 | result_summary | JSON | NULL | `{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total}` |
 | started_at / finished_at | DATETIME | NULL | |
 | created_at / updated_at | DATETIME | TimestampMixin | |
@@ -142,10 +143,12 @@ draft/active ──(删除)──▶ 物理删除
 ```
 pending ──▶ running ──▶ success
                 ├──▶ failed（error_stage + error_msg）
-pending/running ──(超时劫持 scan_stale_tasks)──▶ failed（error_stage=timeout，仅人工重试）
+pending/running ──(超时劫持 scan_stale_tasks)──▶ failed（error_stage=timeout）
+failed ──(同输入重新提交 POST /tasks，review H4)──▶ pending（重置后重新入队）
+pending ──(入队失败，review M2)──▶ failed（error_stage=dispatch）
 ```
 
-顺序迁移 + 显式 if 守卫；失败必记 `error_stage`/`error_msg`。
+顺序迁移 + 显式 if 守卫；失败必记 `error_stage`/`error_msg`；扫描本身不自动重试（重试由用户同输入重新提交触发）。
 
 ## 4. 迁移策略
 
@@ -163,7 +166,7 @@ pending/running ──(超时劫持 scan_stale_tasks)──▶ failed（error_st
 | --- | --- |
 | `operation_id` NOT NULL + 索引 | Phase 2 影响分析血缘（面试前瞻卖点：Diff+SQL 反向检索） |
 | `tasks.pid` | 超时劫持权威 kill 依据——scan 从 DB 读 pid 杀整棵树 |
-| `run_id` = sha256 + UNIQUE（Lookup-Create） | 防重复提交：存在即返回，SQLite 唯一约束兜底（面试锚点） |
+| `run_id` = sha256 + UNIQUE（Lookup-Create） | 防重复提交：SUCCESS 复用 / FAILED 重置重试（review H4），SQLite 唯一约束兜底（面试锚点） |
 | `case_ids` JSON 快照 | 执行冻结语义：运行中用例被改/删不污染结果 |
 | 结果落 `result_summary` JSON（无 CaseResult 表） | Phase 1 简化：总览即可；Phase 2 需逐用例明细时再拆表 |
 | base_url 写死 `config/settings.yaml`（无 Environment 表） | MVP 简化：Phase 2 再补多环境管理 |

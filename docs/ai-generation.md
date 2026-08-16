@@ -10,7 +10,8 @@ Swagger/OpenAPI 3.0 文档
   │ POST /api/v1/generate {document, operation_ids?, force_full?} → 202 {task_id}
   ▼
 GenerationService.create_generation_task
-  │ run_id=sha256(document+operation_ids) → Lookup-Create 幂等 → 落库 PENDING → Celery 入队
+  │ run_id=sha256(document+operation_ids) → Lookup-Create（SUCCESS 复用 / FAILED 重置重试）
+  │ → 落库 PENDING → Celery 入队（失败落 FAILED(dispatch) + 503）
   ▼
 Worker generate_cases_task（soft_time_limit=540 / time_limit=llm.task_timeout_seconds=600，软超时捕获落 FAILED）
   │ parse_openapi（Phase 2 解析器复用）→ 过滤定向 operation_ids（skipped 记录）
@@ -35,10 +36,10 @@ result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, 
 
 | 要点 | 说明 |
 | --- | --- |
-| 幂等 | `run_id = sha256(document + operation_ids)` UNIQUE + Lookup-Create——同输入重复提交返回同一任务，不重复调 LLM 花钱 |
+| 幂等 | `run_id = sha256(document + operation_ids)` UNIQUE + Lookup-Create（review H4 修订）——已 **SUCCESS** 复用（不重复调 LLM 花钱）；已 **FAILED** 重置 PENDING 重新入队（同输入可重试）；PENDING/RUNNING 返回现状；入队失败 → `FAILED(error_stage="dispatch")` + 503 |
 | document 落库 | Swagger ≤2MB 存 `document` JSON 列；任务入参只传 `task_id`（RULES §8.4 大对象不传队列） |
 | 定向优先级 | `operation_ids`（显式）> `force_full=True`（全量重建）> 默认（读最新影响分析 `untested_ops`；无历史分析 → 全量开箱即用；已全覆盖 → 422 防浪费） |
-| 状态机 | pending→running→success/failed（error_stage: parse/llm/validate） |
+| 状态机 | pending→running→success/failed（error_stage: parse/internal/timeout/dispatch；单接口失败不入任务级，记 generation_logs） |
 | 超时 | Celery `soft_time_limit=llm.task_soft_timeout_seconds`(540s) / `time_limit=llm.task_timeout_seconds`(600s)，软超时捕获 `force_fail_timeout` 落 FAILED（§8.2）；200 接口串行 ≈400s 兜底；大文档建议分批（Phase 4） |
 
 ## 4. Prompt 管理（prompts/v1/，RULES §3.2）
@@ -97,4 +98,4 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 
 ## 10. 不在本阶段（Phase 4）
 
-采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、批量并发分组、动态信任降权、多版本 prompt、cost 精算、前端展示、Webhook。
+采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、批量并发分组、动态信任降权、多版本 prompt、cost 精算、Webhook。（前端展示已实现，见 [frontend/README.md](../../frontend/README.md)。）

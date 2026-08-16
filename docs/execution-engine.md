@@ -1,7 +1,7 @@
 # 执行引擎设计（execution-engine.md）· Phase 1-3 实现版
 
 > 规则引用：`RULES.md` §2.3（统一超时）、§2.4（subprocess 规范，MVP 已放宽）、§8（Celery 任务治理）。
-> **Phase 1-3（面试导向）**：`execute_cases`（用例执行）+ `generate_cases`（AI 生成）两个 Worker 任务 + `scan_stale_tasks` 超时劫持；subprocess 用 `subprocess.run(timeout)` + 白名单；报告用简单 HTML；无 Beat。
+> **Phase 1-3（面试导向）**：`execute_cases`（用例执行）+ `generate_cases`（AI 生成）两个 Worker 任务 + `scan_stale_tasks` 超时劫持；subprocess 用 `Popen + communicate(timeout)` + 白名单；报告用简单 HTML；无 Beat。
 
 ## 1. Celery 任务清单（Phase 1-3）
 
@@ -9,7 +9,7 @@
 | --- | --- | --- | --- |
 | `execute_cases(task_id)` | task_id（从 DB 读上下文） | 动态生成 test_xxx.py → subprocess pytest → JUnit 解析 → 写 tasks.result_summary + report_link | pending→running→success/failed |
 | `generate_cases(task_id)` | task_id（从 DB 读 document） | parse → 逐 operation LLM 生成 → draft 落库 + generation_logs 审计 → result_summary | pending→running→success/failed（见 [ai-generation.md](ai-generation.md)） |
-| `scan_stale_tasks()` | 无 | 扫描 running 超时任务 → taskkill → 迁移 failed | 运维任务（Worker 启动触发一次，**无 Beat**） |
+| `scan_stale_tasks()` | 无 | 扫描 running 超时的执行任务（taskkill 杀树）+ 生成任务 → 迁移 failed | 运维任务（Worker 启动触发一次，**无 Beat**） |
 
 ## 2. Celery 配置要点（值全部来自 Settings，禁止硬编码）
 
@@ -37,7 +37,7 @@ broker_connection_retry_on_startup = True
 
 `app/utils/subprocess_util.py` 提供唯一函数 `run_cmd(args, timeout, *, check=True, cwd=None, on_start=None)`，**业务代码禁止各自 subprocess.run**：
 
-- 参数必须为列表，**禁止 `shell=True`**；命令在配置白名单内（`python`/`pytest`），参数逐项校验。
+- 参数必须为列表，**禁止 `shell=True`**；命令在配置白名单内（`[python, python3*, pytest]`，`*` 尾缀=前缀匹配，兼容 Linux/Docker 的 `python3.12`），参数逐项校验。
 - 用 `Popen + communicate(timeout=)`（`capture_output=True` 语义、`creationflags=CREATE_NO_WINDOW`）；`on_start(pid)` 在进程启动后立即回调——执行引擎用它写 `tasks.pid` + running（超时劫持的权威依据）。
 - 捕获 `TimeoutExpired` → `kill_process_tree(proc.pid)`（**best-effort**：父进程已死，`proc.pid` 杀不到孙进程）→ 抛 `AppError("SUBPROCESS_TIMEOUT")`。
 - 返回前校验 `returncode`（`check=True` 时非 0 抛 `AppError("SUBPROCESS_FAILED")`，detail 带 stdout 尾部）；执行引擎传 `check=False` 自行解读。
@@ -52,14 +52,14 @@ broker_connection_retry_on_startup = True
 3. 逐用例 case_generator 生成 test_{case_id}.py（结构化字段 repr 插值，无 Jinja2；只断言 expected_status）
 4. `run_cmd` 的 `on_start` 回调写 tasks.pid + status=running + started_at —— commit
 5. run_cmd([python, -m, pytest, 全部 test_*.py, --junitxml=report.xml,
-            -o, addopts=, -p, no:cacheprovider], timeout=settings.execution.pytest_timeout, check=False)
+            -o, addopts=, -p, no:cacheprovider], timeout=task.timeout_seconds（缺省 pytest_timeout）, check=False)
 6. **returncode 终态检查**：非 (0,1)（2 中断/3 内部/4 usage/5 收集失败）→ failed(error_stage=subprocess)，
    避免 pytest 自身异常产出缺测试的 junit 被误判 SUCCESS；1=有用例失败但 junit 有效，继续
 7. 解析 report.xml（junit_parser 累加各 testsuite 总数）→ 组 result_summary {total,passed,failed,...}
 8. report_util 写 report.html（best-effort，无有效结果也生成「执行失败，无有效结果」）→ report_link
 9. 写 tasks.result_summary + report_link + status=success + finished_at —— commit
-10. 失败/超时/软超时/未预期异常 → status=failed + error_stage(parse/subprocess/timeout/internal)
-    + error_msg（含 stdout 尾部）—— commit，禁自动重试
+10. 失败/超时/软超时/未预期异常/入队失败 → status=failed + error_stage(parse/subprocess/timeout/internal/dispatch)
+    + error_msg（含 stdout 尾部）—— commit；扫描不自动重试，用户可同输入重新提交触发重试（review H4）
 ```
 
 **执行安全边界**：只运行**人工确认过的 active 用例**；test 文件由结构化字段渲染（非自由文本）；`run_cmd` 命令白名单 + `shell=False`。
@@ -77,13 +77,18 @@ broker_connection_retry_on_startup = True
 ```
 scan_stale_tasks():
   now = datetime.now(timezone.utc).replace(tzinfo=None)
-  threshold = settings.execution.pytest_timeout   # 与 run_cmd 同源；timeout 不落库，run_id 指纹已含
+  # 执行任务：阈值 = 任务级 timeout_seconds（缺省 pytest_timeout），与 run_cmd 同源
   running = SELECT * FROM tasks WHERE status='running'
   stale = [t for t in running if started_at and (now - started_at).total_seconds() > threshold]
   for t in stale:
     1. os.system(f"taskkill /T /F /PID {t.pid}")   # 读 DB 写入的 pid，权威清理
     2. 迁移 failed，error_stage='timeout'，error_msg=被杀时间
-       （禁止置回 pending，禁止自动重试——重试仅人工触发）
+  # 生成任务（review H3）：阈值 = llm.task_timeout_seconds；Worker 被强杀后卡 RUNNING 会污染 run_id
+  gen_running = SELECT * FROM generation_tasks WHERE status='running'
+  stale_gen = [t for t in gen_running if started_at and (now - started_at).total_seconds() > gen_threshold]
+  for t in stale_gen:
+    迁移 failed，error_stage='timeout'，error_msg=被杀时间（生成任务无 pid，不杀树）
+  # 扫描不自动重试——重试由用户同输入重新提交触发（review H4）
 ```
 
 **孤儿任务兜底**：`status='running'` 但 broker 中已无对应任务的，靠 `started_at` 超时条件自然覆盖。

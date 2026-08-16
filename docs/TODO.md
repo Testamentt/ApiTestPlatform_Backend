@@ -18,7 +18,7 @@
 - [x] 用例 CRUD + confirm 审核（operation_id 必填 ③-1；draft→active 防幻觉护栏）
 - [x] 执行引擎：run_cmd（白名单 + timeout + on_start 落 pid）+ case_generator + junit_parser（累加 testsuite）+ report_util（HTML）
 - [x] Celery + Redis 异步化（execute_cases + scan_stale_tasks 启动扫描，无 Beat）
-- [x] Lookup-Create 幂等（run_id=sha256 + UNIQUE，存在即返回）
+- [x] Lookup-Create 幂等（run_id=sha256 + UNIQUE；SUCCESS 复用 / FAILED 可重试，review H4 修订）
 - [x] tests/unit + tests/api + tests/tasks（fakes: FakeSubprocess）+ 31 用例全绿 + ruff 全绿
 - [x] 验收：/docs「创建用例 → confirm → 触发执行(202) → 轮询 → results + HTML 报告」闭环 + 真实异步端到端验证
 
@@ -34,7 +34,7 @@
 
 ## Phase 3 · AI 智能生成（已完成，核心卖点 2）
 
-> 实现 + 评审修复（软超时捕获/终态兜底/fix-hints 审计与 prompt 外置/长度预检/文档字段剥离/celery_task_id/e2e 层），155 测试全绿 + ruff 全绿。
+> 实现 + 评审修复（软超时捕获/终态兜底/fix-hints 审计与 prompt 外置/长度预检/文档字段剥离/celery_task_id/e2e 层），174 测试全绿 + ruff 全绿。
 
 - [x] 回合 1：文档锁定（ai-generation/configuration/database/api/architecture/roadmap + config 三件套 + .env.example llm 段）
 - [x] 回合 2：代码生成清单确认
@@ -48,11 +48,20 @@
 - [x] Step 8 验证 + 3.5-C 核对 + 沉淀 + 提交
 - [x] confirm 审核接口（Phase 1 复用，AI 用例 draft → active）
 
-## Phase 4 · 生产化与前端增强（可选，锦上添花）
+## Phase 4 · 生产化与前端增强（已完成）
 
-- [ ] Docker Compose（FastAPI + Redis + Worker + SQLite）
-- [ ] GitHub Actions 两段式 CI
-- [ ] 基础鉴权（Bearer Token，值在配置中；方案 A：Phase 1 无鉴权，此处补上）
-- [ ] （可选）PostgreSQL 迁移 / JWT 鉴权
-- [ ] （可选）Vue 前端：仅用例列表 + 任务看板两页
+- [x] Docker Compose（FastAPI + Redis + Worker + SQLite，named volume + 非 root + solo 单写者）
+- [x] GitHub Actions 三 job（门禁 ruff + pytest + coverage 60/80 + slow e2e + docker-build 验证）
+- [x] 基础鉴权（Bearer Token，值在配置中；401/403 区分，health 免鉴权，/docs 开关）
+- [x] Vue 前端 4 页（仪表盘/用例管理/任务执行/AI 生成）+ 41 单测 + 构建门禁（dev 走 Vite 代理）
+- [ ] （可选延后）PostgreSQL 迁移 / JWT 鉴权
 - [ ] 不做：自愈看板（AI UI 项目卖点，不重复造轮子）
+
+## 2026-08-12 · 全量 Code Review 修复（批次 A/B，已完成）
+
+> 评审：[docs/reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md)；计划：[docs/plans/2026-08-12-fix-plan.md](plans/2026-08-12-fix-plan.md)。
+
+- [x] H1 命令白名单 `python3*` 前缀匹配（容器执行路径）；H2 HTML 报告转义 + /static 收敛 reports/；H3 `scan_stale_tasks` 覆盖生成任务；H4 FAILED 任务同输入可重试（Lookup-Create 语义修订）
+- [x] M1 前端时间补 Z（UTC naive 显示偏移）；M2 入队失败落 FAILED(dispatch) + 503；M3/B4 `tasks.timeout_seconds` 真正控制执行超时（dev 库已 reset）；M5 `page_size`≤100 / `case_ids`≤500；M7 仪表盘按 status 统计
+- [x] 后端 6 commit + 前端 2 commit（每 commit 独立跑通门禁）；174+1 pytest、41 vitest、ruff、91% 覆盖率全绿
+- [ ] 批次 C（延后）：request_id 中间件（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、前端 CI

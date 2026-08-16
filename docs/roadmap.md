@@ -9,12 +9,12 @@
 | 原则 | 内容 |
 | --- | --- |
 | 执行闭环优先 | 先跑通「接口 → 异步执行 → 查看结果」最小闭环，再补前端与鉴权 |
-| MVP 零前端 | Phase 1 用 FastAPI Swagger UI（零前端代码）；Vue 降级为 Phase 4 可选，甚至不做（面试不扣分） |
+| 双界面 | Phase 1 用 FastAPI Swagger UI；Phase 4 已实现 Vue 3 前端（frontend/，4 页：仪表盘/用例/任务/AI 生成） |
 | 纯逻辑先行 | 先做「影响分析」（Diff + SQL，纯规则引擎、不调 API、不花钱、无幻觉），后做「AI 生成」（LLM） |
 
 ## 当前目标
 
-**Phase 1 核心执行闭环已完成**（MVP 简化版）；**Phase 2 变更影响分析已完成**（parse/impact/regression 三端点已接线）；**Phase 3 AI 智能生成已完成**（155 测试全绿 + ruff 全绿 + e2e 冒烟，评审修复见会话沉淀）；**Phase 4 生产化已完成**（Docker Compose + GitHub Actions CI + Bearer Token 鉴权，见下方 Phase 4 验收）。
+**Phase 1 核心执行闭环已完成**（MVP 简化版）；**Phase 2 变更影响分析已完成**（parse/impact/regression 三端点已接线）；**Phase 3 AI 智能生成已完成**（174 测试全绿 + ruff 全绿 + e2e 冒烟，评审修复见会话沉淀）；**Phase 4 生产化 + Vue 前端已完成**（Docker Compose + GitHub Actions CI + Bearer Token 鉴权 + frontend/ 四页，见下方 Phase 4 验收）；**2026-08-12 全量 Code Review 批次 A/B 修复已完成**（H1-H4 + M1-M5/M7，见 [reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md)）。
 
 ## 关键约束
 
@@ -22,7 +22,7 @@
 - 全部实现遵守 `RULES.md`（§1-§18 硬性规则；面试导向原则见 §0）。
 - 本地环境：Windows 10 / Python 3.12.6 / Redis 127.0.0.1:6379（requirepass 见本地 .env，勿提交）/ Docker 未安装（Dockerfile/compose 由 CI docker-build job 验证；面试演示前装 Docker Desktop）。
 - Windows 本地 Celery worker 必须 `--pool=solo`。
-- 仓库结构：`backend/` 与 `frontend/` 两个独立 git 仓库（frontend 为 Phase 4 可选；前期界面 = Swagger UI）。
+- 仓库结构：`backend/` 与 `frontend/` 两个独立 git 仓库（frontend 为 Phase 4 已实现；后端界面 = Swagger UI，双界面并存）。
 
 ## 阶段路线
 
@@ -32,7 +32,7 @@
 | **Phase 1 · 核心执行闭环** | 已完成（MVP 简化） | 跑通「创建用例 → 异步执行 → 查看结果」，全程 Swagger UI，**不写一行前端** | 见下方验收清单 |
 | **Phase 2 · 影响分析**（核心卖点 1） | 1 周 | 接口变更自动圈定受影响用例（**纯规则引擎，无 AI**） | 新旧 Swagger → diff → 圈定受影响用例 → 一键回归 |
 | **Phase 3 · AI 智能生成**（核心卖点 2） | 已完成 | OpenAPI → LLM → draft 用例 → 人工确认转 active | 生成 5 个 draft → 审核 → active |
-| **Phase 4 · 生产化与前端增强** | ✅ 已完成 ①②④ | Docker Compose + GitHub Actions + Bearer Token；Vue/PostgreSQL 可选延后 | 一键 `docker compose up` 跑通（CI docker-build job 已验证） |
+| **Phase 4 · 生产化与前端增强** | ✅ 已完成 ①②④⑤ | Docker Compose + GitHub Actions + Bearer Token + **Vue 前端四页**；PostgreSQL/JWT 可选延后 | 一键 `docker compose up` 跑通（CI docker-build job 已验证）+ `frontend/` 页面可用 |
 
 ### Phase 1 · 核心执行闭环（已完成，MVP 简化）
 
@@ -54,7 +54,7 @@
 
 ### Phase 3 · AI 智能生成（已完成，核心卖点 2）
 
-> 实现：`llm_client`（openai SDK 唯一封装 + response_format 结构化输出 + 重试 + 长度预检 + 成本）+ `prompts/v1` 模板（含 fix-hints）+ `generation_tasks/logs` 独立表 + `POST /generate` 异步任务 + 三层防幻觉护栏 + 跨项目联动（定向生成 / fix-hints / trust_score）。评审修复（2026-08-08）：软超时捕获与终态兜底、fix-hints prompt 外置与审计落库、输入长度预检、prompt 文档字段剥离、celery_task_id 持久化、e2e 测试层 + 155 测试全绿。
+> 实现：`llm_client`（openai SDK 唯一封装 + response_format 结构化输出 + 重试 + 长度预检 + 成本）+ `prompts/v1` 模板（含 fix-hints）+ `generation_tasks/logs` 独立表 + `POST /generate` 异步任务 + 三层防幻觉护栏 + 跨项目联动（定向生成 / fix-hints / trust_score）。评审修复（2026-08-08）：软超时捕获与终态兜底、fix-hints prompt 外置与审计落库、输入长度预检、prompt 文档字段剥离、celery_task_id 持久化、e2e 测试层 + 174 测试全绿（当前口径）。
 
 | 任务 | 安全护栏（防幻觉） |
 | --- | --- |
@@ -67,9 +67,9 @@
 
 **验收（面试演示用）**：上传 Swagger → `POST /api/v1/generate` → 轮询 → 生成 draft → `status=draft` 筛选（source=ai、trust_score=80/60）→ confirm → active → 可执行。重点强调「人工审核」杜绝幻觉污染；`POST /impact/{id}/fix-hints` 演示 breaking 修复建议。e2e 冒烟覆盖该全链路（`pytest -m slow`）。
 
-> 砍掉/延后（Phase 4）：AI 采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、多版本 prompt、动态信任降权、前端展示。
+> 砍掉/延后（Phase 4）：AI 采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、多版本 prompt、动态信任降权。（前端展示已实现。）
 
-### Phase 4 · 生产化与前端增强（✅ 已完成 ①②④；③⑤⑥ 可选延后）
+### Phase 4 · 生产化与前端增强（✅ 已完成 ①②④⑤；③⑥ 可选延后）
 
 | 任务 | 状态 |
 | --- | --- |
@@ -77,7 +77,7 @@
 | ② GitHub Actions（三 job） | ✅ **已完成**：门禁（ruff + pytest + coverage 60/80）+ slow e2e + docker-build 镜像构建验证 |
 | ③ 迁移 PostgreSQL（可选） | ⏳ 延后（一句话带过即可） |
 | ④ 基础鉴权（Bearer Token，值在配置中） | ✅ **已完成**：`security.api_token` 配置 + HTTPBearer 统一依赖注入（401/403 区分），health 免鉴权；`app.docs_enabled` 开关 |
-| ⑤ Vue 前端（可选，若做仅 2 页：用例列表 + 任务看板） | ⏳ 延后（frontend/ 空壳，其余继续 Swagger UI） |
+| ⑤ Vue 前端 | ✅ **已完成**：`frontend/` 独立仓库 4 页（仪表盘/用例管理/任务执行/AI 生成）+ 41 单测 + 构建门禁；dev 走 Vite 代理同源访问；令牌顶栏配置 |
 | ⑥ JWT 鉴权替换 Bearer Token（可选） | ⏳ 延后 |
 
 > 简历卖点：**「已容器化部署（Docker Compose）+ CI 门禁（GitHub Actions 三 job + coverage 门槛）+ Bearer Token 鉴权」**。
@@ -87,7 +87,7 @@
 ## 已达成结论
 
 **Phase 0（文档与基建）**
-- [x] 后端三层架构 + MVP 零前端（Swagger UI）设计（architecture.md）
+- [x] 后端三层架构 + 双界面（Swagger UI + Vue 前端）设计（architecture.md）
 - [x] 2 张业务表字段级设计（test_cases/tasks）+ create_all 迁移策略（database.md，Phase 4 切 Alembic）
 - [x] REST 端点 + 统一异步模式（api.md）
 - [x] Celery 任务 + subprocess 执行 + 超时劫持（execution-engine.md）
@@ -117,17 +117,25 @@
 - [x] 三层防幻觉护栏（extra="forbid" 严格校验 + draft 恒为 + operation_id 服务端注入）+ trust_score
 - [x] 校验失败/LLM 错误落库（generation_logs：raw_response + confidence + usage/cost）
 - [x] 联动：定向生成（untested_ops 智能决策）/ fix-hints（审计落库）/ CaseRead 暴露 trust_score
-- [x] 155 测试全绿 + ruff 全绿 + e2e 冒烟（`pytest -m slow`）
+- [x] 174 测试全绿 + ruff 全绿 + e2e 冒烟（`pytest -m slow`）
 
-**Phase 4（生产化，已完成）**
+**Phase 4（生产化 + Vue 前端，已完成）**
 - [x] Dockerfile（多阶段 + 非 root）+ docker-compose.yml（api/worker/redis + dbdata named volume + healthcheck）+ .dockerignore
 - [x] GitHub Actions 三 job（门禁 ruff+pytest+coverage 60/80 / slow e2e / docker-build 验证）
 - [x] Bearer Token 鉴权（security.api_token + HTTPBearer 统一依赖注入，401/403 区分，health 免鉴权）+ `app.docs_enabled` 开关 + CORS 白名单
+- [x] Vue 前端 4 页（仪表盘/用例管理/任务执行/AI 生成）+ 41 单测 + 构建门禁
 - [x] pyproject 补 openai 声明 + pytest-cov；全项目 coverage 91% / 核心模块 89%
+
+**2026-08-12 · 全量 Code Review 修复（批次 A/B，已完成）**
+- [x] H1 命令白名单 `python3*` 前缀匹配（容器执行路径）；H2 HTML 报告转义 + /static 收敛 reports/；H3 僵尸扫描覆盖生成任务；H4 FAILED 任务同输入可重试
+- [x] M1 前端时间补 Z（UTC naive 显示偏移）；M2 入队失败落 FAILED(dispatch)+503；M3/B4 `timeout_seconds` 真正控制执行超时；M5 分页/入参上限；M7 仪表盘统计口径
+- [x] 后端 6 commit + 前端 2 commit（每 commit 独立跑通门禁）；174+1 pytest、41 vitest、ruff、91% 覆盖率全绿
 
 ## 待解决问题
 
 - [ ] 演示 target 稳定性：默认 httpbin.org 外网不稳，面试建议本地 mock（改 `execution.base_url` 即可）
 - [ ] Swagger/OpenAPI 样例接口（Phase 3 的 scripts/sample_swagger.py 可生成）
 - [x] 部署形态：已定 **Docker Compose**（Dockerfile/compose 由 CI docker-build job 验证）；面试前装 Docker Desktop 本地跑通
-- [x] 鉴权：Bearer Token 已完成；**限流 / JWT / Vue / PostgreSQL** 均延后
+- [x] 鉴权：Bearer Token 已完成；**限流 / JWT / PostgreSQL** 均延后
+- [ ] review 批次 C Minor（request_id 中间件 §6.2、health redis close、compare_digest、MD5→sha256、prompt 外置、openapi 递归深度限制等）——见 [reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md) §3.3
+- [ ] H1 容器内实测闭环（本机无 Docker，白名单修复后建议容器内跑一条执行任务确认）

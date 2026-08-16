@@ -11,12 +11,12 @@
 | 2 | `config/settings.yaml` | 可读默认值（gitignored，复制 settings.example.yaml 使用） |
 | 3 | 环境变量 / `.env`（`TESTPLATFORM_` 前缀） | 密钥与运行时覆盖，优先级最高 |
 
-**加载机制**（`get_settings()` 显式合并，约 20 行）：
+**加载机制**（`get_settings()` 显式合并）：
 ```python
 def get_settings() -> Settings:
-    data = _load_yaml("config/settings.yaml")      # ① yaml 作为默认值
-    data = _merge_env_overrides(data)              # ② TESTPLATFORM_* 环境变量/.env 覆盖敏感项
-    return Settings.model_validate(data)           # ③ extra=forbid 校验
+    data = _load_yaml_defaults()       # ① yaml 作为默认值（缺失回退空 dict）
+    data = _merge_env_overrides(data)  # ② TESTPLATFORM_* 环境变量/.env 覆盖敏感项
+    return Settings.model_validate(data)  # ③ extra=forbid 校验
 ```
 > **注意**：不能直接 `Settings(**yaml)`——pydantic-settings 的 init 参数优先级高于 env，会吞掉 `.env` 覆盖。显式合并保证「yaml 默认、env 覆盖」方向正确。
 
@@ -70,8 +70,8 @@ def get_settings() -> Settings:
 | --- | --- | --- |
 | execution.workspace_dir | .workspace | 动态测试文件 / report.xml / HTML 报告 |
 | execution.base_url | http://httpbin.org | **写死的被测接口 base_url**（无 Environment 表，Phase 2 再补多环境） |
-| execution.pytest_timeout | 300 | subprocess 超时阈值（来自 config，禁止硬编码） |
-| execution.command_whitelist | [python, pytest] | run_cmd 命令白名单 |
+| execution.pytest_timeout | 300 | **默认** subprocess 超时阈值（任务级 `timeout_seconds` 缺省时使用；来自 config，禁止硬编码） |
+| execution.command_whitelist | [python, python3*, pytest] | run_cmd 命令白名单；**`*` 尾缀 = 前缀匹配**（兼容 Linux/Docker 的 `python3.12`，review H1） |
 
 ### 2.6 Swagger（Phase 2 影响分析）
 | 字段 | 默认值 | 说明 |
@@ -104,7 +104,7 @@ def get_settings() -> Settings:
 ### 2.9 Frontend（Phase 4 CORS 白名单）
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
-| frontend.cors_origins | [] | **CORS 白名单**（MVP 零前端默认空 = 不挂中间件不发 CORS 头，§10.5）；前端做时填来源如 `[http://localhost:5173]` |
+| frontend.cors_origins | [] | **CORS 白名单**（默认空 = 不挂中间件不发 CORS 头，§10.5）；Vue 前端已实现但 dev 走 Vite 同源代理，不依赖 CORS；跨域直连时填来源如 `[http://localhost:5173]` |
 
 > **新增字段全部带 default**：`settings.yaml`/`.env` 缺失时 pydantic 用默认值，**启动不阻塞**（兼容已部署的 Phase 1 配置）。
 

@@ -10,9 +10,9 @@
 - **成功响应**：`{code: 0, message: "ok", data: ...}`；`data` 承载资源或分页结构。
 - **错误响应**：`{code, message, detail}`；业务错误由 service 层 `raise AppError`，注册统一 exception handler（兜底 500 不泄漏堆栈）。参数校验保留 FastAPI 默认 422。
 - **分页**：列表统一 `page`（默认 1）/`page_size`（默认 20，上限 100），响应 `{items, total, page, page_size}`。
-- **状态码语义**：POST 创建 201、DELETE 204、异步任务 202、错误走异常体系（400/404/422/500）。
-- **鉴权（Phase 4）**：Bearer Token——除 `health` 外全部端点需 `Authorization: Bearer <token>`（值走配置 `security.api_token`，dev 默认仅供演示）。无凭证 → `401 {code: "AUTH_REQUIRED"}`；凭证错误 → `403 {code: "AUTH_INVALID"}`（§10.3）。Swagger UI 自带 Authorize 按钮。CORS 白名单走 `frontend.cors_origins`（默认空不放开跨域，§10.5）。
-- **日志**：标准 logging，日志带 uuid 前缀串联即可（不引入 request_id 中间件/contextvar，MVP 简化）。
+- **状态码语义**：POST 创建 201、DELETE 204、异步任务 202、错误走异常体系（400/404/409/422/502/503；LLM/subprocess 失败 502、入队失败 503 `DISPATCH_FAILED`）。
+- **鉴权（Phase 4）**：Bearer Token——除 `health` 外全部端点需 `Authorization: Bearer <token>`（值走配置 `security.api_token`，dev 默认仅供演示）。无凭证 → `401 {code: "AUTH_REQUIRED"}`；凭证错误 → `403 {code: "AUTH_INVALID"}`（§10.3）。Swagger UI 自带 Authorize 按钮。CORS 白名单走 `frontend.cors_origins`（默认空；前端走 Vite 同源代理，不依赖 CORS，§10.5）。
+- **日志**：标准 logging 统一格式；request_id 全链路追踪中间件未实现（§6.2 明文要求，列入 review 批次 C 待办），当前以 DB 任务表关联串联。
 
 ## 2. 端点总表（Phase 1）
 
@@ -65,11 +65,13 @@
 ### 3.2 任务管理 `/api/v1/tasks`
 
 **POST /tasks** — 请求体：`{case_ids: [1,2], timeout_seconds?: 300}`。
-- 执行前校验：所有 case 必须 `status=active`（draft 禁止执行）。
-- **Lookup-Create 幂等**：`run_id = sha256(sorted(case_ids) + str(timeout_seconds))` → 查 `tasks.run_id` 已存在 → **直接返回已有 `{task_id}`**（不重复执行）；不存在才创建 `pending` 并派发。
+- 执行前校验：所有 case 必须 `status=active`（draft 禁止执行）；`case_ids` 上限 500；`timeout_seconds` 1–3600。
+- **Lookup-Create 幂等（review H4 修订）**：`run_id = sha256(sorted(case_ids) + str(timeout_seconds))` → 查 `tasks.run_id`——已 **SUCCESS** 直接复用（不重复执行）；已 **FAILED** 重置 PENDING 并重新入队（同输入可重试）；PENDING/RUNNING 返回现状；不存在才创建 `pending` 并派发。
+- **入队失败兜底（review M2）**：Celery/Redis 不可用时任务落 `failed(error_stage="dispatch")` 并返回 `503 {code: "DISPATCH_FAILED"}`，不残留 PENDING 孤儿。
+- **timeout_seconds 真实生效（review M3/B4）**：subprocess 超时与僵尸扫描阈值均取任务级值（缺省 `execution.pytest_timeout`=300）。
 - 行为：创建 `tasks` → `send_task(execute_cases, args=[task_id])` → **202 `{task_id, status: "pending"}`**。
 
-**GET /tasks/{task_id}** — 响应任务全字段：`status/result_summary/report_link/celery_task_id/pid/error_stage/error_msg/started_at/finished_at`。客户端按 2s 间隔轮询直至终态（`pending→running→success/failed`）。
+**GET /tasks/{task_id}** — 响应任务全字段：`status/result_summary/report_link/celery_task_id/pid/error_stage/error_msg/timeout_seconds/started_at/finished_at`。客户端按 2s 间隔轮询直至终态（`pending→running→success/failed`）。
 
 **GET /tasks/{task_id}/results** — 响应 `{task: {...}, results: [...]}`，`results` 从 `task.result_summary.results` 读取（Phase 1 无独立结果表）。
 
@@ -100,7 +102,7 @@
 
 **POST /generate** — 请求体：`{document: {...OpenAPI 3.x}, operation_ids?: [...] , force_full?: false}` → **202** `{task_id, status}`。
 - **三种触发（优先级）**：① `operation_ids` 显式定向；② `force_full=True` 全量重建；③ 都缺省 → 读最新影响分析 `untested_ops`（无历史分析 → 全量开箱即用；已全覆盖 → `422 NO_UNTESTED_OPS`）。
-- **Lookup-Create 幂等**：`run_id = sha256(document + operation_ids)`，同输入重复提交返回同一任务，不重复调 LLM。
+- **Lookup-Create 幂等（review H4 修订）**：`run_id = sha256(document + operation_ids)`——已 **SUCCESS** 复用（不重复调 LLM）；已 **FAILED** 重置 PENDING 重新入队（同输入可重试）；PENDING/RUNNING 返回现状。入队失败 → `503 DISPATCH_FAILED` + 任务落 `failed(error_stage="dispatch")`。
 - 大小 > `swagger.max_upload_bytes` → 422；畸形文档（缺 paths）→ 任务 `failed(error_stage="parse")`，入口拦截不调 LLM。
 - 结果 `result_summary`：`{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total}`。
 
@@ -117,8 +119,8 @@
 3. 任务入参只传 `task_id`（Worker 内再从 DB 读上下文）。
 4. 重复/并发入队命中 `run_id` 唯一约束**返回已存在任务**（Lookup-Create）。
 
-## 5. 前端使用说明（MVP 零前端）
+## 5. 前端使用说明（双界面）
 
-- **MVP 界面 = Swagger UI（`/docs`）**：所有操作直接在 Swagger UI 完成——先点右上角 **Authorize** 输入 Bearer Token（Phase 4 鉴权），再创建用例（operation_id 写死如 `httpbin_get`）、确认 active、触发执行（返回 `task_id` 后轮询 `GET /tasks/{id}` 看 `pending→running→success`）、查看 results + HTML 报告链接。
-- **Vue（Phase 4 可选）**：`frontend/` 独立仓库，若做仅 2 页（用例列表 + 任务看板），其余继续用 Swagger UI。
-- 演示流：`POST /cases`（2 条）→ `POST /cases/{id}/confirm` → `POST /tasks`（202 task_id）→ 轮询 `GET /tasks/{id}` → `GET /tasks/{id}/results` → 打开 `report_link`。
+- **后端界面 = Swagger UI（`/docs`）**：所有操作直接在 Swagger UI 完成——先点右上角 **Authorize** 输入 Bearer Token（Phase 4 鉴权），再创建用例（operation_id 写死如 `httpbin_get`）、确认 active、触发执行（返回 `task_id` 后轮询 `GET /tasks/{id}` 看 `pending→running→success`）、查看 results + HTML 报告链接。
+- **Vue 前端（Phase 4 已实现）**：`frontend/` 独立仓库（Vue 3 + TS + Element Plus），4 页——仪表盘 / 用例管理 / 任务执行 / AI 生成；dev 经 Vite 代理（`/api`、`/static`、`/docs`）同源访问后端；令牌在顶栏「令牌」或仪表盘空态配置（`testplatform-dev-token`）。详见 [frontend/README.md](../../frontend/README.md)。
+- 演示流：`POST /cases`（2 条）→ `POST /cases/{id}/confirm` → `POST /tasks`（202 task_id）→ 轮询 `GET /tasks/{id}` → `GET /tasks/{id}/results` → 打开 `report_link`（`/static/{task_id}/report.html`）。
