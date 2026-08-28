@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import time
@@ -14,6 +15,8 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
+
+logger = logging.getLogger(__name__)
 
 # 剥离 Markdown 代码块围栏（```json / ``` / ```JSON / ```python 等任意标签，大小写不敏感）
 _MD_FENCE_RE = re.compile(r"^```[a-zA-Z0-9_]*\s*\n?", re.MULTILINE)
@@ -64,8 +67,11 @@ class LlmClient:
             )
         last_exc: Exception | None = None
         # why：range(max_retries + 1) = 首次尝试 + max_retries 次重试（§9.4「最多重试 3 次」）；
-        # 退避 1s/3s/9s（3**attempt），仅瞬时异常重试
+        # 退避 1s/3s/9s（3**attempt），仅瞬时异常重试；start 计时供 §6.2 调用日志
+        start = time.monotonic()
+        attempts = 0
         for attempt in range(s.max_retries + 1):
+            attempts = attempt + 1
             try:
                 resp = self.client.chat.completions.create(
                     model=s.model,
@@ -89,9 +95,24 @@ class LlmClient:
                     usage = LlmUsage(
                         u.prompt_tokens or 0, u.completion_tokens or 0, u.total_tokens or 0
                     )
+                # §6.2：成功调用日志（模型/耗时/token/是否重试）；request_id 由统一 Filter 注入
+                logger.info(
+                    "llm call ok model=%s attempts=%d duration_ms=%d "
+                    "prompt_tokens=%d completion_tokens=%d total_tokens=%d",
+                    s.model,
+                    attempts,
+                    int((time.monotonic() - start) * 1000),
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                    usage.total_tokens,
+                )
                 return parsed, usage
             except (RateLimitError, APIConnectionError, APITimeoutError) as e:
                 last_exc = e  # 瞬时：限流/连接/超时 → 重试
+                if attempt < s.max_retries:
+                    logger.warning(
+                        "llm 瞬时错误待重试 model=%s attempt=%d err=%s", s.model, attempts, e
+                    )
             except APIStatusError as e:
                 if e.status_code < 500:
                     raise AppError("LLM_FAILED", status_code=502, detail=f"LLM 拒绝: {e}") from e
@@ -106,6 +127,13 @@ class LlmClient:
                 raise exc from e  # 校验失败不可重试（RULES §9.4）
             if attempt < s.max_retries:
                 time.sleep(s.retry_backoff * (3**attempt))  # 指数退避 1s/3s/9s（§9.4）
+        logger.error(
+            "llm call failed model=%s attempts=%d duration_ms=%d err=%s",
+            s.model,
+            attempts,
+            int((time.monotonic() - start) * 1000),
+            last_exc,
+        )
         raise AppError(
             "LLM_FAILED", status_code=502, detail=f"LLM 重试耗尽: {last_exc}"
         ) from last_exc

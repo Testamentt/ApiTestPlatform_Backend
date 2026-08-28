@@ -10,6 +10,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.celery_app import celery_app
 from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.middleware.request_id import set_request_id
 from app.services.generation_service import force_fail_timeout, run_generation
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,9 @@ logger = logging.getLogger(__name__)
     soft_time_limit=get_settings().llm.task_soft_timeout_seconds,
     time_limit=get_settings().llm.task_timeout_seconds,
 )
-def generate_cases_task(task_id: int) -> None:
+def generate_cases_task(task_id: int, request_id: str | None = None) -> None:
+    # why：Web 侧 dispatch 透传 request_id（§6.2）——LLM 调用日志携带同一链路 id
+    set_request_id(request_id)
     try:
         run_generation(SessionLocal, task_id)
     except SoftTimeLimitExceeded:

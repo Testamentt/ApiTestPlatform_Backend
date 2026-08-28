@@ -15,6 +15,7 @@ from app.core.config import get_settings
 from app.core.database import init_db
 from app.core.exceptions import AppError
 from app.core.logging import setup_logging
+from app.middleware.request_id import RequestIdMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,9 @@ def create_app() -> FastAPI:
             allow_credentials=False,
         )
     app.include_router(api_router)
+    # why：request_id 中间件要求「最先注入」（最外层）——CORS 之后 add 的中间件在最外层，
+    # 保证请求一进来即生成/透传 request_id，响应头回写对任何路由/异常 handler 都生效（§6.2）
+    app.add_middleware(RequestIdMiddleware)
 
     @app.exception_handler(AppError)
     async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:

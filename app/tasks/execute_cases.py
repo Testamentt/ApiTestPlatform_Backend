@@ -9,6 +9,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from app.celery_app import celery_app
 from app.core.config import get_settings
 from app.core.database import SessionLocal
+from app.middleware.request_id import set_request_id
 from app.services.execution_service import ExecutionService
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,10 @@ logger = logging.getLogger(__name__)
     retry_jitter=True,
     max_retries=get_settings().celery.max_retries,  # 来自 config（RULES §8.1，禁止硬编码）
 )
-def execute_cases_task(task_id: int) -> None:
+def execute_cases_task(task_id: int, request_id: str | None = None) -> None:
+    # why：Web 侧 dispatch 透传 request_id（§6.2）——跨进程恢复链路上下文，
+    # 本任务及执行链路日志统一携带，错误定位可跨请求关联
+    set_request_id(request_id)
     svc = ExecutionService(SessionLocal)
     try:
         svc.execute_cases(task_id)
