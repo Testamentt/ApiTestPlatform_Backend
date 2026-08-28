@@ -62,7 +62,7 @@
 
 统一异步模式（execute 执行 + generate 生成，两套独立任务表与状态机）：
 
-1. Web 层算 `run_id`（sha256(输入指纹)）→ **查重（review H4：SUCCESS 复用 / FAILED 重置 PENDING 重新入队 / 其余返回现状）** → 否则写 DB 记录（PENDING）→ `send_task` → **立即返回 202**；入队失败落 `FAILED(dispatch)` + 503
+1. Web 层算 `run_id`（sha256(输入指纹)）→ **查重（review H4：SUCCESS 复用 / FAILED 重置 PENDING 重新入队 / 其余返回现状）** → 否则写 DB 记录（PENDING）→ `send_task` → **立即返回 202**；入队失败落 `FAILED(dispatch)` + 503（统一由 `dispatcher.dispatch_or_fail` 兜底，执行/生成共用，review M2）
 2. 客户端轮询 `GET /api/v1/tasks/{id}` 或 `GET /api/v1/generate/{id}` 获取状态与结果
 3. Worker 内短事务写入结果（先查→提交关事务→算→再开新事务写入，RULES.md §2.1）
 
@@ -143,7 +143,7 @@ backend/
 │   ├── api/v1/               # 路由 + deps（cases / tasks / health / parse / impact / generate）
 │   ├── models/               # SQLAlchemy ORM（test_cases / tasks / api_definitions / impact_analyses / generation_tasks / generation_log）
 │   ├── schemas/              # Pydantic 出入参（case / task / swagger / impact / generate）
-│   ├── services/             # 业务编排（case / task / execution / swagger / impact / generation）
+│   ├── services/             # 业务编排（case / task / execution / swagger / impact / generation + dispatcher 统一入队单点）
 │   ├── repositories/         # 数据访问（case / task / api_definition / impact_analysis / generation_task，物理删除）
 │   ├── tasks/                # Celery 任务（execute_cases / scan_stale_tasks / generate_cases）
 │   └── utils/                # subprocess_util / openapi_parser / llm_client / impact_diff / case_generator / junit_parser / report_util

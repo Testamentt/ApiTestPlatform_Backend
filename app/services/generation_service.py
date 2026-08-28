@@ -21,6 +21,7 @@ from app.models.impact_analysis import ImpactAnalysis
 from app.models.test_case import TestCase
 from app.repositories.generation_task_repository import GenerationTaskRepository
 from app.schemas.generate import GeneratedCaseList
+from app.services.dispatcher import dispatch_generation, dispatch_or_fail
 from app.utils.llm_client import LlmClient
 from app.utils.openapi_parser import ParsedOperation, parse_openapi
 from app.utils.prompt_util import PROMPT_VERSION, load_system_prompt, render_user_prompt
@@ -396,7 +397,13 @@ class GenerationService:
                 except Exception:
                     self.session.rollback()
                     raise
-                self._dispatch_or_fail(existing)
+                dispatch_or_fail(
+                    existing,
+                    GenerationStatus,
+                    dispatch_generation,
+                    session=self.session,
+                    label="生成",
+                )
                 return existing
             return existing  # PENDING/RUNNING：执行中或排队中，返回现状
 
@@ -407,37 +414,14 @@ class GenerationService:
             status=GenerationStatus.PENDING,
         )
         self.repo.add(task)
-        self._dispatch_or_fail(task)
+        dispatch_or_fail(
+            task,
+            GenerationStatus,
+            dispatch_generation,
+            session=self.session,
+            label="生成",
+        )
         return task
 
     def get_generation_task(self, task_id: int) -> GenerationTask:
         return self.repo.get_or_raise(task_id)
-
-    def _dispatch_or_fail(self, task: GenerationTask) -> None:
-        """why：入队失败（Celery/Redis 不可用）不能留 PENDING 孤儿（review M2）——
-        置 FAILED(dispatch) 后抛业务异常（503 结构化响应），同输入再提交走重试路径。"""
-        try:
-            result = self._dispatch(task.id)
-        except Exception as e:
-            task.status = GenerationStatus.FAILED.value
-            task.error_stage = "dispatch"
-            task.error_msg = f"生成任务入队失败（Celery/Redis 不可用）: {e}"
-            try:
-                self.session.commit()
-            except Exception:
-                self.session.rollback()
-                raise
-            raise AppError("DISPATCH_FAILED", status_code=503, detail=task.error_msg) from e
-        if result is not None:
-            task.celery_task_id = result
-            try:
-                self.session.commit()
-            except Exception:
-                self.session.rollback()
-                raise
-
-    def _dispatch(self, task_id: int) -> str | None:
-        # why：延迟导入防循环引用（celery 任务模块会反向 import 本包）；测试 monkeypatch 隔离
-        from app.tasks.generate_cases import generate_cases_task  # noqa: PLC0415
-
-        return generate_cases_task.delay(task_id).id

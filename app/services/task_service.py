@@ -12,7 +12,7 @@ from app.models.task import Task
 from app.repositories.case_repository import CaseRepository
 from app.repositories.task_repository import TaskRepository
 from app.schemas.task import TaskCreate, TaskResultItem, TaskResults
-from app.services.dispatcher import dispatch_execution
+from app.services.dispatcher import dispatch_execution, dispatch_or_fail
 
 
 class TaskService:
@@ -57,7 +57,7 @@ class TaskService:
                 except Exception:
                     self.session.rollback()
                     raise
-                self._dispatch_or_fail(existing)
+                dispatch_or_fail(existing, TaskStatus, dispatch_execution, session=self.session)
                 return existing
             return existing
         task = Task(
@@ -68,31 +68,8 @@ class TaskService:
         )
         self.task_repo.add(task)
         # why：持久化 celery_task_id（RULES §8.3）——任务卡死时可通过 Celery 定位/revoke
-        self._dispatch_or_fail(task)
+        dispatch_or_fail(task, TaskStatus, dispatch_execution, session=self.session)
         return task
-
-    def _dispatch_or_fail(self, task: Task) -> None:
-        """why：入队失败（Redis/Celery 不可用）不能留 PENDING 孤儿（review M2）——
-        置 FAILED(dispatch) 后抛业务异常（503 结构化响应），同输入再提交走重试路径。"""
-        try:
-            celery_task_id = dispatch_execution(task.id)
-        except Exception as e:
-            task.status = TaskStatus.FAILED.value
-            task.error_stage = "dispatch"
-            task.error_msg = f"任务入队失败（Celery/Redis 不可用）: {e}"
-            try:
-                self.session.commit()
-            except Exception:
-                self.session.rollback()
-                raise
-            raise AppError("DISPATCH_FAILED", status_code=503, detail=task.error_msg) from e
-        if celery_task_id:
-            task.celery_task_id = celery_task_id
-            try:
-                self.session.commit()
-            except Exception:
-                self.session.rollback()
-                raise
 
     def get_task(self, task_id: int) -> Task:
         return self.task_repo.get_or_raise(task_id)

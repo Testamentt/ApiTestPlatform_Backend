@@ -97,7 +97,7 @@
 | id | INTEGER | PK, autoincrement | |
 | run_id | VARCHAR(64) | NOT NULL, **UNIQUE** | `sha256(document + operation_ids)` 指纹，Lookup-Create 幂等（重复提交不重复调 LLM） |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'pending' | pending/running/success/failed |
-| celery_task_id | VARCHAR(64) | NULL | **已持久化**（P2-3）：`_dispatch` 写入 AsyncResult.id，卡死时可经 Celery 定位/revoke |
+| celery_task_id | VARCHAR(64) | NULL | **已持久化**（P2-3）：`dispatcher.dispatch_generation` 统一入队返回 AsyncResult.id 后写入，卡死时可经 Celery 定位/revoke |
 | document | JSON | NOT NULL | 源 Swagger（≤2MB 落库；任务入参只传 task_id，RULES §8.4） |
 | operation_ids | JSON | NULL | 定向生成子集；NULL=全量/untested |
 | operation_count | INTEGER | NOT NULL DEFAULT 0 | |
