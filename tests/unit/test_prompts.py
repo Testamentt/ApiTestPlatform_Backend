@@ -7,6 +7,7 @@ from app.utils.prompt_util import PROMPT_VERSION, PROMPTS_DIR
 def test_prompt_files_exist_for_version():
     assert (PROMPTS_DIR / PROMPT_VERSION / "system.md").exists()
     assert (PROMPTS_DIR / PROMPT_VERSION / "user.md").exists()
+    assert (PROMPTS_DIR / PROMPT_VERSION / "boundary_rules.md").exists()  # review L5 外置
 
 
 def test_user_prompt_placeholders_all_present():

@@ -7,13 +7,10 @@ from app.core.config import PROJECT_ROOT
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
 PROMPT_VERSION = "v1"  # 写死 v1（MVP 不做多版本切换，面试口径「版本化便于后续迭代」）
 
-_BOUNDARY_RULES = """正向（用 default/example 值验证成功响应）
-缺参（逐个移除必填参数 → 4xx）
-类型错误（string↔int 互换 → 422/400）
-枚举合法/非法（枚举每项 / 枚举外值 → 4xx）
-越界（minimum-1 / maximum+1、长度超限、format 违规）
-鉴权异常（无 token 401 / 错误 token 403）
-资源不存在（不存在的资源 ID → 404）"""
+
+def _load_boundary_rules() -> str:
+    # why：边界值规则属 Prompt 行为配置（RULES §3.2/§16.5）——改它应走 review 而非改代码（review L5）
+    return (PROMPTS_DIR / PROMPT_VERSION / "boundary_rules.md").read_text(encoding="utf-8")
 
 
 def load_system_prompt() -> str:
@@ -26,7 +23,7 @@ def render_user_prompt(operation_json: str, json_schema: str) -> str:
     template = (PROMPTS_DIR / PROMPT_VERSION / "user.md").read_text(encoding="utf-8")
     return template.format(
         operation_json=operation_json,
-        boundary_rules=_BOUNDARY_RULES,
+        boundary_rules=_load_boundary_rules(),
         json_schema=json_schema,
     )
 
