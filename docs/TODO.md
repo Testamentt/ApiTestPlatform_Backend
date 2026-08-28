@@ -64,4 +64,14 @@
 - [x] H1 命令白名单 `python3*` 前缀匹配（容器执行路径）；H2 HTML 报告转义 + /static 收敛 reports/；H3 `scan_stale_tasks` 覆盖生成任务；H4 FAILED 任务同输入可重试（Lookup-Create 语义修订）
 - [x] M1 前端时间补 Z（UTC naive 显示偏移）；M2 入队失败落 FAILED(dispatch) + 503；M3/B4 `tasks.timeout_seconds` 真正控制执行超时（dev 库已 reset）；M5 `page_size`≤100 / `case_ids`≤500；M7 仪表盘按 status 统计
 - [x] 后端 6 commit + 前端 2 commit（每 commit 独立跑通门禁）；174+1 pytest、41 vitest、ruff、91% 覆盖率全绿
-- [ ] 批次 C（延后）：request_id 中间件（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、前端 CI
+
+## 2026-08-·批次 C（Minor 加固，已全部完成）
+
+> 沉淀：[docs/sessions/2026-08-batch-c.md](sessions/2026-08-batch-c.md)；评审明细 [reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md) §3.3。
+
+- [x] L1 health redis close；L2 `hmac.compare_digest` 常数时间 token 比对；L3 合同指纹 MD5→sha256（旧数据 re-parse 覆盖）
+- [x] L4 generation_task_repository commit 补 rollback 包装（与 TaskRepository 对齐）；L5 `_BOUNDARY_RULES` 外置 `prompts/v1/boundary_rules.md`
+- [x] L6 openapi 递归深度限制（>50 截断 + warning）；L7 执行错误分类（command/timeout/subprocess 分阶段）；L8 `GeneratedCase` max_length 对齐表列长
+- [x] L9 前端响应解包改类型安全 `request<T>`（去双断言）；L10 frontend CI（.github/workflows/ci.yml）
+- [x] L11 Python 版本统一 3.12+（RULES 对齐 pyproject）；L12 api/tasks/integration marker 声明即用（conftest 自动归类）
+- [x] request_id 全链路追踪中间件（§6.2 明文要求）：X-Request-ID 生成/透传/响应头回写 + ContextVar + 日志 Filter + Celery 任务与 LLM 日志透传

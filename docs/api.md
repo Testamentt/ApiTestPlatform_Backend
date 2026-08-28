@@ -12,7 +12,7 @@
 - **分页**：列表统一 `page`（默认 1）/`page_size`（默认 20，上限 100），响应 `{items, total, page, page_size}`。
 - **状态码语义**：POST 创建 201、DELETE 204、异步任务 202、错误走异常体系（400/404/409/422/502/503；LLM/subprocess 失败 502、入队失败 503 `DISPATCH_FAILED`）。
 - **鉴权（Phase 4）**：Bearer Token——除 `health` 外全部端点需 `Authorization: Bearer <token>`（值走配置 `security.api_token`，dev 默认仅供演示）。无凭证 → `401 {code: "AUTH_REQUIRED"}`；凭证错误 → `403 {code: "AUTH_INVALID"}`（§10.3）。Swagger UI 自带 Authorize 按钮。CORS 白名单走 `frontend.cors_origins`（默认空；前端走 Vite 同源代理，不依赖 CORS，§10.5）。
-- **日志**：标准 logging 统一格式；request_id 全链路追踪中间件未实现（§6.2 明文要求，列入 review 批次 C 待办），当前以 DB 任务表关联串联。
+- **日志**：标准 logging 统一格式；**request_id 全链路追踪（批次 C 已实现，§6.2）**——中间件读/生成 `X-Request-ID`（UUID）注入 ContextVar + 响应头回写，经任务参数透传 Celery 任务与 LLM 调用日志，`[request_id]` 字段贯穿全链路。
 
 ## 2. 端点总表（Phase 1）
 

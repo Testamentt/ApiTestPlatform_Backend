@@ -14,7 +14,7 @@
 
 ## 当前状态
 
-**全部交付完成**：Phase 1 执行闭环 / Phase 2 影响分析 / Phase 3 AI 智能生成 / Phase 4 生产化 + Vue 前端 / 2026-08-12 全量 Code Review 批次 A·B 修复。门禁全绿：后端 174 + e2e 1、前端 41、ruff、覆盖率 91%（核心 89%）。
+**全部交付完成**：Phase 1 执行闭环 / Phase 2 影响分析 / Phase 3 AI 智能生成 / Phase 4 生产化 + Vue 前端 / 2026-08-12 全量 Code Review 批次 A·B 修复 / **批次 C Minor 加固（L1-L12 全部完成 + request_id 全链路追踪）**。门禁全绿：后端 188 pytest + e2e 1、前端 41+、ruff、覆盖率 91%（核心 90%）。
 
 > 唯一未闭环验证项：H1 命令白名单修复的**容器内实测**（本机无 Docker，见「待解决问题」）。
 
@@ -41,9 +41,11 @@
 
 **待闭环（建议优先级）**
 - [ ] **H1 容器内实测**：白名单 `python3*` 前缀修复基于镜像行为推断，有 Docker 环境时容器内跑一条执行任务确认（Dockerfile/CI 未变）。
-- [ ] **review 批次 C Minor**：request_id 中间件（§6.2 明文要求，面试可讲全链路追踪）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类等——详见 [reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md) §3.3。
 - [ ] **演示稳定性**：默认 httpbin.org 外网不稳，演示前建议本地 mock（改 `execution.base_url`）。
-- [ ] （可选）前端 CI（L10）、PostgreSQL/JWT、限流（Redis 固定窗口）。
+- [ ] （可选）PostgreSQL/JWT、限流（Redis 固定窗口）。
+
+**已闭环（原批次 C，2026-08 完成）**
+- [x] request_id 全链路追踪（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、repository rollback 包装、前端类型安全解包、Python 版本统一、测试 marker 归类、**前端 CI**（L10——见 [frontend/.github/workflows/ci.yml](../../frontend/.github/workflows/ci.yml)）。
 
 **已定但未做**
 - 自愈看板（Vue 页）：**不做**——AI UI 项目卖点，不重复造轮子（Phase 4 备注）。
