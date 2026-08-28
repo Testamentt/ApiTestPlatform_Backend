@@ -42,7 +42,11 @@ def health(db: Session = Depends(get_db)) -> HealthRead:
             db=settings.redis.db,
             socket_timeout=settings.redis.socket_timeout,
         )
-        r.ping()
+        try:
+            r.ping()
+        finally:
+            # why：显式关闭连接——健康探针高频调用不应泄漏 Redis 连接（review L1）
+            r.close()
     except Exception:
         logger.warning("health: redis 探测失败", exc_info=True)
         redis_status = "down"

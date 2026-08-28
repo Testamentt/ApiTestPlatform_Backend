@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.exceptions import AppError
 from app.models.enums import GenerationStatus
@@ -24,5 +25,10 @@ class GenerationTaskRepository(BaseRepository[GenerationTask]):
                 "INVALID_TRANSITION", status_code=409, detail=f"{task.status} → {to.value} 不允许"
             )
         task.status = to.value
-        self.session.commit()
+        try:
+            self.session.commit()
+        except SQLAlchemyError:
+            # 与 TaskRepository 行为对齐：commit 失败回滚，防脏数据半提交残留（review L4）
+            self.session.rollback()
+            raise
         return task

@@ -14,9 +14,11 @@ class GeneratedCase(BaseModel):
     # LLM 输出若包含 operation_id 字段，extra="forbid" 会直接判失败（防血缘被污染）
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(min_length=1)
+    # max_length 对齐 test_cases 表列长（name 255 / path 1024，review L8）——
+    # LLM 超长输出在 Pydantic 校验层拦截，避免落库时被 DB 截断/报错
+    name: str = Field(min_length=1, max_length=255)
     method: HTTP_METHODS
-    path: str = Field(min_length=1)
+    path: str = Field(min_length=1, max_length=1024)
     params: dict = {}
     body: dict | None = None
     expected_status: int

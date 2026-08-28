@@ -60,3 +60,16 @@ def test_test_case_trust_score_default_100(session_factory):
         s.commit()
         s.refresh(case)
         assert case.trust_score == 100  # 手工创建默认满分
+
+
+def test_generated_case_max_length_matches_db():
+    # review L8：name/path 上限与 test_cases 列长（255/1024）对齐——超长输出在校验层拦截
+    from app.schemas.generate import GeneratedCase
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        GeneratedCase(name="x" * 256, method="GET", path="/p", expected_status=200)
+    with pytest.raises(ValidationError):
+        GeneratedCase(name="ok", method="GET", path="/" + "p" * 1024, expected_status=200)
+    ok = GeneratedCase(name="o" * 255, method="GET", path="/" + "p" * 1023, expected_status=200)
+    assert ok.name == "o" * 255

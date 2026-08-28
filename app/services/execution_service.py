@@ -97,8 +97,15 @@ class ExecutionService:
                 on_start=_mark_running,
             )
         except AppError as e:
-            # run_cmd 内已 best-effort 杀树；权威兜底是 scan_stale_tasks
-            self._fail(task_id, "timeout", f"subprocess 超时: {e.detail}")
+            # 按错误码分类落 error_stage（review L7）：白名单拒绝 ≠ 超时，
+            # 混为一谈会让排障误入 timeout 诊断路径；run_cmd 内已 best-effort 杀树，
+            # 权威兜底是 scan_stale_tasks
+            if e.code in ("COMMAND_NOT_ALLOWED", "INVALID_ARGS"):
+                self._fail(task_id, "command", f"命令未通过白名单校验: {e.detail}")
+            elif e.code == "SUBPROCESS_TIMEOUT":
+                self._fail(task_id, "timeout", f"subprocess 超时: {e.detail}")
+            else:
+                self._fail(task_id, "subprocess", f"subprocess 失败: {e.detail}")
             return
 
         # ④ returncode 终态检查。why：pytest 退出码 1=有用例失败（junit 已含结果，任务仍算执行完成）；

@@ -353,6 +353,24 @@ def test_hash_keeps_ignoring_description_inside_property():
     assert h1 == h2
 
 
+def test_hash_is_sha256_hexdigest():
+    # review L3：指纹算法 md5→sha256——64 位 hex
+    api = parse_openapi(_swagger([_users_op()]))
+    for h in api.operation_hashes["listUsers"].values():
+        assert len(h) == 64
+        assert all(c in "0123456789abcdef" for c in h)
+
+
+def test_deep_nesting_truncated_with_warning():
+    # review L6：超深嵌套不抛 RecursionError——截断展开并记 warning（降级不静默）
+    deep = {"type": "object"}
+    for _ in range(60):
+        deep = {"type": "object", "properties": {"a": deep}}
+    api = parse_openapi(_swagger([_body_op(deep)]))
+    assert any("深度超限" in w for w in api.warnings)
+    assert api.operation_ids == ["createUser"]  # 宽容解析仍产出 operation
+
+
 # ---------- contracts ----------
 
 

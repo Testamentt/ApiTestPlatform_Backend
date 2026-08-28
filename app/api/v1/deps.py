@@ -2,6 +2,7 @@
 # verify_token 统一 Bearer Token 鉴权（§10.3 Phase 4：无凭证 401 / 凭证错误 403，health 免鉴权作探针）。
 from __future__ import annotations
 
+import hmac
 from collections.abc import Iterator
 
 from fastapi import Depends
@@ -35,5 +36,6 @@ def verify_token(
     expected = get_settings().security.api_token
     if credentials is None:
         raise AppError("AUTH_REQUIRED", "缺少 Bearer Token", status_code=401)
-    if credentials.credentials != expected:
+    # hmac.compare_digest：常数时间比较，防时序侧信道逐字符探测 token（review L2）
+    if not hmac.compare_digest(credentials.credentials, expected):
         raise AppError("AUTH_INVALID", "Token 无效", status_code=403)

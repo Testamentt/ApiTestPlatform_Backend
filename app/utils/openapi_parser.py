@@ -31,6 +31,9 @@ _STRUCT_KEYS = {
 }
 # 宽容解析的占位键与跨文件引用原文，参与 hash 以暴露差异
 _EXTRA_KEYS = {"$ref", "x-circular", "x-broken-ref"}
+# schema $ref/嵌套展开的最大深度。why：恶意/畸形文档可构造万层嵌套触发 RecursionError（review L6），
+# 超限截断并记 warning（与 D4/D5 同口径：降级不静默）
+_MAX_SCHEMA_DEPTH = 50
 
 _METHODS = ("get", "post", "put", "patch", "delete", "head", "options")
 _PATH_PARAM_RE = re.compile(r"\{[^}]+\}")
@@ -165,10 +168,15 @@ def _resolve_parameter(p, schemas: dict, param_components: dict, warnings: list[
     }
 
 
-def _resolve_schema(schema, schemas: dict, visited: set[str], warnings: list[str]) -> dict:
+def _resolve_schema(
+    schema, schemas: dict, visited: set[str], warnings: list[str], *, depth: int = 0
+) -> dict:
     """$ref 内联 + allOf/oneOf/items/properties 递归展开，保留原键（白名单过滤留给 _normalize）。"""
     if not isinstance(schema, dict):
         return schema if schema is not None else {}
+    if depth > _MAX_SCHEMA_DEPTH:
+        warnings.append(f"schema 嵌套深度超限（>{_MAX_SCHEMA_DEPTH}），截断展开，hash 可能不完整")
+        return {"type": "object"}
     if "$ref" in schema:
         ref = schema["$ref"]
         if not isinstance(ref, str) or not ref.startswith("#/components/schemas/"):
@@ -182,21 +190,22 @@ def _resolve_schema(schema, schemas: dict, visited: set[str], warnings: list[str
         if target is None:
             warnings.append(f"$ref 目标不存在，hash 不可靠: {ref}")  # D4：不静默
             return {"type": "object", "x-broken-ref": True}
-        return _resolve_schema(target, schemas, visited | {name}, warnings)
+        return _resolve_schema(target, schemas, visited | {name}, warnings, depth=depth + 1)
 
     out: dict = {}
     for k, v in schema.items():
         if k in ("items", "additionalProperties"):
-            out[k] = _resolve_schema(v, schemas, visited, warnings)
+            out[k] = _resolve_schema(v, schemas, visited, warnings, depth=depth + 1)
         elif k == "properties":
             out[k] = {
-                kk: _resolve_schema(vv, schemas, visited, warnings) for kk, vv in (v or {}).items()
+                kk: _resolve_schema(vv, schemas, visited, warnings, depth=depth + 1)
+                for kk, vv in (v or {}).items()
             }
         elif k == "allOf" and isinstance(v, list):
             # 合并各分支 properties + required（对齐 ai-generation §2）
             merged = {"type": "object", "properties": {}, "required": []}
             for part in v:
-                resolved = _resolve_schema(part, schemas, visited, warnings)
+                resolved = _resolve_schema(part, schemas, visited, warnings, depth=depth + 1)
                 merged["properties"].update(resolved.get("properties") or {})
                 merged["required"].extend(resolved.get("required") or [])
             merged["required"] = sorted(set(merged["required"]))
@@ -204,7 +213,7 @@ def _resolve_schema(schema, schemas: dict, visited: set[str], warnings: list[str
         elif k in ("oneOf", "anyOf") and isinstance(v, list):
             if v:
                 warnings.append("oneOf/anyOf 取首个分支，hash 可能不完整")
-                out.update(_resolve_schema(v[0], schemas, visited, warnings))
+                out.update(_resolve_schema(v[0], schemas, visited, warnings, depth=depth + 1))
         else:
             out[k] = v
     return out
@@ -262,9 +271,10 @@ def _hash_op(op: ParsedOperation) -> dict:
     """分段 hash：{request, response}。O(1) diff 的关键——只存哈希不存原文。"""
     req = json.dumps(_build_request_core(op), sort_keys=True, ensure_ascii=False)
     resp = json.dumps(_build_response_core(op), sort_keys=True, ensure_ascii=False)
+    # why：指纹用 sha256——MD5 已非安全哈希（碰撞可构造），合同指纹应防止恶意碰撞（review L3）
     return {
-        "request": hashlib.md5(req.encode()).hexdigest(),
-        "response": hashlib.md5(resp.encode()).hexdigest(),
+        "request": hashlib.sha256(req.encode()).hexdigest(),
+        "response": hashlib.sha256(resp.encode()).hexdigest(),
     }
 
 

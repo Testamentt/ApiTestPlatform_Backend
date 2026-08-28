@@ -56,6 +56,22 @@ def test_execute_timeout_marks_failed(session_factory, patch_sessionlocal, monke
         assert task.error_stage == "timeout"
 
 
+def test_execute_command_not_allowed_stage(session_factory, patch_sessionlocal, monkeypatch):
+    # review L7：白名单拒绝 ≠ 超时——错误分类必须落 command，否则排障误入 timeout 诊断路径
+    from ..fakes import make_fake_run_cmd
+
+    case_id, task_id = _seed_task(session_factory)
+    monkeypatch.setattr(
+        "app.services.execution_service.run_cmd",
+        make_fake_run_cmd(exception=AppError("COMMAND_NOT_ALLOWED", status_code=502)),
+    )
+    execute_cases_task.delay(task_id)
+    with session_factory() as s:
+        task = s.get(Task, task_id)
+        assert task.status == "failed"
+        assert task.error_stage == "command"
+
+
 def test_execute_parse_failure_falls_back(session_factory, patch_sessionlocal, monkeypatch):
     from ..fakes import make_fake_run_cmd
 
