@@ -16,7 +16,7 @@
 
 **全部交付完成**：Phase 1 执行闭环 / Phase 2 影响分析 / Phase 3 AI 智能生成 / Phase 4 生产化 + Vue 前端 / 2026-08-12 全量 Code Review 批次 A·B 修复 / **批次 C Minor 加固（L1-L12 全部完成 + request_id 全链路追踪）**。门禁全绿：后端 188 pytest + e2e 1、前端 41+、ruff、覆盖率 91%（核心 90%）。
 
-> 唯一未闭环验证项：H1 命令白名单修复的**容器内实测**（本机无 Docker，见「待解决问题」）。
+> 原「唯一未闭环验证项」H1 已于 2026-08-31 经 CI 容器内实测闭环（见「待解决问题」已闭环区）；无遗留验证阻塞。
 
 ## 交付里程碑总览
 
@@ -40,9 +40,12 @@
 ## 待解决问题 / 下一步
 
 **待闭环（建议优先级）**
-- [ ] **H1 容器内实测**：白名单 `python3*` 前缀修复基于镜像行为推断，有 Docker 环境时容器内跑一条执行任务确认（Dockerfile/CI 未变）。
-- [ ] **演示稳定性**：默认 httpbin.org 外网不稳，演示前建议本地 mock（改 `execution.base_url`）。
-- [ ] （可选）PostgreSQL/JWT、限流（Redis 固定窗口）。
+- [ ] （可选）PostgreSQL/JWT、限流（Redis 固定窗口）——按 ROI 评估：限流 > JWT > PostgreSQL。
+
+**已闭环（2026-08-31 · 演示稳定性 + H1 容器实测 + prompt 断言强化）**
+- [x] **本地 mock 目标服务**：`scripts/mock_target.py`（httpbin 兼容子集：回显/`/status/{code}`/`/delay/{n}`/`/bearer`）；`.env.example` 与 compose 默认切本地 mock（`http://mock:9999`），`docker compose up` 全离线可复现。冒烟：2 用例执行 success（passed=2/2）+ HTML 报告，全程 3.4s。见 [execution-engine.md](execution-engine.md) §8.1。
+- [x] **H1 容器内实测**：本机无 Docker → 搬进 CI——`docker-build` job 构建后 `docker run` 挂载 `scripts/verify_container.py` 容器内验证（真实可执行路径过白名单 + `python3.12` 前缀命中 + run_cmd 真实执行 + 白名单外命令真实拒绝）。
+- [x] **prompt 断言强约束**：真实 LLM 冒烟发现 `assertions=0` → system.md 要求每条用例至少 1 条断言（响应 schema 字段校验，未定义 schema 用 `status_code` 等值）；复核冒烟 9 条用例 `assertions=1` 全命中、0 rejected。
 
 **已闭环（原批次 C，2026-08 完成）**
 - [x] request_id 全链路追踪（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、repository rollback 包装、前端类型安全解包、Python 版本统一、测试 marker 归类、**前端 CI**（L10——见 [frontend/.github/workflows/ci.yml](../../frontend/.github/workflows/ci.yml)）。

@@ -75,3 +75,11 @@
 - [x] L9 前端响应解包改类型安全 `request<T>`（去双断言）；L10 frontend CI（.github/workflows/ci.yml）
 - [x] L11 Python 版本统一 3.12+（RULES 对齐 pyproject）；L12 api/tasks/integration marker 声明即用（conftest 自动归类）
 - [x] request_id 全链路追踪中间件（§6.2 明文要求）：X-Request-ID 生成/透传/响应头回写 + ContextVar + 日志 Filter + Celery 任务与 LLM 日志透传
+
+## 2026-08-31 · 演示稳定性 + H1 闭环 + prompt 断言（已完成）
+
+> 沉淀：[docs/sessions/2026-08-31-demo-stability-h1.md](sessions/2026-08-31-demo-stability-h1.md)；另含 CI lint 门禁修复（ruff format 全仓 + PEP695 + 版本落锁，commit ff05fd3）。
+
+- [x] 本地 mock 目标服务 `scripts/mock_target.py`（httpbin 兼容子集）；.env.example/compose 默认本地 mock，`docker compose up` 全离线；执行冒烟 2/2 passed + HTML 报告（3.4s）
+- [x] H1 容器内实测搬进 CI：docker-build job 构建后 `docker run` 挂载 `scripts/verify_container.py` 容器内验证白名单（真实路径/python3.12 前缀/真实执行/越权拒绝四断言）
+- [x] prompt v1 断言强约束：每条用例至少 1 条 assertions（system.md 规则 4 + 输出契约/白名单更新 + test_prompts 断言）；真实 LLM 冒烟复核 9/9 `assertions=1`
