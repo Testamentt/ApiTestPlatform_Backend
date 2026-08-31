@@ -114,6 +114,16 @@ scan_stale_tasks():
 - 杀进程树用 `os.system(f"taskkill /T /F /PID {pid}")`（忽略返回值，128=已消失属预期）。
 - 子进程启动加 `CREATE_NO_WINDOW`（避免 pytest 弹控制台窗口）。
 
+## 8.1 本地 mock 目标服务（演示稳定性）
+
+- 背景：默认 `base_url` 曾指向 httpbin.org，外网抖动会让执行演示当场失败（roadmap 待办「演示稳定性」）。
+- 方案：`scripts/mock_target.py` 提供 httpbin 兼容子集——`/get`、`/post`（PUT/PATCH/DELETE 同形状回显）、
+  `/status/{code}`（任意状态码）、`/delay/{n}`（上限 10s，配合调小 `tasks.timeout_seconds` 演示超时劫持）、
+  `/bearer`（无凭证 401）、`/headers`、`/health`。
+- 本地：`python scripts/mock_target.py`（默认 127.0.0.1:9999）+ `TESTPLATFORM_EXECUTION_BASE_URL=http://127.0.0.1:9999`。
+- Compose：内置 `mock` 服务（复用后端镜像 + 脚本只读挂载），api/worker 默认 `http://mock:9999`，
+  `docker compose up` 即全离线可复现；联真实外网用环境变量覆盖 base_url。
+
 ## 9. 验收指标
 
 - 10+ 用例并发执行；Web 响应稳定 <50ms（异步解耦）。

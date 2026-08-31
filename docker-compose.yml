@@ -11,6 +11,16 @@ services:
       timeout: 3s
       retries: 10
 
+  mock:
+    # 本地 mock 目标服务（httpbin 兼容子集，roadmap「演示稳定性」）：执行链路全离线可复现。
+    # 复用后端镜像（含 fastapi/uvicorn），脚本只读卷挂载——改 mock 无需重建镜像
+    build: .
+    command: python mock_target.py
+    environment:
+      MOCK_TARGET_HOST: 0.0.0.0
+    volumes:
+      - ./scripts/mock_target.py:/app/mock_target.py:ro
+
   api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -23,6 +33,8 @@ services:
       TESTPLATFORM_REDIS_PASSWORD: ${TESTPLATFORM_REDIS_PASSWORD:-}
       TESTPLATFORM_SECURITY_API_TOKEN: ${TESTPLATFORM_SECURITY_API_TOKEN:-testplatform-dev-token}
       TESTPLATFORM_APP_DOCS_ENABLED: ${TESTPLATFORM_APP_DOCS_ENABLED:-true}
+      # 默认指向 mock 服务（全离线稳定）；联真实外网时设 TESTPLATFORM_EXECUTION_BASE_URL 覆盖
+      TESTPLATFORM_EXECUTION_BASE_URL: ${TESTPLATFORM_EXECUTION_BASE_URL:-http://mock:9999}
     volumes: &appvol
       # SQLite named volume 持久化；-wal/-shm 附属文件与 db 同目录同卷，禁止拆分挂载（§3.3）
       - dbdata:/app/data
