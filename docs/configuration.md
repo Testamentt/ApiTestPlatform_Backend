@@ -14,7 +14,7 @@
 **加载机制**（`get_settings()` 显式合并）：
 ```python
 def get_settings() -> Settings:
-    data = _load_yaml_defaults()       # ① yaml 作为默认值（缺失回退空 dict）
+    data = _load_yaml_defaults()  # ① yaml 作为默认值（缺失回退空 dict）
     data = _merge_env_overrides(data)  # ② TESTPLATFORM_* 环境变量/.env 覆盖敏感项
     return Settings.model_validate(data)  # ③ extra=forbid 校验
 ```

@@ -21,7 +21,10 @@ def test_dispatch_execution_forwards_request_id(monkeypatch):
         dispatch_execution(42)
     finally:
         reset_request_id()
-    assert captured == {"task_id": 42, "request_id": "rid-dispatch-1"}  # 请求上下文的 id 透传 Worker
+    assert captured == {
+        "task_id": 42,
+        "request_id": "rid-dispatch-1",
+    }  # 请求上下文的 id 透传 Worker
 
 
 def test_dispatch_generation_forwards_request_id(monkeypatch):

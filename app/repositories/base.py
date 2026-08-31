@@ -1,8 +1,6 @@
 # 通用数据访问。why：收敛查询（分页/异常），避免业务代码散落 session.query；MVP 物理删除。
 from __future__ import annotations
 
-from typing import Generic, TypeVar
-
 from sqlalchemy import Select, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -10,10 +8,8 @@ from sqlalchemy.orm import Session
 from app.core.database import Base
 from app.core.exceptions import AppError
 
-ModelT = TypeVar("ModelT", bound=Base)
 
-
-class BaseRepository(Generic[ModelT]):
+class BaseRepository[ModelT: Base]:
     model: type[ModelT]
 
     def __init__(self, session: Session) -> None:

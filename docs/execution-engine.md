@@ -18,10 +18,10 @@
 task_acks_late = True
 worker_prefetch_multiplier = 1
 task_reject_on_worker_lost = True
-task_soft_time_limit = settings.celery.soft_time_limit      # 300（执行任务默认）
-task_time_limit = settings.celery.time_limit                # 360
+task_soft_time_limit = settings.celery.soft_time_limit  # 300（执行任务默认）
+task_time_limit = settings.celery.time_limit  # 360
 broker_transport_options = {"visibility_timeout": settings.celery.visibility_timeout}  # 已接线
-result_expires = settings.celery.result_expires             # 3600（来自 config）
+result_expires = settings.celery.result_expires  # 3600（来自 config）
 broker_connection_retry_on_startup = True
 # generate_cases_task 单独覆盖：
 #   soft_time_limit=llm.task_soft_timeout_seconds(540) / time_limit=llm.task_timeout_seconds(600)

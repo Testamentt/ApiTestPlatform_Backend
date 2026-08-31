@@ -4,13 +4,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TypeVar
 
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
-
-_TaskT = TypeVar("_TaskT")
 
 
 def dispatch_execution(task_id: int) -> str | None:
@@ -29,8 +26,8 @@ def dispatch_generation(task_id: int) -> str | None:
     return generate_cases_task.delay(task_id, request_id=get_request_id()).id
 
 
-def dispatch_or_fail(
-    task: _TaskT,
+def dispatch_or_fail[TaskT](
+    task: TaskT,
     status_enum: type,
     dispatch_fn: Callable[[int], str | None],
     *,

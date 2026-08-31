@@ -27,9 +27,7 @@ DOC = _swagger_doc(
 @pytest.fixture()
 def no_dispatch(monkeypatch):
     # why：避免 eager 模式下 create 触发真实 LLM 调用（单元测试隔离，tasks 测试再覆盖执行）
-    monkeypatch.setattr(
-        "app.services.generation_service.dispatch_generation", lambda tid: None
-    )
+    monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda tid: None)
 
 
 def _seed_impact(session_factory, *, untested_ops):

@@ -71,7 +71,9 @@ def _seed_impact(session_factory, *, untested_ops):
 def test_create_idempotent(session_factory, monkeypatch):
     with session_factory() as s:
         svc = GenerationService(s)
-        monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda _tid: None)
+        monkeypatch.setattr(
+            "app.services.generation_service.dispatch_generation", lambda _tid: None
+        )
         t1 = svc.create_generation_task(DOC)
         t2 = svc.create_generation_task(DOC)
         assert t1.id == t2.id  # Lookup-Create：同输入返回同一任务
@@ -81,7 +83,9 @@ def test_create_default_uses_untested(session_factory, monkeypatch):
     _seed_impact(session_factory, untested_ops=["listUsers"])
     with session_factory() as s:
         svc = GenerationService(s)
-        monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda _tid: None)
+        monkeypatch.setattr(
+            "app.services.generation_service.dispatch_generation", lambda _tid: None
+        )
         task = svc.create_generation_task(DOC)
         assert task.operation_ids == ["listUsers"]  # 读最新分析 untested（间隙 1）
 
@@ -90,7 +94,9 @@ def test_create_first_run_full(session_factory, monkeypatch):
     # 无历史分析 → 全量（operation_ids=None，开箱即用）
     with session_factory() as s:
         svc = GenerationService(s)
-        monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda _tid: None)
+        monkeypatch.setattr(
+            "app.services.generation_service.dispatch_generation", lambda _tid: None
+        )
         task = svc.create_generation_task(DOC)
         assert task.operation_ids is None
 
@@ -108,7 +114,9 @@ def test_create_force_full_ignores_untested(session_factory, monkeypatch):
     _seed_impact(session_factory, untested_ops=["listUsers"])
     with session_factory() as s:
         svc = GenerationService(s)
-        monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda _tid: None)
+        monkeypatch.setattr(
+            "app.services.generation_service.dispatch_generation", lambda _tid: None
+        )
         task = svc.create_generation_task(DOC, force_full=True)
         assert task.operation_ids is None  # 全量重建
 
@@ -117,7 +125,9 @@ def test_create_explicit_operation_ids(session_factory, monkeypatch):
     _seed_impact(session_factory, untested_ops=["listUsers"])
     with session_factory() as s:
         svc = GenerationService(s)
-        monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda _tid: None)
+        monkeypatch.setattr(
+            "app.services.generation_service.dispatch_generation", lambda _tid: None
+        )
         task = svc.create_generation_task(DOC, operation_ids=["createUser"])
         assert task.operation_ids == ["createUser"]  # 显式定向优先
 
@@ -261,7 +271,9 @@ def test_create_concurrent_run_id_collision(session_factory, monkeypatch):
 
     with session_factory() as s:
         svc = GenerationService(s)
-        monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda _tid: None)
+        monkeypatch.setattr(
+            "app.services.generation_service.dispatch_generation", lambda _tid: None
+        )
         svc.create_generation_task(DOC)  # 插入 run_id=X
         # 模拟并发第二个请求：find 未命中（TOCTOU），commit 撞唯一约束
         monkeypatch.setattr(svc.repo, "find_by_run_id", lambda rid: None)
