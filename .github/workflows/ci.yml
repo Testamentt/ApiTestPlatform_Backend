@@ -56,3 +56,7 @@ jobs:
         run: docker compose config
       - name: 构建镜像（验证多阶段 + 非 editable 安装路径）
         run: docker build -t testplatform:ci .
+      - name: 容器内 H1 白名单实测（python3* 前缀 + run_cmd 真实执行）
+        # why：H1 修复此前仅代码层验证，本机无 Docker——CI runner 自带 Docker，
+        # 挂载脚本进容器验证真实可执行路径过白名单 + 子进程真实执行（roadmap 待闭环项）
+        run: docker run --rm -v "$PWD/scripts/verify_container.py:/mnt/verify_container.py:ro" testplatform:ci python /mnt/verify_container.py
