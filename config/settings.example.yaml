@@ -36,6 +36,16 @@ execution:
   base_url: http://httpbin.org        # 被测接口 base_url（写死，Phase 2 再补多环境）
   pytest_timeout: 300                 # subprocess 超时阈值（来自 config，禁止硬编码）
   command_whitelist: [python, python3*, pytest] # run_cmd 白名单；* 尾缀=前缀匹配（兼容 Linux/Docker 的 python3.12）
+  # 被测系统鉴权适配（auth_enabled 时执行层自动登录取 token 注入请求头；凭证走 .env 的 env 名引用，§8）
+  # 示例为管伊佳ERP（X-Access-Token + 密码 MD5 传输）；登录体是 dict，仅支持 yaml 配置
+  # auth_enabled: true
+  # auth_login_path: /user/login
+  # auth_login_body: {loginName: "{username}", password: "{password}"}
+  # auth_username_env: ERP_TEST_USERNAME
+  # auth_password_env: ERP_TEST_PASSWORD
+  # auth_token_header: X-Access-Token
+  # auth_token_field: data.token
+  # auth_password_encoding: md5
 
 swagger:                              # Phase 2 影响分析（全带 default，缺失不阻塞启动）
   max_upload_bytes: 2000000           # Swagger 文档大小上限（超限拒绝解析）
