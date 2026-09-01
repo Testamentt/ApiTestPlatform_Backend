@@ -64,6 +64,18 @@ class ExecutionSettings(BaseModel):
     base_url: str = "http://httpbin.org"
     pytest_timeout: int = 300
     command_whitelist: list[str] = ["python", "pytest"]
+    # 被测系统鉴权适配（配置驱动，如管伊佳ERP 的 X-Access-Token）。why：扁平字段而非嵌套——
+    # env 合并逻辑（_merge_env_overrides）只支持一级 section.field，嵌套 dict 无法经 env 覆盖；
+    # enabled 时执行层生成登录 conftest：session 级登录一次取 token 注入每个请求头，
+    # 凭证经 env 名引用（密钥只放 .env，§8），生成的测试文件不含密钥
+    auth_enabled: bool = False
+    auth_login_path: str = ""  # 登录接口路径（与 base_url 同源拼接）
+    auth_login_body: dict = {"username": "{username}", "password": "{password}"}  # 字段名模板
+    auth_username_env: str = "ERP_TEST_USERNAME"
+    auth_password_env: str = "ERP_TEST_PASSWORD"
+    auth_token_header: str = "X-Access-Token"
+    auth_token_field: str = "data.token"  # 登录响应里 token 的点路径
+    auth_password_encoding: str = "plain"  # plain|md5（部分系统密码需摘要后传输）
 
 
 class SwaggerSettings(BaseModel):

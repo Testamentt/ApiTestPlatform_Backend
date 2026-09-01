@@ -15,7 +15,7 @@ from app.core.exceptions import AppError
 from app.models.enums import CaseStatus, TaskStatus
 from app.models.task import Task
 from app.models.test_case import TestCase
-from app.utils.case_generator import render_test_file
+from app.utils.case_generator import render_conftest, render_test_file
 from app.utils.junit_parser import parse_junit_xml
 from app.utils.report_util import write_report_html
 from app.utils.subprocess_util import kill_process_tree, run_cmd
@@ -140,6 +140,9 @@ class ExecutionService:
         workspace = Path(get_settings().execution.workspace_dir).resolve() / "tasks" / str(task_id)
         shutil.rmtree(workspace, ignore_errors=True)
         workspace.mkdir(parents=True, exist_ok=True)
+        if get_settings().execution.auth_enabled:
+            # why：登录 fixture 随任务 workspace 生成——session 级登录取 token，用例文件只引用 fixture
+            (workspace / "conftest.py").write_text(render_conftest(), encoding="utf-8")
         for case in cases:
             (workspace / f"test_{case.id}.py").write_text(render_test_file(case), encoding="utf-8")
         return workspace
