@@ -98,4 +98,4 @@ prompts/v1/user.md        # {operation_json} {boundary_rules} {json_schema} 占�
 
 ## 10. 不在本阶段（Phase 4）
 
-采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、批量并发分组、动态信任降权、多版本 prompt、cost 精算、Webhook。（前端展示已实现，见 [frontend/README.md](../../frontend/README.md)。）
+采纳率埋点、model_chain 多模型 fallback、客户端令牌桶限流、批量并发分组、动态信任降权、多版本 prompt、cost 精算、Webhook。（前端展示已实现，见 [frontend/README.md](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/README.md)。）

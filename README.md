@@ -105,4 +105,4 @@ docker compose up --build
 | [docs/roadmap.md](docs/roadmap.md) | 迭代路线（活文档：方向/状态/下一步；完成台账见 TODO.md） |
 | [docs/TODO.md](docs/TODO.md) | 分阶段完成项勾选台账 |
 | [tests/](tests/) | 单元 / 接口 / 任务测试（pytest 门禁，mock 隔离外部依赖） |
-| [frontend/README.md](/frontend/README.md) | Vue 前端使用说明（4 页 / 启动 / 契约） |
+| [frontend/README.md](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/README.md) | Vue 前端使用说明（4 页 / 启动 / 契约） |

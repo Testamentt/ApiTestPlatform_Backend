@@ -35,7 +35,7 @@
 2. **精准回归（Phase 2）**：Swagger 1.0 建 3 用例 → 传 Swagger 2.0（改 1 个接口入参）→ `POST /impact/analyze` 返回「变更 1、影响 1」→ 一键回归。
 3. **AI 提效（Phase 3）**：上传 Swagger → `POST /generate` → 生成 draft（source=ai、trust_score=80/60）→ confirm → active；`POST /impact/{id}/fix-hints` 演示 breaking 修复建议。
 
-> 完整 API 演练见 [api.md](api.md) §5；前端演示见 [frontend/README.md](../../frontend/README.md)。
+> 完整 API 演练见 [api.md](api.md) §5；前端演示见 [frontend/README.md](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/README.md)。
 
 ## 待解决问题 / 下一步
 
@@ -48,7 +48,7 @@
 - [x] **prompt 断言强约束**：真实 LLM 冒烟发现 `assertions=0` → system.md 要求每条用例至少 1 条断言（响应 schema 字段校验，未定义 schema 用 `status_code` 等值）；复核冒烟 9 条用例 `assertions=1` 全命中、0 rejected。
 
 **已闭环（原批次 C，2026-08 完成）**
-- [x] request_id 全链路追踪（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、repository rollback 包装、前端类型安全解包、Python 版本统一、测试 marker 归类、**前端 CI**（L10——见 [frontend/.github/workflows/ci.yml](../../frontend/.github/workflows/ci.yml)）。
+- [x] request_id 全链路追踪（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、repository rollback 包装、前端类型安全解包、Python 版本统一、测试 marker 归类、**前端 CI**（L10——见 [frontend/.github/workflows/ci.yml](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/.github/workflows/ci.yml)）。
 
 **已闭环（AI 生成真实 LLM 冒烟，2026-08-28）**
 - [x] 真实 DeepSeek 调用端到端冒烟（`.env` key 生效验证）：`POST /generate` → eager 任务 → `llm_client` 真调 `deepseek-chat` → 2/2 operation 覆盖、9 条 draft 用例（`source=ai`/`trust=80`、operation_id 服务端注入）、0 rejected、成本 ≈$0.002；request_id 全链路日志核验通过。沉淀：[sessions/2026-08-28-ai-generation-smoke.md](sessions/2026-08-28-ai-generation-smoke.md)。

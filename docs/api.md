@@ -122,5 +122,5 @@
 ## 5. 前端使用说明（双界面）
 
 - **后端界面 = Swagger UI（`/docs`）**：所有操作直接在 Swagger UI 完成——先点右上角 **Authorize** 输入 Bearer Token（Phase 4 鉴权），再创建用例（operation_id 写死如 `httpbin_get`）、确认 active、触发执行（返回 `task_id` 后轮询 `GET /tasks/{id}` 看 `pending→running→success`）、查看 results + HTML 报告链接。
-- **Vue 前端（Phase 4 已实现）**：`frontend/` 独立仓库（Vue 3 + TS + Element Plus），4 页——仪表盘 / 用例管理 / 任务执行 / AI 生成；dev 经 Vite 代理（`/api`、`/static`、`/docs`）同源访问后端；令牌在顶栏「令牌」或仪表盘空态配置（`testplatform-dev-token`）。详见 [frontend/README.md](../../frontend/README.md)。
+- **Vue 前端（Phase 4 已实现）**：`frontend/` 独立仓库（Vue 3 + TS + Element Plus），4 页——仪表盘 / 用例管理 / 任务执行 / AI 生成；dev 经 Vite 代理（`/api`、`/static`、`/docs`）同源访问后端；令牌在顶栏「令牌」或仪表盘空态配置（`testplatform-dev-token`）。详见 [frontend/README.md](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/README.md)。
 - 演示流：`POST /cases`（2 条）→ `POST /cases/{id}/confirm` → `POST /tasks`（202 task_id）→ 轮询 `GET /tasks/{id}` → `GET /tasks/{id}/results` → 打开 `report_link`（`/static/{task_id}/report.html`）。
