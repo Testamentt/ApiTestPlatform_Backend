@@ -35,12 +35,22 @@
 2. **精准回归（Phase 2）**：Swagger 1.0 建 3 用例 → 传 Swagger 2.0（改 1 个接口入参）→ `POST /impact/analyze` 返回「变更 1、影响 1」→ 一键回归。
 3. **AI 提效（Phase 3）**：上传 Swagger → `POST /generate` → 生成 draft（source=ai、trust_score=80/60）→ confirm → active；`POST /impact/{id}/fix-hints` 演示 breaking 修复建议。
 
+> 被测系统两种形态（`execution.base_url` 切换）：**离线 mock**（`scripts/mock_target.py`，稳定兜底）与
+> **管伊佳ERP**（本机 `:9999/jshERP-boot`，真实业务系统——Swagger2 文档经 `scripts/convert_swagger2.py`
+> 转 OpenAPI3 入库 [examples/jsherp-openapi3.json](examples/jsherp-openapi3.json)，执行层自动登录取
+> `X-Access-Token`，见 execution-engine.md §8.2）。
+>
 > 完整 API 演练见 [api.md](api.md) §5；前端演示见 [frontend/README.md](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/README.md)。
 
 ## 待解决问题 / 下一步
 
 **待闭环（建议优先级）**
 - [ ] （可选）PostgreSQL/JWT、限流（Redis 固定窗口）——按 ROI 评估：限流 > JWT > PostgreSQL。
+
+**已闭环（2026-09-01 · 被测系统迁移：管伊佳ERP）**
+- [x] **Swagger2→OpenAPI3 转换**：`scripts/convert_swagger2.py`（线上 `/v2/api-docs` 拉取/本地文件兜底；basePath→servers、definitions→components、in:body→requestBody、参数 schema 包裹），产物 320 paths/338 operations、parse 0 warning。见 [examples/jsherp-openapi3.json](examples/jsherp-openapi3.json)。
+- [x] **执行层鉴权适配**（不改表结构）：`execution.auth_*` 配置段 + workspace 生成登录 `conftest.py`（session 级登录取 token、凭证仅经 env 引用不入生成文件）+ 用例模板注入 token 请求头；单测覆盖渲染/密钥不落盘/装配。
+- [x] **ERP 端到端冒烟**：parse 338 ops → 定向 AI 生成 3 接口（13 draft、0 rejected、$0.0035）→ confirm 4 条正向用例 → 执行 **4/4 passed**（登录→token→真实请求 ERP）+ HTML 报告。
 
 **已闭环（2026-08-31 · 演示稳定性 + H1 容器实测 + prompt 断言强化）**
 - [x] **本地 mock 目标服务**：`scripts/mock_target.py`（httpbin 兼容子集：回显/`/status/{code}`/`/delay/{n}`/`/bearer`）；`.env.example` 与 compose 默认切本地 mock（`http://mock:9999`），`docker compose up` 全离线可复现。冒烟：2 用例执行 success（passed=2/2）+ HTML 报告，全程 3.4s。见 [execution-engine.md](execution-engine.md) §8.1。

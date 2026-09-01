@@ -76,6 +76,14 @@
 - [x] L11 Python 版本统一 3.12+（RULES 对齐 pyproject）；L12 api/tasks/integration marker 声明即用（conftest 自动归类）
 - [x] request_id 全链路追踪中间件（§6.2 明文要求）：X-Request-ID 生成/透传/响应头回写 + ContextVar + 日志 Filter + Celery 任务与 LLM 日志透传
 
+## 2026-09-01 · 被测系统迁移：管伊佳ERP（已完成）
+
+> 沉淀：[docs/sessions/2026-09-01-jsherp-migration.md](sessions/2026-09-01-jsherp-migration.md)。演示形态二选一：离线 mock（兜底）/ 管伊佳ERP（真实业务系统）。
+
+- [x] Swagger2→OpenAPI3 转换脚本 `scripts/convert_swagger2.py` + 产物 `docs/examples/jsherp-openapi3.json`（320 paths/338 ops，parse 0 warning）+ 解析片段单测
+- [x] 执行层鉴权适配：`execution.auth_*` 配置（登录路径/体模板/密码编码 md5/token 头与提取路径）+ workspace 登录 conftest（session 级一次登录，凭证仅 env 引用）+ 用例模板 token 头注入；单测含密钥不落盘断言
+- [x] ERP 端到端冒烟：parse → 定向 AI 生成（13 draft/0 rejected）→ confirm → 执行 4/4 passed（真实登录取 X-Access-Token 请求 ERP）+ HTML 报告
+
 ## 2026-08-31 · 演示稳定性 + H1 闭环 + prompt 断言（已完成）
 
 > 沉淀：[docs/sessions/2026-08-31-demo-stability-h1.md](sessions/2026-08-31-demo-stability-h1.md)；另含 CI lint 门禁修复（ruff format 全仓 + PEP695 + 版本落锁，commit ff05fd3）。
