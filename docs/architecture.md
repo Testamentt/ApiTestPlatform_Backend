@@ -86,6 +86,7 @@ Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `
    g. 正常结束 → junit_parser 累加各 testsuite → 组 result_summary {total,passed,failed,...}
    h. report_util 写 report.html（best-effort，无结果也生成）→ report_link → status=success
 4. 客户端轮询 GET /api/v1/tasks/{id} → 进度/结果/HTML 报告链接
+```
 
 ### Phase 2 影响分析链路（纯规则，同步 <1s，无 AI）
 
