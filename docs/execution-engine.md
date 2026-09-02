@@ -124,6 +124,25 @@ scan_stale_tasks():
 - Compose：内置 `mock` 服务（复用后端镜像 + 脚本只读挂载），api/worker 默认 `http://mock:9999`，
   `docker compose up` 即全离线可复现；联真实外网用环境变量覆盖 base_url。
 
+## 8.2 被测系统接入：管伊佳ERP（真实业务系统）
+
+- 文档：Swagger 2.0（`/v2/api-docs`）→ `scripts/convert_swagger2.py` 转 OpenAPI3，产物
+  [examples/jsherp-openapi3.json](examples/jsherp-openapi3.json)（320 paths / 338 operations，parse 0 warning）。
+- 鉴权适配（`execution.auth_*`，settings.yaml；凭证只放 .env 的 `ERP_TEST_USERNAME/PASSWORD`）：
+  登录 `POST /user/login`（**密码 MD5 后传输**）→ `data.token` → 执行层 session 级登录一次，
+  以 `X-Access-Token` 头注入全部用例请求；无 token/token 失效 ERP 返回 **HTTP 500 + "loginOut"（非 401）**。
+
+### 账号体系（业务领域关键信息）
+
+| 账号 | 角色 | 边界 |
+| --- | --- | --- |
+| `admin` | **平台运维用户（超级管理员）** | 只能配置平台菜单、创建/管理租户；**不能编辑任何业务数据** |
+| `jsh`（测试账号） | **租户管理员（真正的业务管理员）** | 租户内全部业务数据增删改查；凭证在 .env |
+
+**演示口径：业务用例的生成/执行/造数据一律用租户账号 `jsh`（`admin` 登录也无法编辑业务数据）；
+「鉴权异常」类用例在统一带 token 的执行层下会失败，演示挑查询类正向用例（幂等无副作用）。
+更完整的领域口径见项目技能 `.claude/skills/jsherp-target-domain/SKILL.md`（本地协作知识）。**
+
 ## 9. 验收指标
 
 - 10+ 用例并发执行；Web 响应稳定 <50ms（异步解耦）。

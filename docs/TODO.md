@@ -83,6 +83,7 @@
 - [x] Swagger2→OpenAPI3 转换脚本 `scripts/convert_swagger2.py` + 产物 `docs/examples/jsherp-openapi3.json`（320 paths/338 ops，parse 0 warning）+ 解析片段单测
 - [x] 执行层鉴权适配：`execution.auth_*` 配置（登录路径/体模板/密码编码 md5/token 头与提取路径）+ workspace 登录 conftest（session 级一次登录，凭证仅 env 引用）+ 用例模板 token 头注入；单测含密钥不落盘断言
 - [x] ERP 端到端冒烟：parse → 定向 AI 生成（13 draft/0 rejected）→ confirm → 执行 4/4 passed（真实登录取 X-Access-Token 请求 ERP）+ HTML 报告
+- [x] 账号体系专家信息沉淀（2026-09-02 补充）：**admin 仅平台运维用户（不能编辑业务数据，只配菜单/建租户）；业务管理员是租户 jsh**——演示凭证已切 jsh 并重验执行 4/4 passed；知识落点：业务 SKILL `.claude/skills/jsherp-target-domain/`（本地）+ execution-engine.md §8.2（入库）
 
 ## 2026-08-31 · 演示稳定性 + H1 闭环 + prompt 断言（已完成）
 
