@@ -10,6 +10,9 @@ import re
 from datetime import UTC, datetime
 from time import monotonic
 
+from celery.exceptions import (
+    SoftTimeLimitExceeded,  # 服务层须识别软超时以放行（R3-1），异常类型耦合可接受
+)
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -62,13 +65,31 @@ _PROMPT_STRUCT_KEYS = {
 }
 
 _SCRIPT_TAG_RE = re.compile(r"<[^>]*script[^>]*>", re.IGNORECASE)
+# §10.2 完整清洗（review R3-4）：危险标签族（script/iframe/object/embed/base/link/style）+ 控制字符
+_DANGEROUS_TAG_RE = re.compile(
+    r"<\s*/?\s*(?:script|iframe|object|embed|base|link|style)\b[^>]*>", re.IGNORECASE
+)
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# §10.1-4 敏感扫描（review R3-3）：注入句式/密钥形态/内网地址——命中即拦截该 operation
+_INJECTION_HINTS_RE = re.compile(
+    r"ignore (?:all )?(?:previous|prior) instructions|忽略(?:以上|上述|之前)的?(?:全部)?指令"
+    r"|sk-[A-Za-z0-9]{16,}|BEGIN (?:RSA )?PRIVATE KEY",
+    re.IGNORECASE,
+)
+_PRIVATE_NET_RE = re.compile(
+    r"(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+    r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3})"
+)
+# §10.1-1 逐字段截断上限（review R3-3）：结构键的字符串值（pattern/enum 项等）进 prompt 前限长
+_PROMPT_STR_LIMIT = 256
 
 
 def _sanitize_llm_field(value):
     """LLM 输出文本清洗（§10.2）。why：LLM 输出不可信，可回显 prompt 中的注入文本，
-    入库前剔除 <script> 等危险标签与控制字符（防 XSS/存储注入）。"""
+    入库前剔除危险标签（script/iframe/object/embed 等）与控制字符（防 XSS/存储注入）。"""
     if isinstance(value, str):
-        return _SCRIPT_TAG_RE.sub("", value).replace("\x00", "")
+        v = _DANGEROUS_TAG_RE.sub("", _SCRIPT_TAG_RE.sub("", value))
+        return _CONTROL_CHARS_RE.sub("", v)
     if isinstance(value, list):
         return [_sanitize_llm_field(v) for v in value]
     if isinstance(value, dict):
@@ -78,12 +99,30 @@ def _sanitize_llm_field(value):
 
 def _strip_doc_fields(value):
     """递归剥离 schema 文档字段，只留结构约束进 Prompt。
-    why：§10.1 预处理——用户 Swagger 的 description/example 可含指令/HTML/敏感文本，不得进入 LLM 输入。"""
+    why：§10.1 预处理——用户 Swagger 的 description/example 可含指令/HTML/敏感文本，不得进入 LLM 输入；
+    保留的结构键字符串值（pattern/enum/default）仍可能夹带注入句式/超长内容——控制字符剥离 + 逐字段截断
+    （review R3-3，§10.1-1/2）。"""
     if isinstance(value, dict):
         return {k: _strip_doc_fields(v) for k, v in value.items() if k in _PROMPT_STRUCT_KEYS}
     if isinstance(value, list):
         return [_strip_doc_fields(v) for v in value]
+    if isinstance(value, str):
+        v = _CONTROL_CHARS_RE.sub("", value)
+        return v[:_PROMPT_STR_LIMIT]
     return value
+
+
+def _scan_prompt_risk(text: str) -> str | None:
+    """敏感信息/注入句式扫描（§10.1-4，review R3-3）。
+
+    why：白名单+截断仍可能放过「忽略上述指令」类句式或意外携带的密钥/内网地址——
+    入 prompt 前扫描，命中即拦截该 operation 并告警（不调 LLM）。Returns 命中描述或 None。
+    """
+    if _INJECTION_HINTS_RE.search(text):
+        return "注入句式/密钥形态命中"
+    if _PRIVATE_NET_RE.search(text):
+        return "内网地址命中"
+    return None
 
 
 def _operation_to_json(op: ParsedOperation) -> str:
@@ -107,9 +146,9 @@ def _operation_to_json(op: ParsedOperation) -> str:
         else None
     )
     payload = {
-        "operation_id": op.operation_id,
+        "operation_id": _CONTROL_CHARS_RE.sub("", op.operation_id),
         "method": op.method,
-        "path": op.path,
+        "path": _CONTROL_CHARS_RE.sub("", op.path),
         "parameters": params,
         "request_body": body,
         "responses": {code: _strip_doc_fields(r.get("schema")) for code, r in op.responses.items()},
@@ -190,6 +229,9 @@ def run_generation(session_factory, task_id: int, *, llm: LlmClient | None = Non
     """生成编排入口。why：兜底任何未预期异常，保证任务进入明确终态（不卡 RUNNING，RULES §8.3）。"""
     try:
         _run_generation(session_factory, task_id, llm=llm)
+    except SoftTimeLimitExceeded:
+        # 放行给任务层专属 handler（force_fail_timeout 落 timeout，否则 run_id 永久污染）——R3-1
+        raise
     except Exception:
         logger.exception("run_generation 任务 %s 未预期异常", task_id)
         _fail(session_factory, task_id, "internal", "生成引擎未预期异常，详见服务日志")
@@ -238,6 +280,22 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
     for op_id in target_ids:
         op = ops_map[op_id]
         user = render_user_prompt(_operation_to_json(op), json_schema)
+        # §10.1-4 敏感扫描（R3-3）：命中即拦截该 operation——不调 LLM、告警落审计，不静默
+        risk = _scan_prompt_risk(user)
+        if risk:
+            logger.warning("operation %s prompt 命中敏感扫描，已拦截: %s", op_id, risk)
+            _write_log(
+                session_factory,
+                task_id=task_id,
+                op_id=op_id,
+                model=llm.settings.model,
+                status="error",
+                confidence=0.0,
+                error=f"敏感信息扫描拦截: {risk}",
+            )
+            rejected += 1
+            rejected_detail.append({"operation_id": op_id, "reason": f"敏感扫描拦截: {risk}"})
+            continue
         start = monotonic()
         try:
             parsed_cases, usage = llm.chat_json(system, user, schema=GeneratedCaseList)
@@ -323,6 +381,9 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
         if task is None:
             return
         task.operation_count = generated
+        task.prompt_version = (
+            PROMPT_VERSION  # 任务层版本溯源（review R3-2 批次：列定义了此前从未写入）
+        )
         task.result_summary = {
             "generated": generated,
             "draft_created": draft_created,

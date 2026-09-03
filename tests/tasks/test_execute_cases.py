@@ -125,6 +125,38 @@ def test_execute_returncode_1_is_success_when_junit_valid(
         assert task.result_summary["failed"] == 1
 
 
+def test_soft_timeout_propagates_to_task_handler(session_factory, patch_sessionlocal, monkeypatch):
+    # why：服务层 except Exception 曾截胡 SoftTimeLimitExceeded，任务层 handler 成死代码（R3-1）——
+    # 从 _execute_cases（内层）抛出，锁死「穿透服务层兜底 → 任务层 force_fail_timeout →
+    # FAILED(timeout) + 读 DB pid 杀树」的真实传播链
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    with session_factory() as s:
+        task = Task(run_id="run_soft", case_ids=[1], status=TaskStatus.PENDING.value, pid=4321)
+        s.add(task)
+        s.commit()
+        s.refresh(task)
+        task_id = task.id
+
+    def _raise(self, tid):
+        raise SoftTimeLimitExceeded()
+
+    monkeypatch.setattr("app.services.execution_service.ExecutionService._execute_cases", _raise)
+    killed = []
+    monkeypatch.setattr(
+        "app.services.execution_service.kill_process_tree", lambda pid: killed.append(pid)
+    )
+
+    execute_cases_task.delay(task_id)
+
+    with session_factory() as s:
+        t = s.get(Task, task_id)
+        assert t.status == "failed"
+        assert t.error_stage == "timeout"
+        assert t.finished_at is not None
+    assert killed == [4321]  # force_fail_timeout 读 DB pid 杀树
+
+
 def test_draft_case_excluded(session_factory, patch_sessionlocal, monkeypatch):
     from ..fakes import make_fake_run_cmd
 
