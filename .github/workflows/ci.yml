@@ -45,9 +45,10 @@ jobs:
       - name: 安装依赖
         run: pip install -e ".[dev]"
       - name: 确认 slow 用例收集非空（防 addopts -m 覆盖语义失效导致空跑绿灯，R3 批次）
-        # why -o addopts=：addopts 自带 -q，与步骤 -q 叠加成 -qq 后 collect-only 只输出
-        # 按文件计数摘要（无 "::"），grep 必空——清空 addopts 显式收集，用例行完整可见
-        run: pytest -o addopts= -m slow --collect-only | grep -q "::"
+        # why -o addopts= + 恰好一个 -q：无 -q 时 collect-only 输出树形格式（无 "::"）；
+        # -qq（addopts 与步骤各带 -q 叠加）则降级为纯计数摘要——两种输出 grep 都必空，
+        # 只有「清空 addopts + 单个 -q」输出完整用例 id（pytest 8.4 实测）
+        run: pytest -o addopts= -q -m slow --collect-only | grep -q "::"
       - name: e2e 冒烟（mock 隔离，无需 Redis/LLM）
         run: pytest -m slow
 
