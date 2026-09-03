@@ -47,7 +47,7 @@
 | status | VARCHAR(16) | NOT NULL DEFAULT 'pending' | pending/running/success/failed（StrEnum） |
 | pid | INTEGER | NULL | **subprocess 主进程 PID，超时劫持权威 kill 依据**（mark_running 写入） |
 | celery_task_id | VARCHAR(64) | NULL | Celery task uuid |
-| error_stage | VARCHAR(32) | NULL | parse/subprocess/timeout/internal/dispatch（失败阶段定位） |
+| error_stage | VARCHAR(32) | NULL | parse/subprocess/timeout/internal/dispatch/command（失败阶段定位；command=命令未过白名单，review L7） |
 | error_msg | TEXT | NULL | 失败原因（含 stdout 尾部） |
 | started_at / finished_at | DATETIME | NULL | |
 | result_summary | JSON | NULL | `{total, passed, failed, skipped, duration_ms, results:[{case_id, status, failure_msg}]}`（name 由接口层默认空串兜底，junit 不提取） |
