@@ -1,5 +1,7 @@
 # 智能化接口测试效能平台
 
+[![CI](https://github.com/Testamentt/ApiTestPlatform_Backend/actions/workflows/ci.yml/badge.svg)](https://github.com/Testamentt/ApiTestPlatform_Backend/actions/workflows/ci.yml)
+
 > **AI 提效 + 异步解耦 + 精准回归** —— 让接口用例编写从「重复劳动」变为「审核确认」，让回归范围从「经验猜测」变为「血缘圈定」，让执行从「阻塞卡死」变为「异步兜底」。
 
 基于 FastAPI + Celery + AI 的轻量级、可扩展接口测试效能平台。
@@ -59,27 +61,39 @@ TestPlatform/                # 容器目录（非 git 仓库）
 python -m venv .venv && .venv\Scripts\activate
 pip install -e ".[dev]"
 
-# 2. 配置
+# 2. 配置（.env.example 默认指向本地 mock 被测服务，全离线可演示）
 copy config\settings.example.yaml config\settings.yaml
 copy .env.example .env        # 填入 Redis 密码（占位符换成实际值）
 
-# 3. 启动后端 Web 服务（Swagger UI 即 MVP 界面：http://127.0.0.1:8000/docs）
+# 3. 启动本地 mock 被测服务（httpbin 兼容子集；另开一个终端，保持运行）
+python scripts/mock_target.py    # 监听 127.0.0.1:9999
+
+# 4. 启动后端 Web 服务（Swagger UI 即 MVP 界面：http://127.0.0.1:8000/docs）
 uvicorn app.main:app --port 8000
 
-# 4. 启动 Worker（Windows 必须 --pool=solo）
+# 5. 启动 Worker（Windows 必须 --pool=solo）
 celery -A app.celery_app:celery_app worker --pool=solo
 
-# 5. 一键拉起 Web + Worker（两个独立窗口，各自看日志）
+# 6. 一键拉起 Web + Worker（两个独立窗口，各自看日志）
 scripts\start_all.bat
 
-# 6. （推荐面试演示）Docker Compose 一键跑：FastAPI + Redis + Worker + SQLite
-#    需先装 Docker Desktop；Swagger 界面带 Authorize 按钮，token 默认 testplatform-dev-token
+# 7. （推荐演示）Docker Compose 一键跑：内置 mock 服务 + FastAPI + Redis + Worker + SQLite
+#    Swagger 界面带 Authorize 按钮，token 默认 testplatform-dev-token
 docker compose up --build
+
+# 8. （可选）Vue 前端：cd ../frontend && pnpm install && pnpm dev（http://localhost:5173，Vite 代理到后端）
+```
 
 > ⚠️ **schema 漂移**：`create_all` 只建新表、不 ALTER 旧表。模型新增列后，已有 `data/platform.db` 会缺列（2026-08-10 实测 `trust_score` → `GET /cases` 500）。处置：运行 `scripts\reset_db.bat` 重置 dev 库（数据可丢，已 gitignore），或手动 `ALTER TABLE` 补列。详见 [docs/database.md §4](docs/database.md)。
 
-# （可选）Vue 前端：cd ../frontend && pnpm install && pnpm dev（http://localhost:5173，Vite 代理到后端）
-```
+## 被测系统接入（两种形态，`execution.base_url` 切换）
+
+| 形态 | 说明 | 适用 |
+| --- | --- | --- |
+| **离线 mock** | `scripts/mock_target.py`（httpbin 兼容子集：`/get`、`/post`、`/status/{code}`、`/delay/{n}`、`/bearer`）；compose 内置 mock 服务（`http://mock:9999`） | 日常演示——全离线可复现，不依赖外网 |
+| **管伊佳ERP**（真实业务系统） | 本机 `:9999/jshERP-boot`；Swagger2 文档经 `scripts/convert_swagger2.py` 转 OpenAPI3 入库（[docs/examples/jsherp-openapi3.json](docs/examples/jsherp-openapi3.json)，320 paths/338 operations） | 真实业务链路演示 |
+
+真实系统需要登录态时，执行层按 `execution.auth_*` 配置自动适配（session 级登录取 token → 注入请求头；凭证只放 `.env` 的 `ERP_TEST_USERNAME/PASSWORD`，生成的测试文件不含密钥）。业务演示用租户账号 `jsh`（`admin` 仅运维，不能编辑业务数据）。详见 [docs/execution-engine.md §8](docs/execution-engine.md)。
 
 ## 核心特性
 
@@ -87,21 +101,37 @@ docker compose up --build
 - 📊 **HTML 报告**（Phase 1 已实现）：任务执行后生成自包含 HTML 报告（字段已转义防 XSS），`report_link` 经 `/static/{task_id}/report.html` 访问（仅挂 `reports/` 目录，测试文件不暴露）。
 - 🧠 **接口变更影响圈定**（Phase 2 已实现）：`operation_id` 血缘 + **分段 hash O(1) diff** + **breaking 联合判定** + SQL 反向检索，破坏性变更自动圈定受影响用例、给出孤儿迁移清单，一键回归（宽容降级）。
 - ✅ **AI 用例智能生成**（Phase 3 已实现）：自研 OpenAPI 3.0 解析器 + 结构化 Prompt 生成正向/逆向/边界值用例；`llm_client` 唯一封装（结构化输出 + 长度预检 + 成本审计）、三层防幻觉护栏（严格校验 + draft 恒为 + operation_id 服务端注入）、`trust_score` 血缘可信度、`POST /generate` 异步生成 + `POST /impact/{id}/fix-hints` 修复建议。后端 pytest + e2e 全绿（用例数以 CI 为准）。
-- 🐳 **容器化部署**（Phase 4 已实现）：多阶段 Dockerfile（非 root）+ `docker compose up` 一键拉起 FastAPI + Redis + Worker + SQLite（named volume 持久化、单写者 Worker）；GitHub Actions 三 job 门禁（ruff + pytest + coverage 60/80 + docker 镜像构建验证）。
+- 🐳 **容器化部署**（Phase 4 已实现）：多阶段 Dockerfile（非 root）+ `docker compose up` 一键拉起 mock + FastAPI + Redis + Worker + SQLite（named volume 持久化、单写者 Worker）；GitHub Actions 三 job 门禁（ruff + pytest + coverage 60/80 + docker 镜像构建验证）。
 - 🔐 **Bearer Token 鉴权**（Phase 4 已实现）：`security.api_token` 配置 + HTTPBearer 统一依赖注入（无凭证 401 / 凭证错误 403），health 免鉴权作探针；Swagger UI 自带 Authorize 按钮；`/docs` 由 `app.docs_enabled` 开关控制（生产可关）。
 - 🖥️ **Vue 3 前端**（Phase 4 已实现）：`frontend/` 独立仓库 4 页（仪表盘 / 用例管理 / 任务执行 / AI 生成）+ 41 单测 + 生产构建门禁；dev 走 Vite 代理同源访问。
+- 🔍 **可观测与质量基建**（持续加固）：`X-Request-ID` 全链路追踪（Web → Celery → LLM 日志贯穿同一 id）；prompt 层强约束每用例至少 1 条断言；confirm 审核落批准人（reviewer）审计；入 prompt 前敏感信息扫描 + 定界符防护。
+
+## 工程规范（节选）
+
+项目以「面试防守」为标准执行硬性工程规范（完整规则在本地 `.claude/rules/RULES.md`，不入库），核心 10 条红线：
+
+1. 注释只写「为什么」，禁止逐行翻译式注释
+2. 禁止裸 `except: pass` / 吞异常
+3. 所有外部调用必须设 timeout，值来自 config，禁止硬编码
+4. SQLite 连接必须开启 WAL + busy_timeout + foreign_keys
+5. LLM 调用必须走唯一封装 `llm_client`，禁止业务代码裸调 SDK
+6. LLM 输出必须过 Pydantic schema 校验后才能入库
+7. AI 生成的用例状态恒为 `draft`，禁止直接/自动置 `active`
+8. 密钥只能放 .env，禁止入库/入日志/入 Prompt/入 git
+9. 测试必须 mock LLM，禁止测试真调 API
+10. MVP 运行期 `create_all` 建表（Alembic 延后；模型变更后需重置 dev 库）
 
 ## 文档索引
 
 | 文档 | 内容 |
 | --- | --- |
 | [docs/architecture.md](docs/architecture.md) | 双界面、后端三层、进程隔离、异步模型、核心决策 |
-| [docs/database.md](docs/database.md) | 数据模型（Phase 1-3：6 表字段级设计） |
+| [docs/database.md](docs/database.md) | 数据模型（6 表字段级设计） |
 | [docs/api.md](docs/api.md) | REST API 设计（端点总表） |
-| [docs/execution-engine.md](docs/execution-engine.md) | Celery 任务、subprocess 执行、超时劫持、HTML 报告 |
+| [docs/execution-engine.md](docs/execution-engine.md) | Celery 任务、subprocess 执行、超时劫持、被测系统接入、HTML 报告 |
 | [docs/ai-generation.md](docs/ai-generation.md) | OpenAPI 解析、Prompt 设计、draft→active 审核流 |
-| [docs/impact-analysis.md](docs/impact-analysis.md) | 变更影响分析算法、Webhook、一键回归 |
-| [docs/configuration.md](docs/configuration.md) | 配置管理（Pydantic Settings，Phase 1-4 九段） |
+| [docs/impact-analysis.md](docs/impact-analysis.md) | 变更影响分析算法、一键回归、fix-hints |
+| [docs/configuration.md](docs/configuration.md) | 配置管理（Pydantic Settings，九段 + auth 适配） |
 | [docs/roadmap.md](docs/roadmap.md) | 迭代路线（活文档：方向/状态/下一步；完成台账见 TODO.md） |
 | [docs/TODO.md](docs/TODO.md) | 分阶段完成项勾选台账 |
 | [tests/](tests/) | 单元 / 接口 / 任务测试（pytest 门禁，mock 隔离外部依赖） |
