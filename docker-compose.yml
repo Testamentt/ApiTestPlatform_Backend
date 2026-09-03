@@ -20,6 +20,12 @@ services:
       MOCK_TARGET_HOST: 0.0.0.0
     volumes:
       - ./scripts/mock_target.py:/app/mock_target.py:ro
+    # why：与 redis 同等就绪门禁（R2-M2）——api/worker 等它健康后再起，消除首启竞态
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:9999/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api:
     build: .
@@ -43,6 +49,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      mock:
+        condition: service_healthy
     healthcheck:
       # slim 镜像无 curl，用 python urllib 探活；health 免鉴权（部署探针）
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
@@ -58,6 +66,8 @@ services:
     volumes: *appvol
     depends_on:
       redis:
+        condition: service_healthy
+      mock:
         condition: service_healthy
 
 volumes:

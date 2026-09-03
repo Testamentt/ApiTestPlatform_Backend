@@ -5,13 +5,23 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
+import app
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.utils.subprocess_util import _name_allowed, run_cmd
 
 
 def main() -> None:
+    # ⓪ import 路径自检（R2-H1）：python 直接跑挂载脚本时 sys.path 不含 /app，
+    # import app 会命中 site-packages 副本（PROJECT_ROOT 漂移 → settings.yaml 读不到 →
+    # 白名单回落默认值，后续断言给出误导性失败）。此处 fail-fast 给出明确修复指引。
+    app_root = Path(app.__file__).resolve().parents[1]
+    assert app_root == Path("/app"), (
+        f"import app 解析到 {app_root}（应为 /app 源码副本）——"
+        "PYTHONPATH 未指向 /app，config/settings.yaml 将不可见"
+    )
     whitelist = get_settings().execution.command_whitelist
     exe_name = os.path.basename(sys.executable).lower()
 
@@ -33,7 +43,7 @@ def main() -> None:
     else:
         raise AssertionError("白名单外命令被放行")
 
-    print(f"H1 OK: exe={sys.executable} name={exe_name} whitelist={whitelist}")
+    print(f"H1 OK: app_root={app_root} exe={sys.executable} name={exe_name} whitelist={whitelist}")
 
 
 if __name__ == "__main__":
