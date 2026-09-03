@@ -16,6 +16,7 @@ from app.core.database import init_db
 from app.core.exceptions import AppError
 from app.core.logging import setup_logging
 from app.middleware.request_id import RequestIdMiddleware
+from app.utils.prompt_util import validate_prompts
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging(settings.app.debug)
+    validate_prompts()  # §3.2：prompt 缺文件/缺占位符启动即抛，不在生成任务运行期才失败（R3 批次）
     # why：StaticFiles 挂载要求目录已存在，故在 create_app 时确保目录就绪
     Path("data").mkdir(exist_ok=True)
     Path(settings.execution.workspace_dir).mkdir(exist_ok=True)

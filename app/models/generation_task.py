@@ -29,7 +29,7 @@ class GenerationTask(TimestampMixin, Base):
         Integer, nullable=False, default=0, server_default=text("0")
     )
     prompt_version: Mapped[str | None] = mapped_column(String(16))
-    error_stage: Mapped[str | None] = mapped_column(String(32))  # parse/llm/validate
+    error_stage: Mapped[str | None] = mapped_column(String(32))  # parse/internal/timeout/dispatch
     error_msg: Mapped[str | None] = mapped_column(Text)
     result_summary: Mapped[dict | None] = mapped_column(JSON)
     started_at: Mapped[datetime | None] = mapped_column(DateTime)

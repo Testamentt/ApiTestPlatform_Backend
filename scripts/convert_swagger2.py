@@ -85,7 +85,11 @@ def _convert_operation(
                 }
             )
 
-    new_op = {k: op[k] for k in ("tags", "summary", "operationId", "security") if op.get(k)}
+    new_op = {k: op[k] for k in ("tags", "summary", "operationId") if op.get(k)}
+    # why：security 单列处理——op 级 `security: []` 语义是「此接口无需认证」，falsy 过滤会把它
+    # 丢弃并继承文档级 security，鉴权要求被夸大（R3 批次）
+    if "security" in op:
+        new_op["security"] = op["security"]
     if params3:
         new_op["parameters"] = params3
     if body_schema is not None:

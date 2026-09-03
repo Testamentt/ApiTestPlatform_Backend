@@ -406,6 +406,33 @@ def test_contract_required_and_signature():
     assert c["signature"]["body.status"] == {"type": "string", "enum": ["active", "pending"]}
 
 
+def test_contract_signature_expands_typeless_object():
+    # why：OpenAPI 3 允许 object 省略 type 只写 properties——只按 type=="object" 判定会漏展开
+    # 嵌套字段，breaking 漏报（R3 批次）
+    doc = _swagger(
+        [
+            {
+                "path": "/users",
+                "method": "POST",
+                "operation_id": "createUser",
+                "request_body": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {"status": {"type": "string", "enum": ["active"]}},
+                                "required": ["status"],
+                            }
+                        }
+                    }
+                },
+            }
+        ]
+    )
+    c = parse_openapi(doc).operation_contracts["createUser"]
+    assert "body.status" in c["signature"]  # 修复前整体塌缩为 {"type": None, "enum": []}
+    assert c["signature"]["body.status"] == {"type": "string", "enum": ["active"]}
+
+
 # ---------- warnings（宽容解析不静默） ----------
 
 

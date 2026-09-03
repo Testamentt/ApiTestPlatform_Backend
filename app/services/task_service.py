@@ -6,6 +6,7 @@ import json
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.models.enums import TaskStatus
 from app.models.task import Task
@@ -37,7 +38,9 @@ class TaskService:
                 status_code=422,
                 detail=f"用例不存在或非 active: {sorted(missing)}",
             )
-        timeout = payload.timeout_seconds or 300
+        timeout = (
+            payload.timeout_seconds or get_settings().execution.pytest_timeout
+        )  # 缺省走 config（R3-6）
         run_id = self.compute_run_id(payload.case_ids, timeout)
         # Lookup-Create 幂等：SUCCESS 直接复用；FAILED 重置重试；PENDING/RUNNING 返回现状（review H4）
         existing = self.task_repo.find_by_run_id(run_id)

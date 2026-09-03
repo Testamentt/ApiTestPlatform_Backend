@@ -63,7 +63,9 @@ class ExecutionSettings(BaseModel):
     workspace_dir: str = ".workspace"
     base_url: str = "http://httpbin.org"
     pytest_timeout: int = 300
-    command_whitelist: list[str] = ["python", "pytest"]
+    # why=含 python3*：代码默认须与 settings.example.yaml 契约对齐——新环境无 settings.yaml 时
+    # （如容器内未挂配置）Linux/Docker 的 sys.executable=python3.12 才能过白名单（H1 复现预防，R3）
+    command_whitelist: list[str] = ["python", "python3*", "pytest"]
     # 被测系统鉴权适配（配置驱动，如管伊佳ERP 的 X-Access-Token）。why：扁平字段而非嵌套——
     # env 合并逻辑（_merge_env_overrides）只支持一级 section.field，嵌套 dict 无法经 env 覆盖；
     # enabled 时执行层生成登录 conftest：session 级登录一次取 token 注入每个请求头，

@@ -309,7 +309,11 @@ def _extract_contract(
 def _collect_signature(path: str, schema, out: dict) -> None:
     """递归收集字段 type/enum 签名（object properties / array items 展开）。"""
     schema = schema or {}
-    if schema.get("type") == "object" and isinstance(schema.get("properties"), dict):
+    # why：OpenAPI 3 允许 object 省略 type 只写 properties——只按 type=="object" 判定会漏展开
+    # 嵌套字段，其增删/变更进不了 signature（breaking 漏报，R3 批次）
+    if (schema.get("type") == "object" or "properties" in schema) and isinstance(
+        schema.get("properties"), dict
+    ):
         for k, v in schema["properties"].items():
             _collect_signature(f"{path}.{k}", v, out)
     elif "items" in schema:

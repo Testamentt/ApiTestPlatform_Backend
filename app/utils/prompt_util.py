@@ -40,3 +40,26 @@ def render_fix_hint_user(breaking_ops: list[str]) -> str:
     # repr 保证换行/引号/# 成为字面量（注入句式失效），截断防超长
     payload = "\n".join(f"- {op[:100]!r}" for op in breaking_ops)
     return template.format(breaking_ops=payload)
+
+
+def validate_prompts() -> None:
+    """启动即校验 prompt 文件存在且占位符齐全（§3.2「占位符缺失时启动即抛错」，R3 批次）。
+
+    why：缺文件/缺占位符此前在生成任务运行期才抛（浪费一个 PENDING 任务）——
+    create_app 启动期调用 fail fast。Raises RuntimeError（文件缺失/占位符缺失/渲染异常）。
+    """
+    system = load_system_prompt()
+    user_template = (PROMPTS_DIR / PROMPT_VERSION / "user.md").read_text(encoding="utf-8")
+    load_fix_hint_system()
+    _load_boundary_rules()
+    for placeholder in ("{operation_json}", "{boundary_rules}", "{json_schema}"):
+        if placeholder not in user_template:
+            raise RuntimeError(
+                f"user.md 缺少占位符 {placeholder}（PROMPT_VERSION={PROMPT_VERSION}）"
+            )
+    try:
+        user_template.format(operation_json="{}", boundary_rules="x", json_schema="{}")
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(f"user.md 占位符渲染异常（多余花括号？）: {e}") from e
+    if not system.strip():
+        raise RuntimeError(f"system.md 为空（PROMPT_VERSION={PROMPT_VERSION}）")

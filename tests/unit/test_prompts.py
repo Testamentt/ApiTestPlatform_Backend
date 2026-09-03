@@ -27,3 +27,28 @@ def test_system_prompt_requires_assertions():
     content = (PROMPTS_DIR / PROMPT_VERSION / "system.md").read_text(encoding="utf-8")
     assert "至少 1 条" in content
     assert '"op"' in content  # 断言结构契约（path/op/value）需在白名单中定义
+
+
+def test_validate_prompts_passes_on_real_dir():
+    # why：§3.2「占位符缺失时启动即抛错」——create_app 启动期调用（R3 批次）
+    from app.utils.prompt_util import validate_prompts
+
+    validate_prompts()  # 真实 prompts/v1 必须通过，不抛即过
+
+
+def test_validate_prompts_fails_on_missing_placeholder(tmp_path, monkeypatch):
+    # why：占位符缺失须在启动期报错而非生成任务运行期 KeyError（R3 批次）
+    from app.utils import prompt_util
+
+    version_dir = tmp_path / "v1"
+    version_dir.mkdir()
+    (version_dir / "system.md").write_text("system", encoding="utf-8")
+    (version_dir / "user.md").write_text("no placeholder here", encoding="utf-8")
+    (version_dir / "fix_hint_system.md").write_text("fix", encoding="utf-8")
+    (version_dir / "boundary_rules.md").write_text("rules", encoding="utf-8")
+    monkeypatch.setattr(prompt_util, "PROMPTS_DIR", tmp_path)
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="缺少占位符"):
+        prompt_util.validate_prompts()
