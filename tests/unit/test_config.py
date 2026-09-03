@@ -15,6 +15,16 @@ def test_phase4_defaults():
     assert settings.frontend.cors_origins == []
 
 
+def test_swagger_hash_version_contract():
+    """默认契约：hash_version=2——L3 指纹算法 md5→sha256 时按字段语义递增。
+
+    why：旧快照（1/md5）与新解析（2/sha256）diff 时 hash_version_equal=False →
+    公共接口保守全标 changed，防跨算法指纹混比（文档漂移审计 2026-09-03）。
+    """
+    settings = get_settings()
+    assert settings.swagger.hash_version == 2
+
+
 def test_env_override_security_token(monkeypatch):
     """生产必须经 env 覆盖 token（§3.1：dev 默认仅供演示）。"""
     monkeypatch.setenv("TESTPLATFORM_SECURITY_API_TOKEN", "ci-token")

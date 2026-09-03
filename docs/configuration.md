@@ -86,7 +86,7 @@ def get_settings() -> Settings:
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
 | swagger.max_upload_bytes | 2000000 | Swagger 文档大小上限（超限拒绝解析，RULES §10.3） |
-| swagger.hash_version | 1 | 哈希算法版本（升级递增，旧快照不重建；diff 版本不一致全标 changed） |
+| swagger.hash_version | 2 | 哈希算法版本（**升级递增**；2=sha256 指纹，L3 起——旧快照 1/md5 与新解析 diff 保守全标 changed，防跨算法混比） |
 | swagger.max_operation_ids_warn | 200 | operation 数告警阈值（**超限只 warning 继续入库**——IN(...200) 检索仍无碍，仅分析响应变长） |
 
 ### 2.7 LLM（Phase 3 AI 生成）
@@ -152,7 +152,7 @@ ERP_TEST_PASSWORD=your_erp_password
 
 # ---- Swagger（Phase 2 影响分析）----
 TESTPLATFORM_SWAGGER_MAX_UPLOAD_BYTES=2000000          # 文档大小上限
-TESTPLATFORM_SWAGGER_HASH_VERSION=1                    # 哈希算法版本
+TESTPLATFORM_SWAGGER_HASH_VERSION=2                    # 哈希算法版本（2=sha256 指纹，L3 起）
 TESTPLATFORM_SWAGGER_MAX_OPERATION_IDS_WARN=200        # operation 数告警阈值
 
 # ---- LLM（Phase 3 AI 生成）----
