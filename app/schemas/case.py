@@ -69,6 +69,14 @@ class CaseRead(BaseModel):
 class ConfirmBody(BaseModel):
     reviewer: str = Field(min_length=1)
 
+    @field_validator("reviewer")
+    @classmethod
+    def _reviewer_not_blank(cls, v: str) -> str:
+        # why：min_length 不拦纯空白——批准人审计字段不能收 "  "（R3 批次）；strip 后落库
+        if not v.strip():
+            raise ValueError("reviewer 不能为空白")
+        return v.strip()
+
 
 class ConfirmResult(BaseModel):
     case_id: int

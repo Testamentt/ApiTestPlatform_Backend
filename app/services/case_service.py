@@ -1,6 +1,7 @@
 # 用例业务编排。why：业务规则（draft→active 防幻觉护栏、删除）收敛在 service，路由零逻辑。
 from __future__ import annotations
 
+from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -44,7 +45,9 @@ class CaseService:
             raise AppError(
                 "INVALID_CONFIRM", status_code=409, detail=f"仅 draft 可确认，当前 {case.status}"
             )
+        self._revalidate_for_active(case)
         case.status = CaseStatus.ACTIVE
+        case.reviewer = reviewer  # 批准人落库（RULES §11.2：责任可审计，review R3-2）
         try:
             self.session.commit()
         except SQLAlchemyError:
@@ -52,6 +55,28 @@ class CaseService:
             raise
         self.session.refresh(case)
         return case
+
+    def _revalidate_for_active(self, case: TestCase) -> None:
+        """转 active 前按入参 schema 重新校验（RULES §11.2 MUST）。
+
+        why：draft 期间数据可能被改坏或来自未校验的历史写入——激活是进入执行池的最后一道闸，
+        校验失败必须拦在状态迁移前（否则坏用例获得执行资格）。
+        """
+        try:
+            CaseCreate(
+                name=case.name,
+                method=case.method,  # type: ignore[arg-type]
+                path=case.path,
+                operation_id=case.operation_id,
+                params=case.params,
+                body=case.body,
+                expected_status=case.expected_status,
+                assertions=case.assertions,
+            )
+        except ValidationError as e:
+            raise AppError(
+                "CASE_INVALID_FOR_ACTIVE", status_code=422, detail=f"激活前校验未通过: {e}"
+            ) from e
 
     def delete_case(self, case_id: int) -> None:
         self.repo.delete(self.repo.get_or_raise(case_id))

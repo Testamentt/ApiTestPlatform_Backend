@@ -32,6 +32,7 @@
 | status | VARCHAR(16) | NOT NULL DEFAULT 'draft' | draft/active/archived（StrEnum） |
 | source | VARCHAR(16) | NOT NULL DEFAULT 'manual' | manual/ai/swagger |
 | trust_score | INTEGER | NOT NULL DEFAULT 100 | **血缘可信度 0-100（Phase 3）**：手工=100、AI 校验通过=80、AI 带 warnings=60；赋值位置：`generation_service._run_generation` 逐 operation 落库时写入；`CaseRead` API 可观测；低分需重点 Review，动态降权 Phase 4 |
+| reviewer | VARCHAR(64) | NULL | **批准人审计（RULES §11.2，review R3-2）**：confirm 接口写入；draft→active 的责任追溯 |
 | created_at / updated_at | DATETIME | NOT NULL, server_default=now / onupdate | |
 
 索引：`idx_test_cases_operation_id(operation_id)`、`idx_test_cases_status(status)`。
@@ -101,7 +102,7 @@
 | document | JSON | NOT NULL | 源 Swagger（≤2MB 落库；任务入参只传 task_id，RULES §8.4） |
 | operation_ids | JSON | NULL | 定向生成子集；NULL=全量/untested |
 | operation_count | INTEGER | NOT NULL DEFAULT 0 | |
-| prompt_version | VARCHAR(16) | NULL | 预留列；版本溯源由 `generation_logs.prompt_version` 与 `result_summary.prompt_version` 承载（任务列当前恒 NULL） |
+| prompt_version | VARCHAR(16) | NULL | SUCCESS 收尾写入（review R3 批次）；失败明细仍由 `generation_logs.prompt_version` 与 `result_summary.prompt_version` 承载 |
 | error_stage / error_msg | VARCHAR/TEXT | NULL | parse/internal/timeout/dispatch（单接口失败不入任务级，记 generation_logs） |
 | result_summary | JSON | NULL | `{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total}` |
 | started_at / finished_at | DATETIME | NULL | |
