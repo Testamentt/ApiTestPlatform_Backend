@@ -45,7 +45,9 @@ jobs:
       - name: 安装依赖
         run: pip install -e ".[dev]"
       - name: 确认 slow 用例收集非空（防 addopts -m 覆盖语义失效导致空跑绿灯，R3 批次）
-        run: pytest -m slow --collect-only -q | grep -q "::"
+        # why -o addopts=：addopts 自带 -q，与步骤 -q 叠加成 -qq 后 collect-only 只输出
+        # 按文件计数摘要（无 "::"），grep 必空——清空 addopts 显式收集，用例行完整可见
+        run: pytest -o addopts= -m slow --collect-only | grep -q "::"
       - name: e2e 冒烟（mock 隔离，无需 Redis/LLM）
         run: pytest -m slow
 
