@@ -3,9 +3,9 @@
 # 只覆盖执行演示常用端点（回显/状态码/延迟/鉴权）；独立脚本不入 app/（非业务代码，不进镜像 COPY）。
 from __future__ import annotations
 
+import asyncio
 import json
 import os
-import time
 
 from fastapi import FastAPI, Request, Response
 
@@ -58,8 +58,9 @@ def status_by_code(code: int, response: Response) -> dict:
 @app.api_route("/delay/{seconds}", methods=["GET", "POST"])
 async def delay(seconds: float, request: Request) -> dict:
     # why：演示「任务超时劫持」——tasks.timeout_seconds 调小 + 本端点长延迟即触发 SUBPROCESS_TIMEOUT；
-    # 上限 10s 防 mock 自身被长请求拖死
-    time.sleep(min(seconds, 10))
+    # 上限 10s 防 mock 自身被长请求拖死。await asyncio.sleep（而非 time.sleep）：不阻塞事件循环，
+    # 延迟期间其他演示请求照常服务（R2-M1，§7.2 async def 内禁阻塞调用）
+    await asyncio.sleep(min(seconds, 10))
     return _echo_base(request)
 
 

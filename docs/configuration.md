@@ -69,9 +69,18 @@ def get_settings() -> Settings:
 | 字段 | 默认值 | 说明 |
 | --- | --- | --- |
 | execution.workspace_dir | .workspace | 动态测试文件 / report.xml / HTML 报告 |
-| execution.base_url | http://httpbin.org | **写死的被测接口 base_url**（无 Environment 表，Phase 2 再补多环境） |
+| execution.base_url | http://httpbin.org（代码默认） | **被测接口 base_url**：默认本地 mock（`scripts/mock_target.py`，127.0.0.1:9999）或管伊佳ERP（`http://127.0.0.1:9999/jshERP-boot`）；compose 默认 `http://mock:9999` 全离线（无 Environment 表，多环境延后） |
 | execution.pytest_timeout | 300 | **默认** subprocess 超时阈值（任务级 `timeout_seconds` 缺省时使用；来自 config，禁止硬编码） |
 | execution.command_whitelist | [python, python3*, pytest] | run_cmd 命令白名单；**`*` 尾缀 = 前缀匹配**（兼容 Linux/Docker 的 `python3.12`，review H1） |
+| execution.auth_enabled | false | **被测系统鉴权适配开关**：true 时执行层 workspace 生成登录 conftest（session fixture 登录取 token 注入请求头，N 用例只登 1 次） |
+| execution.auth_login_path | "" | 登录接口路径（与 base_url 同源拼接） |
+| execution.auth_login_body | `{"username": "{username}", "password": "{password}"}` | 登录体字段名模板（`{username}`/`{password}` 运行期替换；**平坦字符串 dict 约束**，嵌套字段不支持） |
+| execution.auth_username_env / auth_password_env | ERP_TEST_USERNAME / ERP_TEST_PASSWORD | 登录凭证环境变量名——**密钥只放 .env（§8）**，pytest 运行时读取，生成文件不含凭证 |
+| execution.auth_token_header | X-Access-Token | 登录后注入每个请求头的 token 字段名 |
+| execution.auth_token_field | data.token | 登录响应里 token 的点路径提取（如 `data.token`） |
+| execution.auth_password_encoding | plain | plain\|md5（部分旧系统密码需摘要后传输） |
+
+> why：auth_* 用**扁平字段**而非嵌套 dict——env 合并（`_merge_env_overrides`）只支持一级 `section.field`；登录体是 dict，不支持 env 覆盖，需在 `config/settings.yaml` 配置。
 
 ### 2.6 Swagger（Phase 2 影响分析）
 | 字段 | 默认值 | 说明 |
@@ -133,8 +142,13 @@ TESTPLATFORM_CELERY_TIME_LIMIT=360
 TESTPLATFORM_CELERY_RESULT_EXPIRES=3600                # result backend 仅短期状态，存活时长
 
 # ---- Execution ----
-TESTPLATFORM_EXECUTION_BASE_URL=http://httpbin.org     # 被测接口 base_url（写死）
+# 被测接口 base_url：默认本地 mock（先 python scripts/mock_target.py）；ERP 演示改为 :9999/jshERP-boot
+TESTPLATFORM_EXECUTION_BASE_URL=http://127.0.0.1:9999
 TESTPLATFORM_EXECUTION_PYTEST_TIMEOUT=300
+# 被测系统登录凭证（execution.auth_enabled 时使用；密钥只放 .env，§8）
+# 鉴权开关/登录体模板在 config/settings.yaml 的 execution.auth_* 段（登录体是 dict，不支持 env 覆盖）
+ERP_TEST_USERNAME=admin
+ERP_TEST_PASSWORD=your_erp_password
 
 # ---- Swagger（Phase 2 影响分析）----
 TESTPLATFORM_SWAGGER_MAX_UPLOAD_BYTES=2000000          # 文档大小上限
@@ -176,6 +190,6 @@ TESTPLATFORM_SECURITY_API_TOKEN=testplatform-dev-token  # dev 默认仅供演示
 | 数据库 | SQLite（data/platform.db） | SQLite（/app/data/platform.db，named volume 持久化，§3.3） |
 | Redis | 3.2 本地（127.0.0.1:6379） | Redis 7（compose 服务，内网隔离无密码） |
 | Worker | `--pool=solo` | `--pool=solo --concurrency=1`（单写者串行写 SQLite，§3.3） |
-| base_url | httpbin.org（演示） | 内网被测服务地址 |
+| base_url | 本地 mock（127.0.0.1:9999）或管伊佳ERP（:9999/jshERP-boot） | 容器内置 mock 服务（`http://mock:9999` 全离线）或 env 覆盖真环境；被测系统鉴权经 `execution.auth_*` 适配 |
 | /docs | 默认开（docs_enabled=true） | 生产 `TESTPLATFORM_APP_DOCS_ENABLED=false` 关闭（§10.5） |
 | 鉴权 | Bearer Token（dev 默认 token） | Bearer Token（env 注入生产 token） |

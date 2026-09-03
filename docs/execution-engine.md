@@ -58,8 +58,8 @@ broker_connection_retry_on_startup = True
 7. 解析 report.xml（junit_parser 累加各 testsuite 总数）→ 组 result_summary {total,passed,failed,...}
 8. report_util 写 report.html（best-effort，无有效结果也生成「执行失败，无有效结果」）→ report_link
 9. 写 tasks.result_summary + report_link + status=success + finished_at —— commit
-10. 失败/超时/软超时/未预期异常/入队失败 → status=failed + error_stage(parse/subprocess/timeout/internal/dispatch)
-    + error_msg（含 stdout 尾部）—— commit；扫描不自动重试，用户可同输入重新提交触发重试（review H4）
+10. 失败/超时/软超时/未预期异常/入队失败 → status=failed + error_stage(parse/subprocess/timeout/internal/dispatch/command)
+    + error_msg（含 stdout 尾部）—— commit；扫描不自动重试，用户可同输入重新提交触发重试（review H4）；command=命令未过白名单（review L7 分类）
 ```
 
 **执行安全边界**：只运行**人工确认过的 active 用例**；test 文件由结构化字段渲染（非自由文本）；`run_cmd` 命令白名单 + `shell=False`。
