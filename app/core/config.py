@@ -84,7 +84,9 @@ class SwaggerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_upload_bytes: int = 2_000_000
-    hash_version: int = 1
+    # why=2：L3 指纹算法 md5→sha256 时按本字段语义递增——旧快照（1/md5）与新解析（2/sha256）
+    # diff 时保守全标 changed，防跨算法指纹混比（文档漂移审计 2026-09-03）
+    hash_version: int = 2
     max_operation_ids_warn: int = 200
 
 

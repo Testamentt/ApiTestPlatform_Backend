@@ -10,7 +10,7 @@
 | 字段 | 说明 |
 | --- | --- |
 | version | UNIQUE；用户标签或 auto `v{n}`；**reparse 覆盖**（同 version 再解析先删旧插新，CI 重复触发不膨胀） |
-| hash_version | 哈希算法版本（config `swagger.hash_version`）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed |
+| hash_version | 哈希算法代际（config `swagger.hash_version`；现值 2=sha256 指纹，L3 起）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed |
 | operation_ids | 血缘全集 |
 | operation_hashes | **分段** `{op_id: {"request": sha256, "response": sha256}}`（review L3：MD5→sha256 防恶意碰撞）——回答「请求变了还是响应变了」，为 Phase 3 字段级差异留数据口子 |
 | operation_contracts | `{op_id: {"required": [...], "signature": {field_path: {"type","enum"}}, "response_status_codes": [...]}}`——breaking 判定的第二层输入（response_status_codes 供状态码变化判定） |

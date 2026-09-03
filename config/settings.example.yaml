@@ -49,7 +49,7 @@ execution:
 
 swagger:                              # Phase 2 影响分析（全带 default，缺失不阻塞启动）
   max_upload_bytes: 2000000           # Swagger 文档大小上限（超限拒绝解析）
-  hash_version: 1                     # 哈希算法版本（升级递增，旧快照不重建）
+  hash_version: 2                     # 哈希算法版本（升级递增；2=sha256 指纹，L3 起，旧快照不重建）
   max_operation_ids_warn: 200         # operation 数告警阈值（超限只 warning 继续入库）
 
 llm:                                  # Phase 3 AI 生成（全带 default，缺失不阻塞启动）

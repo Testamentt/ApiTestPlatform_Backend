@@ -32,7 +32,8 @@ def test_parse_document_creates_definition(session_factory):
         defn, warnings = SwaggerService(s).parse_document(_doc())
         assert defn.version == "v1"
         assert defn.operation_ids == ["listUsers"]
-        assert defn.hash_version == 1
+        # why=2：L3 指纹算法 md5→sha256 时 hash_version 递增，快照记录当前算法代际
+        assert defn.hash_version == 2
         assert warnings == []
 
 
