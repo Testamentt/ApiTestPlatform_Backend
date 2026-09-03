@@ -66,7 +66,7 @@
 | version | VARCHAR(64) | NOT NULL, **UNIQUE** | 用户标签或 auto `v{n}`；**reparse 覆盖**（同 version 再解析先删旧插新，CI 幂等不膨胀） |
 | hash_version | INTEGER | NOT NULL DEFAULT 1 | 哈希算法版本（config `swagger.hash_version`）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed |
 | operation_ids | JSON | NOT NULL | 血缘全集 `[operation_id, ...]` |
-| operation_hashes | JSON | NOT NULL | **分段** `{op_id: {"request": md5, "response": md5}}`；response 含状态码指纹（F1：200→202 必命中） |
+| operation_hashes | JSON | NOT NULL | **分段** `{op_id: {"request": sha256, "response": sha256}}`（review L3：MD5→sha256 防恶意碰撞）；response 含状态码指纹（F1：200→202 必命中） |
 | operation_contracts | JSON | NOT NULL | `{op_id: {"required": [...], "signature": {field_path: {"type","enum"}}, "response_status_codes": [...]}}`——breaking 联合判定输入（F2/F1：含响应状态码集合，200→202 变化可判 breaking） |
 | created_at / updated_at | DATETIME | TimestampMixin | |
 
