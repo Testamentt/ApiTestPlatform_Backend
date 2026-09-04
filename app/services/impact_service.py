@@ -20,6 +20,7 @@ from app.schemas.impact import (
     RegressionResult,
 )
 from app.schemas.task import TaskCreate
+from app.services.generation_service import _sanitize_llm_field  # §10.2 同口径清洗（R3-4）
 from app.services.task_service import TaskService
 from app.utils.impact_diff import build_suggested_remap, diff_operations
 from app.utils.llm_client import (
@@ -170,7 +171,8 @@ class ImpactService:
         latency_ms = int((monotonic() - start) * 1000)
         cost = round(usage.total_tokens * llm.settings.cost_per_1k_tokens / 1000, 6)
         self._write_fix_hint_log(usage=usage, latency_ms=latency_ms, cost=cost, status="success")
-        hint = {"breaking_changed_ops": ops, "suggestion": parsed.suggestion}
+        # §10.2：LLM 输出与生成链路同口径清洗（review R3-4——此前 fix_hint 原文直入 ai_fix_hint）
+        hint = {"breaking_changed_ops": ops, "suggestion": _sanitize_llm_field(parsed.suggestion)}
         try:
             analysis.ai_fix_hint = hint
             self.session.commit()

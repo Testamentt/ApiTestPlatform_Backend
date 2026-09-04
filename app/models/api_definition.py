@@ -14,7 +14,7 @@ class ApiDefinition(TimestampMixin, Base):
 
     version: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     hash_version: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=1, server_default=text("1")
+        Integer, nullable=False, default=2, server_default=text("2")
     )
     operation_ids: Mapped[list] = mapped_column(JSON, nullable=False)
     operation_hashes: Mapped[dict] = mapped_column(JSON, nullable=False)

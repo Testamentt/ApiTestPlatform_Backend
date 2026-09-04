@@ -47,6 +47,19 @@ def test_skipped_not_counted_as_passed(tmp_path):
     assert summary.passed + summary.failed + summary.skipped == summary.total
 
 
+def test_malformed_attributes_raise_apperror(tmp_path):
+    # why：属性畸形抛裸 ValueError 会逃出调用方 except AppError 的降级路径（R3 批次）——
+    # 统一归入 JUNIT_PARSE_FAILED，走既有 FAILED(parse) 兜底
+    path = tmp_path / "report.xml"
+    path.write_text(
+        '<testsuites><testsuite name="p" tests="abc" time="x"/></testsuites>',
+        encoding="utf-8",
+    )
+    with pytest.raises(AppError) as ei:
+        parse_junit_xml(path)
+    assert ei.value.code == "JUNIT_PARSE_FAILED"
+
+
 def test_parse_missing_raises():
     with pytest.raises(AppError) as exc:
         parse_junit_xml(Path("no_such_report.xml"))

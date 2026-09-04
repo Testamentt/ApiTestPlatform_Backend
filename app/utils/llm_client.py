@@ -83,6 +83,10 @@ class LlmClient:
                     temperature=s.temperature,  # 确定性，可复现（RULES §9.3）
                     max_tokens=s.max_tokens,
                 )
+                if not resp.choices:
+                    # why：空 choices（部分代理/内容过滤场景）会以 IndexError 绕过下方错误分类
+                    # 直接穿透（fix-hints 链路无兜底会 500）——显式归入 LLM_FAILED 不可重试（R3 批次）
+                    raise AppError("LLM_FAILED", status_code=502, detail="LLM 返回空 choices")
                 raw = resp.choices[0].message.content or ""
                 data = json.loads(self._extract_json(raw))
                 parsed = schema.model_validate(data)  # 严格校验（extra 由 schema 决定）

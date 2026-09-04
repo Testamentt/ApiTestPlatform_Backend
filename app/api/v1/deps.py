@@ -36,6 +36,7 @@ def verify_token(
     expected = get_settings().security.api_token
     if credentials is None:
         raise AppError("AUTH_REQUIRED", "缺少 Bearer Token", status_code=401)
-    # hmac.compare_digest：常数时间比较，防时序侧信道逐字符探测 token（review L2）
-    if not hmac.compare_digest(credentials.credentials, expected):
+    # hmac.compare_digest：常数时间比较防时序探测（L2）；encode 成 bytes——str 比较要求双方 ASCII，
+    # 非 ASCII token 会抛 TypeError→500，bytes 比较则正确返回 False→403（R3 批次）
+    if not hmac.compare_digest(credentials.credentials.encode(), expected.encode()):
         raise AppError("AUTH_INVALID", "Token 无效", status_code=403)

@@ -57,3 +57,22 @@ def test_task_signature_accepts_request_id(session_factory, patch_sessionlocal, 
         assert get_request_id() == "rid-task-3"
     finally:
         reset_request_id()
+
+
+def test_generate_task_signature_accepts_request_id(
+    session_factory, patch_sessionlocal, monkeypatch
+):
+    # why：generate 链路的任务侧恢复此前无测试（R3 批次）——LLM 链路断环将不可知
+    from app.middleware.request_id import get_request_id, reset_request_id
+    from app.tasks.generate_cases import generate_cases_task
+
+    # generate 任务用自身模块的 SessionLocal（与 execute 不同名），须单独指向内存库
+    monkeypatch.setattr("app.tasks.generate_cases.SessionLocal", session_factory)
+
+    try:
+        generate_cases_task(
+            0, request_id="rid-gen-4"
+        )  # task 0 不存在 → run_generation 兜底，但已 set
+        assert get_request_id() == "rid-gen-4"
+    finally:
+        reset_request_id()

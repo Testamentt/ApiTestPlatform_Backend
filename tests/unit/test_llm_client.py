@@ -160,3 +160,51 @@ def test_chat_json_invalid_json_raises(monkeypatch):
     with pytest.raises(AppError) as ei:
         client.chat_json("sys", "user", schema=_FakeSchema)
     assert ei.value.code == "LLM_VALIDATION_FAILED"
+
+
+def test_chat_json_empty_choices_no_retry(monkeypatch):
+    # why：空 choices（部分代理/内容过滤场景）曾以 IndexError 绕过错误分类穿透（R3 批次）——
+    # 显式 LLM_FAILED 且不重试
+    empty = SimpleNamespace(choices=[], usage=None)
+
+    def boom():
+        return empty
+
+    fake = _FakeCompletions([boom])
+    client = _make_client(monkeypatch, fake)
+    with pytest.raises(AppError) as ei:
+        client.chat_json("sys", "user", schema=_FakeSchema)
+    assert ei.value.code == "LLM_FAILED"
+    assert len(fake.calls) == 1  # 不重试
+
+
+def test_chat_json_timeout_and_connection_retried(monkeypatch):
+    # why：APITimeoutError/APIConnectionError 分支此前零覆盖（R3 批次）——§11.1 场景③「LLM 超时」
+    import httpx
+    from openai import APIConnectionError, APITimeoutError
+
+    _req = SimpleNamespace(headers=httpx.Headers({}), method="POST", url="http://x")
+
+    def timeout():
+        raise APITimeoutError("timed out")
+
+    def conn():
+        raise APIConnectionError(message="connection failed", request=_req)
+
+    fake = _FakeCompletions([timeout, conn, lambda: _resp(json.dumps({"ok": True}))])
+    client = _make_client(monkeypatch, fake)
+    parsed, _ = client.chat_json("sys", "user", schema=_FakeSchema)
+    assert parsed.ok is True
+    assert len(fake.calls) == 3  # 2 次瞬时失败 + 1 次成功
+
+
+def test_chat_json_usage_none_defaults_to_zero(monkeypatch):
+    # why：usage=None 兜底分支（兼容端点/代理返回 usage:null）此前无断言（R3 批次）
+    resp = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({"ok": True})))],
+        usage=None,
+    )
+    fake = _FakeCompletions([lambda: resp])
+    client = _make_client(monkeypatch, fake)
+    _, usage = client.chat_json("sys", "user", schema=_FakeSchema)
+    assert (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens) == (0, 0, 0)

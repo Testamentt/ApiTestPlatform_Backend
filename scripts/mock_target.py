@@ -50,8 +50,9 @@ async def echo_get(request: Request) -> dict:
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
 )
 def status_by_code(code: int, response: Response) -> dict:
-    # why：4xx/5xx 场景直接驱动 expected_status 断言（如 401/403/404/500），无需真实业务逻辑
-    response.status_code = code
+    # why：4xx/5xx 场景直接驱动 expected_status 断言（如 401/403/404/500），无需真实业务逻辑；
+    # 夹逼 100-599——0/600 等非法值会让 httpx 报协议错误而非拿到预期状态码（R3 批次）
+    response.status_code = max(100, min(code, 599))
     return {"code": code}
 
 

@@ -32,11 +32,16 @@ def parse_junit_xml(path: Path) -> tuple[JunitSummary, list[dict]]:
     duration_ms = 0
     entries: list[dict] = []
     for suite in root.iter("testsuite"):
-        total += int(suite.attrib.get("tests", 0))
-        failed += int(suite.attrib.get("failures", 0))
-        errors += int(suite.attrib.get("errors", 0))
-        skipped += int(suite.attrib.get("skipped", 0))
-        duration_ms += int(float(suite.attrib.get("time", "0")) * 1000)
+        try:
+            total += int(suite.attrib.get("tests", 0))
+            failed += int(suite.attrib.get("failures", 0))
+            errors += int(suite.attrib.get("errors", 0))
+            skipped += int(suite.attrib.get("skipped", 0))
+            duration_ms += int(float(suite.attrib.get("time", "0")) * 1000)
+        except (ValueError, TypeError) as e:
+            # why：属性畸形（如 tests="abc"）抛裸 ValueError 会逃出调用方 except AppError 的
+            # 降级路径（R3 批次）——统一归入业务异常，走既有 FAILED(parse) 兜底
+            raise AppError("JUNIT_PARSE_FAILED", status_code=502, detail=f"属性值畸形: {e}") from e
         for tc in suite.iter("testcase"):
             match = _CASE_ID_RE.match(tc.attrib.get("name", ""))
             if not match:
