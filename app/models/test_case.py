@@ -41,5 +41,8 @@ class TestCase(TimestampMixin, Base):
     trust_score: Mapped[int] = mapped_column(
         Integer, nullable=False, default=100, server_default=text("100")
     )
+    # why：批准人审计（RULES §11.2「需传入 reviewer」）——draft→active 的责任追溯字段，
+    # 仅 confirm 接口写入；模型加列后 dev 库需 reset（create_all 不 ALTER，见 docs/database.md §4）
+    reviewer: Mapped[str | None] = mapped_column(String(64))
 
     __table_args__ = (Index("idx_test_cases_status", "status"),)

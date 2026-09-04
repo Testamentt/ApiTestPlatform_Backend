@@ -29,7 +29,8 @@ broker_connection_retry_on_startup = True
 
 - **acks_late + time_limit 必须配套**：acks_late 保证 worker 崩溃不丢任务；没有 time_limit 时卡死任务永不结束（RULES.md §16.7 面试防守点）。
 - **visibility_timeout（1h）> time_limit**：经 `broker_transport_options` 显式接线（3600 > 600），否则运行中的任务被重复投递。
-- **软超时捕获**：`execute_cases_task`/`generate_cases_task` 均捕获 `SoftTimeLimitExceeded` → `force_fail_timeout` 落 failed（error_stage=timeout）+ best-effort 清理（RULES.md §8.2）。
+- **软超时捕获**：`execute_cases_task`/`generate_cases_task` 均捕获 `SoftTimeLimitExceeded` → `force_fail_timeout` 落 failed（error_stage=timeout）+ best-effort 清理（RULES.md §8.2）。服务层兜底对软超时**显式放行**（R3-1：曾被 `except Exception` 截胡致 handler 不可达）。
+- **⚠️ solo 池 time-limit 事实（R3-1）**：celery solo 池不派发 soft/hard timeout（`concurrency/solo.py` 直接 apply_target）——`--pool=solo` 部署下 Celery 层超时不生效，任务侧靠 `run_cmd` 自身 `communicate(timeout)` 兜底；prefork 部署下 handler 真实可达。
 - **重试**：执行任务 `autoretry_for=(瞬时异常,)` + `retry_backoff=True`/`max_retries=settings.celery.max_retries`；生成任务**不设 autoretry**（LLM 瞬时重试已在 llm_client 内部收敛，Celery 层重跑会重复生成 draft）；业务/参数错误直接 failed。
 - **单写者**：Windows 本地 `--pool=solo`（或 `--concurrency=1`）串行化写 SQLite。
 

@@ -8,6 +8,9 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from celery.exceptions import (
+    SoftTimeLimitExceeded,  # 服务层须识别软超时以放行（R3-1），异常类型耦合可接受
+)
 from sqlalchemy import select
 
 from app.core.config import get_settings
@@ -35,6 +38,10 @@ class ExecutionService:
         """执行编排入口。why：兜底任何未预期异常，保证任务进入明确终态（不卡 PENDING/RUNNING）。"""
         try:
             self._execute_cases(task_id)
+        except SoftTimeLimitExceeded:
+            # 放行给任务层专属 handler（force_fail_timeout 落 timeout 并杀树）——
+            # 被 except Exception 截胡会让任务层 handler 成死代码且子进程孤儿化（review R3-1）
+            raise
         except Exception:
             self.logger.exception("execute_cases 任务 %s 未预期异常", task_id)
             self._fail(task_id, "internal", "执行引擎未预期异常，详见服务日志")
