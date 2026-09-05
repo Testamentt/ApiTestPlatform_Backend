@@ -77,7 +77,7 @@
 
 ### 3.3 健康检查 `/api/v1/health`
 
-`{status: "ok", db: "up"|"down", redis: "up"|"down"}`。不做鉴权（供部署探针）。
+`{status: "ok"|"degraded", db: "up"|"down", redis: "up"|"down"}`——任一依赖 down 时 `status="degraded"`（HTTP 仍 200，探针按 body 判级）。不做鉴权（供部署探针）。
 
 ### 3.4 解析与影响分析（Phase 2，纯规则同步）
 

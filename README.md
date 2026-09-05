@@ -86,7 +86,7 @@ docker compose up --build
 - ✅ **异步解耦 + 超时兜底**（Phase 1 已实现）：请求即返回 `task_id`（202），pytest 由独立 Worker 异步执行；`run_id` Lookup-Create 幂等（SUCCESS 复用、**FAILED 同输入可重试**）；**任务级超时**（默认 300s，`timeout_seconds` 可配）强杀进程树（`scan_stale_tasks` 从 DB 读 pid 权威兜底，执行/生成任务均覆盖），死循环不卡系统。
 - 📊 **HTML 报告**（Phase 1 已实现）：任务执行后生成自包含 HTML 报告（字段已转义防 XSS），`report_link` 经 `/static/{task_id}/report.html` 访问（仅挂 `reports/` 目录，测试文件不暴露）。
 - 🧠 **接口变更影响圈定**（Phase 2 已实现）：`operation_id` 血缘 + **分段 hash O(1) diff** + **breaking 联合判定** + SQL 反向检索，破坏性变更自动圈定受影响用例、给出孤儿迁移清单，一键回归（宽容降级）。
-- ✅ **AI 用例智能生成**（Phase 3 已实现）：自研 OpenAPI 3.0 解析器 + 结构化 Prompt 生成正向/逆向/边界值用例；`llm_client` 唯一封装（结构化输出 + 长度预检 + 成本审计）、三层防幻觉护栏（严格校验 + draft 恒为 + operation_id 服务端注入）、`trust_score` 血缘可信度、`POST /generate` 异步生成 + `POST /impact/{id}/fix-hints` 修复建议，174 测试全绿 + e2e 冒烟。
+- ✅ **AI 用例智能生成**（Phase 3 已实现）：自研 OpenAPI 3.0 解析器 + 结构化 Prompt 生成正向/逆向/边界值用例；`llm_client` 唯一封装（结构化输出 + 长度预检 + 成本审计）、三层防幻觉护栏（严格校验 + draft 恒为 + operation_id 服务端注入）、`trust_score` 血缘可信度、`POST /generate` 异步生成 + `POST /impact/{id}/fix-hints` 修复建议。后端 pytest + e2e 全绿（用例数以 CI 为准）。
 - 🐳 **容器化部署**（Phase 4 已实现）：多阶段 Dockerfile（非 root）+ `docker compose up` 一键拉起 FastAPI + Redis + Worker + SQLite（named volume 持久化、单写者 Worker）；GitHub Actions 三 job 门禁（ruff + pytest + coverage 60/80 + docker 镜像构建验证）。
 - 🔐 **Bearer Token 鉴权**（Phase 4 已实现）：`security.api_token` 配置 + HTTPBearer 统一依赖注入（无凭证 401 / 凭证错误 403），health 免鉴权作探针；Swagger UI 自带 Authorize 按钮；`/docs` 由 `app.docs_enabled` 开关控制（生产可关）。
 - 🖥️ **Vue 3 前端**（Phase 4 已实现）：`frontend/` 独立仓库 4 页（仪表盘 / 用例管理 / 任务执行 / AI 生成）+ 41 单测 + 生产构建门禁；dev 走 Vite 代理同源访问。
