@@ -92,3 +92,11 @@
 - [x] 本地 mock 目标服务 `scripts/mock_target.py`（httpbin 兼容子集）；.env.example/compose 默认本地 mock，`docker compose up` 全离线；执行冒烟 2/2 passed + HTML 报告（3.4s）
 - [x] H1 容器内实测搬进 CI：docker-build job 构建后 `docker run` 挂载 `scripts/verify_container.py` 容器内验证白名单（真实路径/python3.12 前缀/真实执行/越权拒绝四断言）
 - [x] prompt v1 断言强约束：每条用例至少 1 条 assertions（system.md 规则 4 + 输出契约/白名单更新 + test_prompts 断言）；真实 LLM 冒烟复核 9/9 `assertions=1`
+
+## 2026-09-09 · 断言引擎上线（已完成）
+
+> 沉淀：[docs/sessions/2026-09-09-assertion-engine.md](sessions/2026-09-09-assertion-engine.md)
+
+- [x] `AssertionItem` schema（path 白名单正则 / op 白名单 / extra=forbid）接入 CaseCreate/CaseUpdate/GeneratedCase 三入口，非法断言 422 或整 case 校验拒绝
+- [x] 执行引擎渲染断言：契约层 status_code 基线恒渲染 + 字段层 `_dig` 点路径逐条求值；非法历史条目注释跳过；失败消息带 case id/path/op/expected 进 JUnit
+- [x] system.md 升级「契约层 1 条 + 字段层 2-4 条」；测试同批（unit/api/schema 校验 + 渲染产物真实 exec 执行），全量 256 测试绿

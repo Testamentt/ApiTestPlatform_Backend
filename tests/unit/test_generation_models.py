@@ -73,3 +73,27 @@ def test_generated_case_max_length_matches_db():
         GeneratedCase(name="ok", method="GET", path="/" + "p" * 1024, expected_status=200)
     ok = GeneratedCase(name="o" * 255, method="GET", path="/" + "p" * 1023, expected_status=200)
     assert ok.name == "o" * 255
+
+
+def test_generated_case_assertions_validated_itemwise():
+    # why：LLM 断言输出逐条过 AssertionItem（path/op 白名单）——非法断言整 case 校验拒绝，
+    # 走 validation_failed 落审计（RULES §11.2），不落库不渲染
+    from app.schemas.generate import GeneratedCase
+    from pydantic import ValidationError
+
+    ok = GeneratedCase(
+        name="ok",
+        method="GET",
+        path="/p",
+        expected_status=200,
+        assertions=[{"path": "status_code", "op": "eq", "value": 200}],
+    )
+    assert ok.assertions[0].path == "status_code"
+    with pytest.raises(ValidationError):
+        GeneratedCase(
+            name="bad",
+            method="GET",
+            path="/p",
+            expected_status=200,
+            assertions=[{"path": "a;drop", "op": "eq", "value": 1}],
+        )

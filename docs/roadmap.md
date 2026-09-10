@@ -56,6 +56,7 @@
 - [x] **本地 mock 目标服务**：`scripts/mock_target.py`（httpbin 兼容子集：回显/`/status/{code}`/`/delay/{n}`/`/bearer`）；`.env.example` 与 compose 默认切本地 mock（`http://mock:9999`），`docker compose up` 全离线可复现。冒烟：2 用例执行 success（passed=2/2）+ HTML 报告，全程 3.4s。见 [execution-engine.md](execution-engine.md) §8.1。
 - [x] **H1 容器内实测**：本机无 Docker → 搬进 CI——`docker-build` job 构建后 `docker run` 挂载 `scripts/verify_container.py` 容器内验证（真实可执行路径过白名单 + `python3.12` 前缀命中 + run_cmd 真实执行 + 白名单外命令真实拒绝）。
 - [x] **prompt 断言强约束**：真实 LLM 冒烟发现 `assertions=0` → system.md 要求每条用例至少 1 条断言（响应 schema 字段校验，未定义 schema 用 `status_code` 等值）；复核冒烟 9 条用例 `assertions=1` 全命中、0 rejected。
+- [x] **断言引擎（2026-09）**：`AssertionItem` 校验（path 白名单/op 白名单）接入创建/更新/AI 生成三入口；执行引擎渲染契约层基线 + 字段层点路径断言逐条求值（非法历史条目注释跳过）；system.md 升级为「契约层 1 条 + 字段层 2-4 条」。见 [sessions/2026-09-09-assertion-engine.md](sessions/2026-09-09-assertion-engine.md)。
 
 **已闭环（原批次 C，2026-08 完成）**
 - [x] request_id 全链路追踪（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、repository rollback 包装、前端类型安全解包、Python 版本统一、测试 marker 归类、**前端 CI**（L10——见 [frontend/.github/workflows/ci.yml](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/.github/workflows/ci.yml)）。

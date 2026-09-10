@@ -1,8 +1,73 @@
 # 测试文件生成。why：结构化字段 repr 插值（无 Jinja2）；函数名恒 test_{case_id} 便于 JUnit 回映射；
-# repr 转义防止用户字段破坏 Python 语法。MVP 只断言 expected_status。
+# repr 转义防止用户字段破坏 Python 语法。断言引擎：契约层（status_code 基线恒渲染）+ 字段层
+# （assertions 逐条渲染，path/op 已过 AssertionItem 白名单校验，value repr 进字面量——
+# 渲染层无注入面）；历史库中的非法断言条目渲染为注释跳过，不阻断执行。
 from __future__ import annotations
 
+from pydantic import ValidationError
+
 from app.core.config import get_settings
+from app.schemas.assertion import AssertionItem
+
+# why：点路径取值函数随用例文件生成（每个文件自包含，pytest 按模块独立收集）；
+# 数字段取数组下标，dict 取键，取不到/非容器一律返回 None——字段断言失败而非 error，
+# 保证非 JSON 响应（如 500 HTML 页）下断言消息仍可读
+_DIG_SRC = (
+    "def _dig(obj, path):\n"
+    "    cur = obj\n"
+    "    for part in path.split('.'):\n"
+    "        if isinstance(cur, list):\n"
+    "            try:\n"
+    "                cur = cur[int(part)]\n"
+    "            except (ValueError, IndexError):\n"
+    "                return None\n"
+    "        elif isinstance(cur, dict):\n"
+    "            cur = cur.get(part)\n"
+    "        else:\n"
+    "            return None\n"
+    "    return cur\n"
+)
+
+_PAYLOAD_SRC = (
+    "    try:\n"
+    "        payload = r.json()\n"
+    "    except ValueError:\n"
+    "        payload = None  # 非 JSON 响应：字段断言按取值 None 失败，不抛 error\n"
+)
+
+
+def _render_assertion_stmts(case) -> tuple[list[str], bool]:
+    """把 case.assertions 渲染为生成的 pytest 断言语句。
+
+    Returns (语句列表, 是否需要 payload 解析块)。非法条目（历史数据/绕过校验落库）渲染为
+    注释跳过——渲染层不做第二道校验防线，只保证不炸语法。
+    """
+    stmts: list[str] = []
+    needs_payload = False
+    for raw in case.assertions or []:
+        try:
+            item = AssertionItem.model_validate(raw)
+        except ValidationError:
+            stmts.append(f"    # 跳过非法断言（历史数据，不阻断执行）: {str(raw)[:200]!r}\n")
+            continue
+        msg = repr(f"case {case.id} 断言失败: path={item.path} op={item.op} expected={item.value!r}")
+        if item.path == "status_code":
+            actual = "r.status_code"
+        else:
+            needs_payload = True
+            actual = f"_dig(payload, {item.path!r})"
+        # why：value=None 时用 is/is not——与 None 比较的正确写法，避免 `== None` 语法噪音
+        if item.op == "eq":
+            op_text = "is" if item.value is None else "=="
+            stmts.append(f"    assert {actual} {op_text} {item.value!r}, {msg}\n")
+        elif item.op == "ne":
+            op_text = "is not" if item.value is None else "!="
+            stmts.append(f"    assert {actual} {op_text} {item.value!r}, {msg}\n")
+        elif item.op == "contains":
+            stmts.append(f"    assert {item.value!r} in {actual}, {msg}\n")
+        else:  # exists
+            stmts.append(f"    assert {actual} is not None, {msg}\n")
+    return stmts, needs_payload
 
 
 def render_test_file(case) -> str:
@@ -30,14 +95,19 @@ def render_test_file(case) -> str:
             f"json={body!r}, timeout={timeout})\n"
         )
         signature = "()"
-    return (
-        f"# case {case.id}: {safe_name}\n"
-        "import httpx\n\n"
-        f"def test_{case.id}{signature}:\n"
-        f"    url = {base_url!r} + {case.path!r}\n"
-        f"{request_line}"
-        f"    assert r.status_code == {case.expected_status}  # MVP 只校验状态码\n"
-    )
+    assertion_stmts, needs_payload = _render_assertion_stmts(case)
+    parts = [f"# case {case.id}: {safe_name}\nimport httpx\n\n\n"]
+    if needs_payload:
+        parts.append(_DIG_SRC)
+        parts.append("\n\n")
+    parts.append(f"def test_{case.id}{signature}:\n")
+    parts.append(f"    url = {base_url!r} + {case.path!r}\n")
+    parts.append(request_line)
+    parts.append(f"    assert r.status_code == {case.expected_status}  # 契约层基线\n")
+    if needs_payload:
+        parts.append(_PAYLOAD_SRC)
+    parts.extend(assertion_stmts)
+    return "".join(parts)
 
 
 def render_conftest() -> str:

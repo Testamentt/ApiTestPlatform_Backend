@@ -55,10 +55,13 @@
   "params": {},
   "body": null,
   "expected_status": 200,
-  "assertions": null
+  "assertions": [
+    {"path": "status_code", "op": "eq", "value": 200},
+    {"path": "data.id", "op": "eq", "value": 1}
+  ]
 }
 ```
-约束：`method` 白名单校验；`operation_id` **必填**（min_length=1，Phase 2 血缘映射）；`status` 默认 `draft`；MVP 只校验 `expected_status`，`assertions` 留空。
+约束：`method` 白名单校验；`operation_id` **必填**（min_length=1，Phase 2 血缘映射）；`status` 默认 `draft`；`assertions` 逐条过 `AssertionItem` 校验（`path` 仅 `status_code` 或 `a.b.0.c` 点路径白名单正则、`op` ∈ eq/ne/contains/exists、`extra="forbid"`），非法即 422——校验通过后由执行引擎渲染进生成的 pytest 文件逐条求值。
 
 **POST /cases/{case_id}/confirm** — 请求体 `{reviewer: "alice"}`。仅 `draft→active`；已 active 幂等返回。**禁止任何自动化路径直接置 active**（防幻觉护栏）。
 

@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.assertion import AssertionItem
+
 HTTP_METHODS = Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
 
@@ -17,7 +19,8 @@ class CaseCreate(BaseModel):
     params: dict | None = None
     body: dict | None = None
     expected_status: int = 200
-    assertions: list | None = None
+    # why：逐条 AssertionItem 结构校验（path 白名单/op 白名单）——渲染进生成代码前消灭注入面
+    assertions: list[AssertionItem] | None = None
 
     @field_validator("path")
     @classmethod
@@ -35,7 +38,7 @@ class CaseUpdate(BaseModel):
     params: dict | None = None
     body: dict | None = None
     expected_status: int | None = None
-    assertions: list | None = None
+    assertions: list[AssertionItem] | None = None
 
     @field_validator("path")
     @classmethod

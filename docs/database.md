@@ -27,8 +27,8 @@
 | operation_id | VARCHAR(255) | NOT NULL, **索引** | 血缘映射（创建时 Schema 必填，③-1；Phase 2 影响分析依据） |
 | params | JSON | NULL | query 参数 |
 | body | JSON | NULL | 请求体 |
-| expected_status | INTEGER | NOT NULL DEFAULT 200 | 期望状态码（MVP 只校验它） |
-| assertions | JSON | NULL | MVP 留空；Phase 3 填 status/field/business |
+| expected_status | INTEGER | NOT NULL DEFAULT 200 | 期望状态码（执行引擎恒渲染契约层基线断言） |
+| assertions | JSON | NULL | 断言规则列表（`AssertionItem`：path/op/value，路径白名单正则）；执行引擎逐条渲染进生成的 pytest 文件求值（2026-09 断言引擎上线） |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'draft' | draft/active/archived（StrEnum） |
 | source | VARCHAR(16) | NOT NULL DEFAULT 'manual' | manual/ai/swagger |
 | trust_score | INTEGER | NOT NULL DEFAULT 100 | **血缘可信度 0-100（Phase 3）**：手工=100、AI 校验通过=80、AI 带 warnings=60；赋值位置：`generation_service._run_generation` 逐 operation 落库时写入；`CaseRead` API 可观测；低分需重点 Review，动态降权 Phase 4 |
