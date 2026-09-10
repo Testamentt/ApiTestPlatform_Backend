@@ -153,9 +153,7 @@ def _exec_with_fake_response(monkeypatch, status_code=200, payload=None):
         "app.utils.case_generator.get_settings", lambda: _settings_with(auth_enabled=False)
     )
     fake = types.ModuleType("httpx")
-    fake.request = lambda *a, **k: SimpleNamespace(
-        status_code=status_code, json=lambda: payload
-    )
+    fake.request = lambda *a, **k: SimpleNamespace(status_code=status_code, json=lambda: payload)
     monkeypatch.setitem(sys.modules, "httpx", fake)
     return None
 
@@ -241,7 +239,9 @@ def test_assertion_value_injection_neutralized():
     nodes = [type(n).__name__ for n in tree.body]
     assert nodes == ["Import", "FunctionDef", "FunctionDef"]
     system_calls = [
-        n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "system"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "system"
     ]
     assert not system_calls, "注入的 os.system 调用出现在可执行代码中"
 
