@@ -50,7 +50,9 @@ def _render_assertion_stmts(case) -> tuple[list[str], bool]:
         except ValidationError:
             stmts.append(f"    # 跳过非法断言（历史数据，不阻断执行）: {str(raw)[:200]!r}\n")
             continue
-        msg = repr(f"case {case.id} 断言失败: path={item.path} op={item.op} expected={item.value!r}")
+        msg = repr(
+            f"case {case.id} 断言失败: path={item.path} op={item.op} expected={item.value!r}"
+        )
         if item.path == "status_code":
             actual = "r.status_code"
         else:
