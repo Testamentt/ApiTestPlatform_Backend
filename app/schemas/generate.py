@@ -6,6 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.assertion import AssertionItem
 from app.schemas.case import HTTP_METHODS
 
 
@@ -22,7 +23,9 @@ class GeneratedCase(BaseModel):
     params: dict = {}
     body: dict | None = None
     expected_status: int
-    assertions: list = []
+    # why：LLM 断言输出同样逐条过 AssertionItem（path/op 白名单，extra=forbid）——
+    # 非法断言在 LLM 校验层即整 case 拒绝，不落库不渲染
+    assertions: list[AssertionItem] = []
 
 
 class GeneratedCaseList(BaseModel):

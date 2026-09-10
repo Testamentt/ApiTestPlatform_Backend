@@ -18,7 +18,8 @@ class CaseService:
         self.repo = CaseRepository(session)
 
     def create_case(self, payload: CaseCreate) -> TestCase:
-        case = TestCase(**payload.model_dump())
+        # why：mode="json" 把嵌套 AssertionItem 拍平成 dict——JSON 列无法序列化 pydantic 模型
+        case = TestCase(**payload.model_dump(mode="json"))
         return self.repo.add(case)
 
     def get_case(self, case_id: int) -> TestCase:
@@ -26,7 +27,8 @@ class CaseService:
 
     def update_case(self, case_id: int, payload: CaseUpdate) -> TestCase:
         case = self.repo.get_or_raise(case_id)
-        for key, value in payload.model_dump(exclude_unset=True).items():
+        # why：mode="json" 同 create_case——assertions 嵌套模型须落 dict 才能进 JSON 列
+        for key, value in payload.model_dump(exclude_unset=True, mode="json").items():
             setattr(case, key, value)
         try:
             self.session.commit()

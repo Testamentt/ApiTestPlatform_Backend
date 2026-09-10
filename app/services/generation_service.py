@@ -351,7 +351,11 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
                         params=_sanitize_llm_field(c.params or None),
                         body=_sanitize_llm_field(c.body),
                         expected_status=c.expected_status,
-                        assertions=_sanitize_llm_field(c.assertions or None),
+                        # why：AssertionItem → dict 落 JSON 列；value 仍过 LLM 清洗（防存储注入），
+                        # path/op 已被 schema 白名单约束无需清洗
+                        assertions=[
+                            _sanitize_llm_field(a.model_dump()) for a in c.assertions
+                        ],
                         status=CaseStatus.DRAFT,  # draft 恒为，人工 confirm 才 active
                         source=CaseSource.AI,
                         trust_score=trust_score,

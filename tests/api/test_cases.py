@@ -118,3 +118,70 @@ def test_physical_delete(client):
 
 def test_get_missing_404(client):
     assert client.get("/api/v1/cases/99999").status_code == 404
+
+
+# ---------- 断言层（契约层 + 字段层）----------
+
+
+def test_create_case_with_assertions_201(client, session_factory):
+    from app.models.test_case import TestCase
+
+    assertions = [
+        {"path": "status_code", "op": "eq", "value": 200},
+        {"path": "data.id", "op": "eq", "value": 1},
+    ]
+    r = _create_case(client, assertions=assertions)
+    assert r.status_code == 201
+    cid = r.json()["data"]["id"]
+    with session_factory() as s:
+        stored = s.get(TestCase, cid)
+        # why：落库必须是纯 dict（JSON 列）——pydantic 模型对象会炸序列化
+        assert stored.assertions == assertions
+
+
+def test_create_case_bad_assertion_path_422(client):
+    # path 白名单正则（注入防线）：空格/引号/分号一律拒绝
+    r = _create_case(client, assertions=[{"path": "a b", "op": "eq", "value": 1}])
+    assert r.status_code == 422
+
+
+def test_create_case_bad_assertion_op_422(client):
+    r = _create_case(client, assertions=[{"path": "data.id", "op": "gt", "value": 1}])
+    assert r.status_code == 422
+
+
+def test_create_case_assertion_extra_field_422(client):
+    r = _create_case(
+        client,
+        assertions=[{"path": "data.id", "op": "eq", "value": 1, "desc": "x"}],
+    )
+    assert r.status_code == 422
+
+
+def test_update_case_assertions_validated(client, session_factory):
+    from app.models.test_case import TestCase
+
+    cid = _create_case(client).json()["data"]["id"]
+    ok = client.put(
+        f"/api/v1/cases/{cid}", json={"assertions": [{"path": "data.id", "op": "exists"}]}
+    )
+    assert ok.status_code == 200
+    bad = client.put(f"/api/v1/cases/{cid}", json={"assertions": [{"path": "a;b", "op": "eq"}]})
+    assert bad.status_code == 422
+    with session_factory() as s:
+        # why：非法更新被 422 拦下后，库里必须仍是上次合法值（部分失败不落半截数据）
+        assert s.get(TestCase, cid).assertions == [{"path": "data.id", "op": "exists"}]
+
+
+def test_confirm_revalidates_corrupted_assertions(client, session_factory):
+    # why：激活闸（§11.2）——绕过 API 直改库的坏断言在 draft→active 前被拦下
+    from app.models.test_case import TestCase
+
+    cid = _create_case(client).json()["data"]["id"]
+    with session_factory() as s:
+        case = s.get(TestCase, cid)
+        case.assertions = [{"path": 'x") or (', "op": "eq"}]  # 模拟历史坏数据
+        s.commit()
+    r = client.post(f"/api/v1/cases/{cid}/confirm", json={"reviewer": "demo"})
+    assert r.status_code == 422
+    assert r.json()["code"] == "CASE_INVALID_FOR_ACTIVE"

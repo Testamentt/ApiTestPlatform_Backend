@@ -27,6 +27,7 @@ def test_system_prompt_requires_assertions():
     content = (PROMPTS_DIR / PROMPT_VERSION / "system.md").read_text(encoding="utf-8")
     assert "至少 1 条" in content
     assert '"op"' in content  # 断言结构契约（path/op/value）需在白名单中定义
+    assert "契约层断言" in content  # 断言引擎升级：契约层 + 字段层两段要求进 prompt
 
 
 def test_validate_prompts_passes_on_real_dir():

@@ -50,7 +50,7 @@ broker_connection_retry_on_startup = True
 ```
 1. 读 task → active 用例列表（case_ids 快照；draft 不在此列）——短事务，读完 commit
 2. 建按 task_id 隔离的 workspace: .workspace/tasks/{task_id}/（test 文件 + report.xml 均在此，防多任务互相覆盖）
-3. 逐用例 case_generator 生成 test_{case_id}.py（结构化字段 repr 插值，无 Jinja2；只断言 expected_status）
+3. 逐用例 case_generator 生成 test_{case_id}.py（结构化字段 repr 插值，无 Jinja2；契约层基线 `assert r.status_code == expected_status` 恒渲染 + assertions 逐条渲染：`status_code` 走 `r.status_code`、字段层走 `_dig(payload, '点路径')` 取值，`AssertionItem` path/op 白名单已在校验层拦截注入面，非法历史条目渲染为注释跳过）
 4. `run_cmd` 的 `on_start` 回调写 tasks.pid + status=running + started_at —— commit
 5. run_cmd([python, -m, pytest, 全部 test_*.py, --junitxml=report.xml,
             -o, addopts=, -p, no:cacheprovider], timeout=task.timeout_seconds（缺省 pytest_timeout）, check=False)
