@@ -7,6 +7,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import yaml
 from dotenv import load_dotenv
@@ -55,6 +56,12 @@ class CelerySettings(BaseModel):
     visibility_timeout: int = 3600
     max_retries: int = 3
     result_expires: int = 3600
+    # why：PENDING 孤儿判定阈值（review N4）——消息已入队但无人领取（Redis 丢消息/Worker 长期缺席/
+    # 队列被清）时，任务会永久停在 pending 且同输入被永久复用；超过该时长由 scan_stale_tasks 回收为 FAILED
+    pending_timeout: int = 600
+    # why：队列名即「环境命名空间」（P3-2）——dev/CI/多环境共用同一 Redis 时，同队列会互相消费对方消息
+    # （实测：新起的 Worker 消费到另一个库发出的任务并 skip）；按环境改本值即可物理隔离
+    queue: str = "testplatform"
 
 
 class ExecutionSettings(BaseModel):
@@ -116,12 +123,24 @@ class LlmSettings(BaseModel):
 
 
 class SecuritySettings(BaseModel):
-    """Phase 4 Bearer Token 鉴权配置。why：api_token 的 dev 默认仅供本地演示开箱即用；
-    生产/CI 必须经 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（§3.1 禁写死密钥，dev 占位默认值不泄真实密钥）。"""
+    """鉴权与准入配置。why：api_token 的 dev 默认仅供本地演示开箱即用；
+    生产/CI 必须经 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（§3.1 禁写死密钥，dev 占位默认值不泄真实密钥）。
+
+    - jwt_secret（P3-8b）：留空 = 关闭 JWT 通道（只认静态 api_token，保持历史行为）；填入后额外接受
+      HS256 签名的 JWT（校验签名 + exp/nbf + 可选 iss/aud），为后续「登录发令牌」留出入口。
+    - rate_limit_per_minute（P3-8c）：0 = 关闭（默认，不改历史行为）；>0 时按「令牌（无则客户端 IP）+
+      固定窗口」限流，超限 429。Redis 不可用时**放行并告警**——限流是保护而非正确性前提，不能因它挂掉整站。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     api_token: str = "testplatform-dev-token"
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_issuer: str = ""
+    jwt_audience: str = ""
+    rate_limit_per_minute: int = 0
+    rate_limit_window_seconds: int = 60
 
 
 class FrontendSettings(BaseModel):
@@ -154,15 +173,22 @@ class Settings(BaseModel):
     def broker_url(self) -> str:
         if self.celery.broker_url:
             return self.celery.broker_url
-        auth = f":{self.redis.password}@" if self.redis.password else ""
-        return f"redis://{auth}{self.redis.host}:{self.redis.port}/{self.redis.db}"
+        return f"redis://{self._redis_auth()}{self.redis.host}:{self.redis.port}/{self.redis.db}"
 
     @property
     def result_backend(self) -> str:
         if self.celery.result_backend:
             return self.celery.result_backend
-        auth = f":{self.redis.password}@" if self.redis.password else ""
-        return f"redis://{auth}{self.redis.host}:{self.redis.port}/{self.redis.db + 1}"
+        return (
+            f"redis://{self._redis_auth()}{self.redis.host}:{self.redis.port}/{self.redis.db + 1}"
+        )
+
+    def _redis_auth(self) -> str:
+        """Redis 认证片段。why：密码必须 URL 编码（P3-1）——含 `@ : / # ?` 等保留字符时会拼坏 URL
+        （如 `p@ss` 会被解析成 host 的一部分），而本地 `.env` 的密码恰好是任意字符串。"""
+        if not self.redis.password:
+            return ""
+        return f":{quote(self.redis.password, safe='')}@"
 
 
 def _load_yaml_defaults() -> dict[str, Any]:
