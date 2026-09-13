@@ -52,10 +52,15 @@ class LlmClient:
         return cleaned.strip() or raw
 
     def chat_json(
-        self, system: str, user: str, *, schema: type[BaseModel]
+        self, system: str, user: str, *, schema: type[BaseModel], deadline: float | None = None
     ) -> tuple[BaseModel, LlmUsage]:
         """结构化输出调用：response_format 强制 JSON → _extract_json 清洗 → schema 严格校验。
-        返回 (已校验模型, usage)；校验失败抛 LLM_VALIDATION_FAILED（携带 raw_response），瞬时异常重试后抛 LLM_FAILED。"""
+        返回 (已校验模型, usage)；校验失败抛 LLM_VALIDATION_FAILED（携带 raw_response），瞬时异常重试后抛 LLM_FAILED。
+
+        deadline（P2-4）：调用方任务级预算的绝对时间点（`time.monotonic()` 口径）。传入后——
+        ① 预算已耗尽直接抛 `LLM_DEADLINE_EXCEEDED`（不再发起调用）② 每次请求的读超时按剩余预算钳位
+        ③ 退避 sleep 会越过 deadline 时不再重试。不传 = 与历史行为一致（只用固定连接/读超时）。
+        """
         s = self.settings
         # why：§9.3 输入长度预检——超长上下文裸奔会被上游 400 拒绝且浪费 token，调用前明确拒绝
         total_chars = len(system) + len(user)
@@ -72,17 +77,31 @@ class LlmClient:
         attempts = 0
         for attempt in range(s.max_retries + 1):
             attempts = attempt + 1
-            try:
-                resp = self.client.chat.completions.create(
-                    model=s.model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=s.temperature,  # 确定性，可复现（RULES §9.3）
-                    max_tokens=s.max_tokens,
+            remaining = None if deadline is None else deadline - time.monotonic()
+            if remaining is not None and remaining <= 0:
+                raise AppError(
+                    "LLM_DEADLINE_EXCEEDED",
+                    status_code=504,
+                    detail="任务级时间预算已耗尽，放弃本次 LLM 调用",
                 )
+            request_kwargs: dict = {
+                "model": s.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "response_format": {"type": "json_object"},
+                "temperature": s.temperature,  # 确定性，可复现（RULES §9.3）
+                "max_tokens": s.max_tokens,
+            }
+            if remaining is not None:
+                # why：读超时按剩余预算收紧（下限 1s 防 0/负数）——否则单次读可能远超任务剩余时间；
+                # 注意 SDK 里 timeout=None 表示"不限时"，故只在需要钳位时才显式传
+                request_kwargs["timeout"] = Timeout(
+                    s.connect_timeout, read=max(1.0, min(s.read_timeout, remaining))
+                )
+            try:
+                resp = self.client.chat.completions.create(**request_kwargs)
                 if not resp.choices:
                     # why：空 choices（部分代理/内容过滤场景）会以 IndexError 绕过下方错误分类
                     # 直接穿透（fix-hints 链路无兜底会 500）——显式归入 LLM_FAILED 不可重试（R3 批次）
@@ -130,7 +149,15 @@ class LlmClient:
                 exc.raw_response = raw  # 原始响应随异常携带，generation_log 落库用
                 raise exc from e  # 校验失败不可重试（RULES §9.4）
             if attempt < s.max_retries:
-                time.sleep(s.retry_backoff * (3**attempt))  # 指数退避 1s/3s/9s（§9.4）
+                backoff = s.retry_backoff * (3**attempt)  # 指数退避 1s/3s/9s（§9.4）
+                if deadline is not None and time.monotonic() + backoff >= deadline:
+                    # why：退避会睡过任务预算——重试已无意义，直接以预算耗尽收尾（P2-4）
+                    raise AppError(
+                        "LLM_DEADLINE_EXCEEDED",
+                        status_code=504,
+                        detail=f"剩余预算不足以完成第 {attempt + 2} 次尝试（需退避 {backoff:.1f}s）",
+                    )
+                time.sleep(backoff)
         logger.error(
             "llm call failed model=%s attempts=%d duration_ms=%d err=%s",
             s.model,
