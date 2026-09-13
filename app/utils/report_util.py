@@ -1,9 +1,22 @@
 # 简单 HTML 报告（替代 Allure）。why：MVP 自包含 HTML 即可演示；必须处理无有效结果（pytest 失败）；
 # 所有插值字段 html.escape——用例名/失败信息来自用户与 pytest 输出，不转义即存储型 XSS（review H2）。
+# 报告路径唯一来源在 report_path()：写入（执行引擎）与读取（带鉴权端点）共用，避免两处拼接漂移。
 from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+
+from app.core.config import get_settings
+
+
+def report_path(task_id: int) -> Path:
+    """任务报告文件路径（唯一来源）。why：按 task_id 隔离目录，报告不外泄；读写共用同一计算避免漂移。"""
+    return (
+        Path(get_settings().execution.workspace_dir).resolve()
+        / "reports"
+        / str(task_id)
+        / "report.html"
+    )
 
 
 def _esc(value) -> str:
