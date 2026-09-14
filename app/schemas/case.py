@@ -2,23 +2,32 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.schemas.assertion import AssertionItem
 
 HTTP_METHODS = Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
+# why：strip_whitespace 先于长度校验执行——纯空白串在 min_length=1 处被拒（min_length 单独用会放过 "   "，
+# 而 name/path/operation_id 会进生成代码与血缘检索，空白值等于脏数据）；长度上限对齐表列长（review L8）
+NameStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+PathStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+# why：HTTP 状态码有效区间——无界时 99999 这类值会静默进执行池（断言必然失败，且排障时看不出是脏数据）
+STATUS_CODE_MIN = 100
+STATUS_CODE_MAX = 599
+ExpectedStatus = Annotated[int, Field(ge=STATUS_CODE_MIN, le=STATUS_CODE_MAX)]
+
 
 class CaseCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
+    name: NameStr
     method: HTTP_METHODS
-    path: str = Field(min_length=1, max_length=1024)
-    operation_id: str = Field(min_length=1, max_length=255)
+    path: PathStr
+    operation_id: NameStr
     params: dict | None = None
     body: dict | None = None
-    expected_status: int = 200
+    expected_status: ExpectedStatus = 200
     # why：逐条 AssertionItem 结构校验（path 白名单/op 白名单）——渲染进生成代码前消灭注入面
     assertions: list[AssertionItem] | None = None
 
@@ -31,13 +40,13 @@ class CaseCreate(BaseModel):
 
 
 class CaseUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=255)
+    name: NameStr | None = None
     method: HTTP_METHODS | None = None
-    path: str | None = Field(default=None, min_length=1, max_length=1024)
-    operation_id: str | None = Field(default=None, min_length=1, max_length=255)
+    path: PathStr | None = None
+    operation_id: NameStr | None = None
     params: dict | None = None
     body: dict | None = None
-    expected_status: int | None = None
+    expected_status: ExpectedStatus | None = None
     assertions: list[AssertionItem] | None = None
 
     @field_validator("path")
@@ -65,6 +74,7 @@ class CaseRead(BaseModel):
     trust_score: (
         int  # 血缘可信度（手工100 / AI 校验通过80 / AI 带 warnings60），审核按此优先 Review
     )
+    reviewer: str | None
     created_at: datetime
     updated_at: datetime
 
