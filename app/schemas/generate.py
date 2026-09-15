@@ -31,7 +31,9 @@ class GeneratedCase(BaseModel):
 class GeneratedCaseList(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    cases: list[GeneratedCase]
+    # why：min_length=1（review A1 语义层）——空数组是"LLM 什么也没产出"，不该伪装成一个成功接口；
+    # 无此约束时 {"cases": []} 会让任务记 SUCCESS/generated+1 而草稿为 0
+    cases: list[GeneratedCase] = Field(min_length=1)
 
 
 class GenerateRequest(BaseModel):
