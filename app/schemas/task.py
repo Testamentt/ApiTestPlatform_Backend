@@ -5,9 +5,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# why：单任务用例上限抽成常量——schema 与「服务层复用同一 schema 构造」的地方（如影响分析一键回归）
+# 必须共用同一数字，否则一边 422、另一边直接抛 ValidationError 冒泡成 500（review N7 / P2-1）
+MAX_CASE_IDS = 500
+
 
 class TaskCreate(BaseModel):
-    case_ids: list[int] = Field(min_length=1, max_length=500)  # 上限防 IN(...) 撑爆（review M5）
+    case_ids: list[int] = Field(
+        min_length=1, max_length=MAX_CASE_IDS
+    )  # 上限防 IN(...) 撑爆（review M5）
     # why default=None：缺省回退 config.execution.pytest_timeout（红线 3：timeout 值来自 config，
     # 不在 schema 硬编码副本，review R3-6）
     timeout_seconds: int | None = Field(default=None, ge=1, le=3600)
