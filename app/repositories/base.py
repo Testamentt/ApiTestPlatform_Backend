@@ -1,5 +1,8 @@
-# 通用数据访问。why：收敛查询（分页/异常），避免业务代码散落 session.query；MVP 物理删除。
+# 通用数据访问。why：收敛查询（分页/异常/唯一约束竞态），避免业务代码散落 session.query；MVP 物理删除。
 from __future__ import annotations
+
+import time
+from collections.abc import Callable
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -53,6 +56,24 @@ class BaseRepository[ModelT: Base]:
             raise
         self.session.refresh(obj)
         return obj
+
+    def resolve_after_unique_violation(
+        self, lookup: Callable[[], ModelT | None], *, attempts: int = 5, delay: float = 0.05
+    ) -> ModelT | None:
+        """唯一约束竞态收敛：约束报错后重查「赢家」行，把并发语义修复成与串行一致。
+
+        why：Lookup-Create 幂等存在经典 TOCTOU 窗口——两个请求都先查、都未命中，第二个 INSERT 撞
+        UNIQUE 约束抛 IntegrityError，此前直接冒泡成 500（review C1）。唯一约束已经保证"不会重复建"，
+        缺的只是"把赢家查回来"。重试若干次是为了兼容「赢家事务尚未提交可见」的极短窗口
+        （SQLite WAL 下 commit 后立即可见，故通常第一次就命中）。
+        """
+        for attempt in range(attempts):
+            found = lookup()
+            if found is not None:
+                return found
+            if attempt < attempts - 1:
+                time.sleep(delay)
+        return None
 
     def delete(self, obj: ModelT) -> None:
         """物理删除（MVP，无软删除）。"""
