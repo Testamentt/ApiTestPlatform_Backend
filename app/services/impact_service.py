@@ -19,7 +19,7 @@ from app.schemas.impact import (
     FixHint,
     RegressionResult,
 )
-from app.schemas.task import TaskCreate
+from app.schemas.task import MAX_CASE_IDS, TaskCreate
 from app.services.generation_service import _sanitize_llm_field  # §10.2 同口径清洗（R3-4）
 from app.services.task_service import TaskService
 from app.utils.impact_diff import build_suggested_remap, diff_operations
@@ -231,6 +231,17 @@ class ImpactService:
         if not active_ids:
             raise AppError(
                 "NO_ACTIVE_CASES", status_code=422, detail=f"受影响用例全部失效: {dropped}"
+            )
+        # why：服务层这里复用了入参 schema（TaskCreate）自行组装——超过单任务上限时 pydantic 会抛
+        # ValidationError 而不是 HTTP 422，客户端只看到 500（review N7/P2-1）。显式拦下并给出可行动指引。
+        if len(active_ids) > MAX_CASE_IDS:
+            raise AppError(
+                "TOO_MANY_CASES",
+                status_code=422,
+                detail=(
+                    f"受影响用例 {len(active_ids)} 个超过单任务上限 {MAX_CASE_IDS}，"
+                    "请分批圈定（如按 version 分批 analyze）后再回归"
+                ),
             )
 
         task = self.task_service.create_execution_task(
