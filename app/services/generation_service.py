@@ -14,6 +14,7 @@ from celery.exceptions import (
     SoftTimeLimitExceeded,  # 服务层须识别软超时以放行（R3-1），异常类型耦合可接受
 )
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import get_settings
 from app.core.exceptions import AppError
@@ -83,17 +84,35 @@ _PRIVATE_NET_RE = re.compile(
 # §10.1-1 逐字段截断上限（review R3-3）：结构键的字符串值（pattern/enum 项等）进 prompt 前限长
 _PROMPT_STR_LIMIT = 256
 
+# why：输出侧敏感片段（P2-5/D2）——schema 只管形状、原 `_sanitize_llm_field` 只删标签与控制字符；
+# 若 LLM 把内网地址/密钥形态/注入句式回显出来，会随用例落库并在前端展示。命中即替换为占位符（不静默：记数）。
+_REDACTED_PLACEHOLDER = "[REDACTED]"
 
-def _sanitize_llm_field(value):
-    """LLM 输出文本清洗（§10.2）。why：LLM 输出不可信，可回显 prompt 中的注入文本，
-    入库前剔除危险标签（script/iframe/object/embed 等）与控制字符（防 XSS/存储注入）。"""
+
+def _redact_sensitive(text: str) -> tuple[str, int]:
+    """替换敏感片段，返回 (清洗后文本, 命中次数)。why：命中数要能被调用方累计并写日志，避免静默改写。"""
+    hits = 0
+    out = text
+    for pattern in (_INJECTION_HINTS_RE, _PRIVATE_NET_RE):
+        out, count = pattern.subn(_REDACTED_PLACEHOLDER, out)
+        hits += count
+    return out, hits
+
+
+def _sanitize_llm_field(value, *, counter: list[int] | None = None):
+    """LLM 输出文本清洗（§10.2 + P2-5）。why：LLM 输出不可信——先剔除危险标签与控制字符
+    （防 XSS/存储注入），再脱敏敏感片段（密钥形态/内网地址/注入句式）；counter 传入时累计命中次数，
+    供调用方写审计日志（不静默）。"""
     if isinstance(value, str):
         v = _DANGEROUS_TAG_RE.sub("", _SCRIPT_TAG_RE.sub("", value))
-        return _CONTROL_CHARS_RE.sub("", v)
+        v, hits = _redact_sensitive(_CONTROL_CHARS_RE.sub("", v))
+        if counter is not None:
+            counter[0] += hits
+        return v
     if isinstance(value, list):
-        return [_sanitize_llm_field(v) for v in value]
+        return [_sanitize_llm_field(v, counter=counter) for v in value]
     if isinstance(value, dict):
-        return {k: _sanitize_llm_field(v) for k, v in value.items()}
+        return {k: _sanitize_llm_field(v, counter=counter) for k, v in value.items()}
     return value
 
 
@@ -190,7 +209,9 @@ def _write_log(
         s.commit()
 
 
-def _fail(session_factory, task_id: int, stage: str, msg: str) -> None:
+def _fail(
+    session_factory, task_id: int, stage: str, msg: str, *, summary: dict | None = None
+) -> None:
     with session_factory() as s:
         task = s.get(GenerationTask, task_id)
         if task is None:
@@ -199,6 +220,9 @@ def _fail(session_factory, task_id: int, stage: str, msg: str) -> None:
             task.status = GenerationStatus.FAILED.value
             task.error_stage = stage
             task.error_msg = msg
+            # why：超时/失败也要留下进度快照——用户需要知道"跑到哪一步了"，而不是只知道失败了
+            if summary is not None:
+                task.result_summary = summary
             task.finished_at = _utcnow()
             s.commit()
         except Exception:
@@ -277,11 +301,45 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
     generated = draft_created = rejected = 0
     rejected_detail: list[dict] = []
     cost_total = 0.0
+    redacted_total = 0  # P2-5：输出脱敏命中总数（进 result_summary，可审计）
+    # why：任务级时间预算必须由任务自己守（review N13）——Celery 的 soft/hard time_limit 在
+    # `--pool=solo`（Windows 本地与 docker-compose 都用它）下被静默关闭（官方文档：切换到非 prefork 池
+    # 会静默关闭 soft_timeout 等特性；实测 soft=3s 对 10s 任务毫无效果），此前这条链路没有任何总时长上限，
+    # 338 个 operation 串行循环可以跑几小时。检查点放在每个 operation 之前——超时最多多花"一个 operation
+    # 的 LLM 预算"（llm.connect_timeout/read_timeout × 重试次数）。
+    deadline = monotonic() + get_settings().llm.task_timeout_seconds
+
+    def _snapshot(**extra) -> dict:
+        return {
+            "generated": generated,
+            "draft_created": draft_created,
+            "rejected": rejected,
+            "rejected_detail": rejected_detail,
+            "skipped_by_filter": skipped_by_filter,
+            "skipped_detail": skipped_detail,
+            "prompt_version": PROMPT_VERSION,
+            "cost_total": round(cost_total, 6),
+            "redacted": redacted_total,  # P2-5：LLM 输出被脱敏的片段数（0 = 未命中）
+            **extra,
+        }
+
     for op_id in target_ids:
+        if monotonic() >= deadline:
+            _fail(
+                session_factory,
+                task_id,
+                "timeout",
+                f"生成超时（>{get_settings().llm.task_timeout_seconds}s）："
+                f"已处理 {generated + rejected}/{len(target_ids)} 个接口，同输入可重试",
+                summary=_snapshot(timed_out=True, timed_out_at=op_id),
+            )
+            return
         op = ops_map[op_id]
-        user = render_user_prompt(_operation_to_json(op), json_schema)
-        # §10.1-4 敏感扫描（R3-3）：命中即拦截该 operation——不调 LLM、告警落审计，不静默
-        risk = _scan_prompt_risk(user)
+        op_json = _operation_to_json(op)
+        user = render_user_prompt(op_json, json_schema)
+        # §10.1-4 敏感扫描（R3-3）+ P2-7：**只扫注入的数据面**（operation 结构化描述）——此前扫整段渲染后
+        # prompt，模板/JSON Schema 文本里出现关键词会误拦全部 operation（扫描面过宽）。
+        risk = _scan_prompt_risk(op_json)
         if risk:
             logger.warning("operation %s prompt 命中敏感扫描，已拦截: %s", op_id, risk)
             _write_log(
@@ -298,7 +356,11 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             continue
         start = monotonic()
         try:
-            parsed_cases, usage = llm.chat_json(system, user, schema=GeneratedCaseList)
+            # P2-4：把任务级 deadline 透传给 llm_client——单次调用（含重试）被剩余预算钳位，
+            # 不再出现"检查点之间又花掉一个完整 LLM 预算"的粗粒度超时
+            parsed_cases, usage = llm.chat_json(
+                system, user, schema=GeneratedCaseList, deadline=deadline
+            )
         except AppError as e:
             latency_ms = int((monotonic() - start) * 1000)
             if e.code == "LLM_VALIDATION_FAILED":
@@ -340,20 +402,25 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             "total_tokens": usage.total_tokens,
         }
         cost = round(usage.total_tokens * cost_per_1k / 1000, 6)
+        # why：counter 是可变容器（Python 闭包不能重绑定外层变量）——累计本条用例被脱敏的片段数
+        redactions = [0]
         with session_factory() as s:
             for c in parsed_cases.cases:
                 s.add(
                     TestCase(
-                        name=_sanitize_llm_field(c.name),
+                        name=_sanitize_llm_field(c.name, counter=redactions),
                         method=c.method,
-                        path=_sanitize_llm_field(c.path),
+                        path=_sanitize_llm_field(c.path, counter=redactions),
                         operation_id=op_id,  # 【防幻觉】服务端注入，不信任 LLM 输出
-                        params=_sanitize_llm_field(c.params or None),
-                        body=_sanitize_llm_field(c.body),
+                        params=_sanitize_llm_field(c.params or None, counter=redactions),
+                        body=_sanitize_llm_field(c.body, counter=redactions),
                         expected_status=c.expected_status,
                         # why：AssertionItem → dict 落 JSON 列；value 仍过 LLM 清洗（防存储注入），
                         # path/op 已被 schema 白名单约束无需清洗
-                        assertions=[_sanitize_llm_field(a.model_dump()) for a in c.assertions],
+                        assertions=[
+                            _sanitize_llm_field(a.model_dump(), counter=redactions)
+                            for a in c.assertions
+                        ],
                         status=CaseStatus.DRAFT,  # draft 恒为，人工 confirm 才 active
                         source=CaseSource.AI,
                         trust_score=trust_score,
@@ -373,6 +440,12 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
                 )
             )
             s.commit()
+        if redactions[0]:
+            # why：脱敏是"改写用户数据"，必须留痕（P2-5）——否则排查"为什么用例里出现 [REDACTED]"无迹可循
+            logger.warning(
+                "operation %s LLM 输出命中敏感片段，已脱敏 %d 处（P2-5）", op_id, redactions[0]
+            )
+            redacted_total += redactions[0]
         generated += 1
         draft_created += len(parsed_cases.cases)
         cost_total += cost
@@ -386,16 +459,7 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
         task.prompt_version = (
             PROMPT_VERSION  # 任务层版本溯源（review R3-2 批次：列定义了此前从未写入）
         )
-        task.result_summary = {
-            "generated": generated,
-            "draft_created": draft_created,
-            "rejected": rejected,
-            "rejected_detail": rejected_detail,
-            "skipped_by_filter": skipped_by_filter,
-            "skipped_detail": skipped_detail,
-            "prompt_version": PROMPT_VERSION,
-            "cost_total": round(cost_total, 6),
-        }
+        task.result_summary = _snapshot()
         task.status = GenerationStatus.SUCCESS.value
         task.finished_at = _utcnow()
         s.commit()
@@ -421,6 +485,30 @@ class GenerationService:
                 status_code=422,
                 detail=f"文档超过 {settings.swagger.max_upload_bytes} 字节上限",
             )
+
+        if operation_ids is not None:
+            # why：显式定向必须与文档对齐（review A1 输入层）——此前自由文本无任何校验，全部未命中会跑成
+            # "SUCCESS + operation_count=0"的假成功；现改为 fail fast（同 NO_UNTESTED_OPS 的 422 口径），
+            # 并把「文档中合法 id 长什么样」直接回给用户（消息里带示例，用户不必去猜 operation_id 规则）
+            current_ids = set(parse_openapi(document).operation_ids)
+            missing = [oid for oid in operation_ids if oid not in current_ids]
+            if missing and len(missing) == len(operation_ids):
+                samples = "、".join(sorted(current_ids)[:3]) or "（文档无 operationId）"
+                raise AppError(
+                    "INVALID_OPERATION_IDS",
+                    status_code=422,
+                    message=(
+                        f"定向 operation_id 全部不在文档中（{len(missing)} 个），"
+                        f"文档中合法示例：{samples}"
+                    ),
+                    detail=(
+                        f"未命中: {missing[:20]}；文档共 {len(current_ids)} 个 operation_id，"
+                        "格式为 operationId 或自动生成的 {METHOD}_{path}"
+                    ),
+                )
+            if missing:
+                # 部分命中照常执行，未命中项由 Worker 记入 result_summary.skipped_detail（前端展示）
+                logger.warning("定向 operation_id 部分未命中（将记入 skipped_detail）: %s", missing)
 
         if operation_ids is None and not force_full:
             # 系统智能决策（间隙 1）：按 created_at 降序取最新一次分析；无历史 → 全量（开箱即用）。
@@ -476,7 +564,22 @@ class GenerationService:
             operation_ids=operation_ids,
             status=GenerationStatus.PENDING,
         )
-        self.repo.add(task)
+        try:
+            self.repo.add(task)
+        except IntegrityError as e:
+            # why：同输入并发提交撞 UNIQUE(run_id)——查回赢家返回，避免 500（review C1，与 TaskService 同口径），
+            # 这条路径尤其重要：不给用户 500 才不会让他再点一次从而多花一份 LLM 钱
+            winner = self.repo.resolve_after_unique_violation(
+                lambda: self.repo.find_by_run_id(run_id)
+            )
+            if winner is None:
+                raise AppError(
+                    "GENERATION_CONFLICT",
+                    status_code=409,
+                    detail="并发生成任务创建冲突且未查到既有任务，请重试",
+                ) from e
+            logger.info("生成任务并发创建命中既有任务 id=%s run_id=%s", winner.id, run_id)
+            return winner
         dispatch_or_fail(
             task,
             GenerationStatus,
