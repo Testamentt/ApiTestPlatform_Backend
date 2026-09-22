@@ -26,10 +26,12 @@ celery:
   broker_url: ""                      # 留空则由 redis 段组合生成
   result_backend: ""                  # 同上；仅短期状态 result_expires=3600
   soft_time_limit: 300                # 任务软超时
-  time_limit: 360                     # 任务硬超时（必须 > visibility_timeout）
+  time_limit: 360                     # 任务硬超时（visibility_timeout 必须大于它，否则任务被重复投递）
   visibility_timeout: 3600            # 必须 > time_limit，否则任务重复投递
   max_retries: 3                      # 仅瞬时异常重试
   result_expires: 3600               # result backend 仅短期状态，存活时长
+  pending_timeout: 600                # PENDING 孤儿阈值（秒）：入队却无人领取超此时长即回收为 failed
+  queue: testplatform                 # 队列名=环境命名空间（P3-2）：多环境同机共用 Redis 时改此值隔离消息
 
 execution:
   workspace_dir: .workspace           # 动态测试文件 / report.xml / HTML 报告
@@ -67,8 +69,14 @@ llm:                                  # Phase 3 AI 生成（全带 default，缺
   task_soft_timeout_seconds: 540      # 生成任务软超时（< 硬超时，留清理窗口）
   task_timeout_seconds: 600           # 生成任务硬超时（200 接口串行 ≈400s 兜底）
 
-security:                             # Phase 4 Bearer Token 鉴权
+security:                             # Bearer 鉴权 + 可选加固（P3-8b/c；两项默认关闭，不改变历史行为）
   api_token: testplatform-dev-token   # dev 默认仅供本地演示；生产必须 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（§3.1）
+  jwt_secret: ""                      # 留空=关闭 JWT 通道；填入后额外接受 HS256 签名且带 exp 的 JWT（P3-8b）
+  jwt_algorithm: HS256                # 仅用于验签，白名单机制防 alg=none 降级
+  jwt_issuer: ""                      # 可选：要求 iss 匹配
+  jwt_audience: ""                    # 可选：要求 aud 匹配
+  rate_limit_per_minute: 0            # 0=关闭限流；>0 时按「令牌哈希/IP + 固定窗口」计数，超限 429（P3-8c）
+  rate_limit_window_seconds: 60       # 固定窗口长度（秒）
 
 frontend:                             # Phase 4 CORS 白名单（MVP 零前端，默认空=不挂中间件）
   cors_origins: []                    # 前端做时填来源，如 [http://localhost:5173]
