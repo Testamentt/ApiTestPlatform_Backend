@@ -26,8 +26,14 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Lint（ruff）
         run: |
-          ruff check app tests
+          ruff check app tests scripts
           ruff format --check .
+      - name: 文档漂移门禁（源文档结构 + 学习版镜像一致性，P3-6）
+        # why：链接可达 / 围栏语言 / H2 编号漂移，以及镜像原子块缺失、废弃口径回流，
+        # 此前只靠一次性人工对账脚本（doc_lint / mirror_verify / mirror_style_check）——
+        # 没有门禁，下一轮文档批量改动后必然重新漂移。B 类需要 docs-study 镜像仓库，
+        # CI 只检出 backend 时整类打印 skip 不误报；本地复核用 DOCS_STUDY_ROOT 指定镜像根。
+        run: python scripts/doc_check.py
       - name: 快速测试 + 全项目覆盖率（pytest 默认排除 slow）
         run: pytest --cov=app --cov-report=term-missing
       - name: 核心模块覆盖率门槛（services+utils ≥80，§11.3）
