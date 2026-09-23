@@ -1,5 +1,8 @@
-# 全局测试夹具。why：内存 SQLite + dependency_overrides 隔离；Celery eager 不连真实 Redis。
+# 全局测试夹具。why：内存 SQLite + dependency_overrides 隔离；Celery eager 不连真实 Redis；
+# workspace 隔离见 tests/_env.py（必须排在所有 app.* 导入之前）。
 from __future__ import annotations
+
+import tests._env  # noqa: F401  # isort: skip —— 导入顺序即语义：先备环境，再导入 app
 
 import pytest
 from app.api.v1.deps import get_db, verify_token
@@ -28,6 +31,18 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.tasks)
         elif nodeid.startswith("tests/e2e/"):
             item.add_marker(pytest.mark.integration)
+
+
+@pytest.fixture(autouse=True)
+def isolated_workspace(tmp_path, monkeypatch):
+    """每个用例独占执行 workspace。
+
+    why：测试会真实生成 test_*.py / report.html，而 task_id 在每个内存库里都从 1 开始——
+    不隔离就会读到上一个用例留下的同名报告（review N3 的「报告未生成→404」用例即被此坑到）。
+    """
+    from app.core.config import get_settings
+
+    monkeypatch.setattr(get_settings().execution, "workspace_dir", str(tmp_path / "workspace"))
 
 
 @pytest.fixture()
