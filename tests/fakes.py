@@ -58,8 +58,9 @@ class FakeLlmClient:
         self.settings = SimpleNamespace(model="fake-model", cost_per_1k_tokens=0.001)
         self.calls: list[dict] = []
 
-    def chat_json(self, system, user, *, schema):
-        self.calls.append({"system": system, "user": user})
+    def chat_json(self, system, user, *, schema, deadline=None):
+        # why：deadline 是 P2-4 新增的可选参数——fake 必须同签名，否则真实调用点传参时直接 TypeError
+        self.calls.append({"system": system, "user": user, "deadline": deadline})
         if self.raise_error is not None:
             raise self.raise_error
         if self.data is None:
