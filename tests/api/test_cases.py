@@ -103,6 +103,127 @@ def test_update_missing_404(client):
     assert r.status_code == 404
 
 
+# ---------- 更新两层闸（review C3）：形状闸 + 语义闸 ----------
+
+
+def _active_case(client, reviewer="alice"):
+    cid = _create_case(client).json()["data"]["id"]
+    client.post(f"/api/v1/cases/{cid}/confirm", json={"reviewer": reviewer})
+    return cid
+
+
+def test_update_active_case_downgrades_to_draft(client):
+    # why：语义闸（review C3）——active 是"执行资格"而非永久标签，内容一变即失效，必须回 draft 重审
+    cid = _active_case(client)
+    r = client.put(f"/api/v1/cases/{cid}", json={"expected_status": 201})
+    assert r.status_code == 200
+    assert r.json()["data"]["status"] == "draft"
+    # 批准人签名随内容失效被清空（旧批准不再代表新内容）
+    assert client.get(f"/api/v1/cases/{cid}").json()["data"]["reviewer"] is None
+
+
+def test_update_active_case_noop_keeps_active(client):
+    # why：前端编辑弹窗会整表提交——同值更新不算语义变更，否则每次打开保存都无谓降级（误伤面收敛）
+    cid = _active_case(client)
+    current = client.get(f"/api/v1/cases/{cid}").json()["data"]
+    r = client.put(
+        f"/api/v1/cases/{cid}",
+        json={"name": current["name"], "path": current["path"], "expected_status": 200},
+    )
+    assert r.status_code == 200
+    assert r.json()["data"]["status"] == "active"
+
+
+def test_update_active_case_assertions_downgrade(client):
+    # 断言也是语义字段：改断言同样失去执行资格（AI 草稿的断言最需要人复审）
+    cid = _active_case(client)
+    r = client.put(
+        f"/api/v1/cases/{cid}", json={"assertions": [{"path": "data.id", "op": "exists"}]}
+    )
+    assert r.status_code == 200
+    assert r.json()["data"]["status"] == "draft"
+
+
+def test_update_case_shape_gate_rejects_corrupted_row(client, session_factory):
+    # why：形状闸——**active** 用例在库里被 out-of-band 写坏后，更新不得"带病续命"，
+    # 且拒绝时不落半截数据（P3-4 后闸门只对 active 生效，故此处先激活）
+    from app.models.test_case import TestCase
+
+    cid = _active_case(client)
+    with session_factory() as s:
+        case = s.get(TestCase, cid)
+        case.path = "no-slash"  # 模拟绕过 API 校验的坏数据
+        s.commit()
+    r = client.put(f"/api/v1/cases/{cid}", json={"name": "renamed"})
+    assert r.status_code == 422
+    assert r.json()["code"] == "CASE_INVALID"
+    with session_factory() as s:
+        assert s.get(TestCase, cid).name == "get"  # 校验失败 → 一个字段都没改
+
+
+def test_update_draft_case_allows_repair_style_update(client, session_factory):
+    """P3-4：draft 不做形状闸——"历史坏行 + 只想改名字"这类修复式更新必须放行。
+
+    why：闸门只为「执行池」服务；draft 的安全性由 confirm 的激活闸兜底（它是进执行池的唯一入口）。
+    """
+    from app.models.test_case import TestCase
+
+    cid = _create_case(client).json()["data"]["id"]  # 保持 draft
+    with session_factory() as s:
+        case = s.get(TestCase, cid)
+        case.path = "no-slash"  # 坏数据
+        s.commit()
+    r = client.put(f"/api/v1/cases/{cid}", json={"name": "renamed"})
+    assert r.status_code == 200  # 只改名字不再被自己的闸门卡死
+    assert r.json()["data"]["name"] == "renamed"
+    blocked = client.post(f"/api/v1/cases/{cid}/confirm", json={"reviewer": "alice"})
+    assert blocked.status_code == 422  # 但坏数据仍进不了执行池
+    assert blocked.json()["code"] == "CASE_INVALID_FOR_ACTIVE"
+
+
+def test_update_active_case_repairable_by_including_bad_field(client, session_factory):
+    """active 用例的修复路径：把坏字段的正确值一起提交即可（合并后合法 → 放行并降级 draft）。"""
+    from app.models.test_case import TestCase
+
+    cid = _active_case(client)
+    with session_factory() as s:
+        case = s.get(TestCase, cid)
+        case.path = "no-slash"
+        s.commit()
+    r = client.put(f"/api/v1/cases/{cid}", json={"path": "/users"})
+    assert r.status_code == 200
+    assert r.json()["data"]["path"] == "/users"
+    assert r.json()["data"]["status"] == "draft"  # 语义闸：改过内容 → 重新审核
+
+
+def test_update_case_shape_gate_allows_repair(client):
+    # 修复式更新（同一 PUT 里把坏字段改成合法值）必须放行，否则坏行无法通过 API 修回
+    cid = _create_case(client).json()["data"]["id"]
+    client.put(f"/api/v1/cases/{cid}", json={"path": "/users"})
+    assert client.get(f"/api/v1/cases/{cid}").json()["data"]["path"] == "/users"
+
+
+def test_expected_status_out_of_range_422(client):
+    # why：状态码边界（review N6）——99999 此前可静默进执行池，断言必然失败且看不出是脏数据
+    cid = _create_case(client).json()["data"]["id"]
+    assert _create_case(client, expected_status=42).status_code == 422
+    assert _create_case(client, expected_status=600).status_code == 422
+    assert client.put(f"/api/v1/cases/{cid}", json={"expected_status": 99999}).status_code == 422
+
+
+def test_blank_name_422(client):
+    # 契约：strip 后不得为空（"   " 会进生成代码注释与列表检索）
+    assert _create_case(client, name="   ").status_code == 422
+    cid = _create_case(client).json()["data"]["id"]
+    assert client.put(f"/api/v1/cases/{cid}", json={"name": " \t "}).status_code == 422
+
+
+def test_name_is_stripped(client):
+    r = _create_case(client, name="  login ok  ")
+    assert r.status_code == 201
+    assert r.json()["data"]["name"] == "login ok"
+
+
 def test_confirm_idempotent(client):
     cid = _create_case(client).json()["data"]["id"]
     client.post(f"/api/v1/cases/{cid}/confirm", json={"reviewer": "demo"})
