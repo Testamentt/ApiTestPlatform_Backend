@@ -95,6 +95,50 @@ def test_create_generate_explicit_operation_ids(client, session_factory, no_disp
         assert task.operation_ids == ["createUser"]  # 显式定向优先
 
 
+def test_explicit_operation_ids_all_missing_422(client, no_dispatch):
+    # why：A1 输入层修复——定向 id 全部未命中必须 fail fast，而不是跑成 SUCCESS/0 的假成功；
+    # message 里要带合法示例，用户才知道 operation_id 长什么样（此前自由文本输入无从校验）
+    r = client.post(
+        "/api/v1/generate", json={"document": DOC, "operation_ids": ["post_/user/login"]}
+    )
+    assert r.status_code == 422
+    assert r.json()["code"] == "INVALID_OPERATION_IDS"
+    assert "listUsers" in r.json()["message"]  # 文档中的合法示例回传给用户
+
+
+def test_explicit_operation_ids_partial_hit_runs(client, session_factory, no_dispatch):
+    # 部分命中照常执行（宽容降级保留），未命中项由 Worker 记 skipped_detail
+    r = client.post(
+        "/api/v1/generate",
+        json={"document": DOC, "operation_ids": ["listUsers", "ghost_op"]},
+    )
+    assert r.status_code == 202
+    with session_factory() as s:
+        task = s.get(GenerationTask, r.json()["data"]["id"])
+        assert task.operation_ids == ["listUsers", "ghost_op"]
+
+
+def test_generate_concurrent_same_input_returns_existing(client, monkeypatch):
+    """C1 同类回归：生成任务并发同输入不得 500（run_id 唯一约束）。"""
+    from app.repositories.generation_task_repository import GenerationTaskRepository
+
+    monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda tid: None)
+    real_lookup = GenerationTaskRepository.find_by_run_id
+    calls = {"n": 0}
+
+    def stale_lookup(self, run_id):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            return None
+        return real_lookup(self, run_id)
+
+    monkeypatch.setattr(GenerationTaskRepository, "find_by_run_id", stale_lookup)
+    r1 = client.post("/api/v1/generate", json={"document": DOC})
+    r2 = client.post("/api/v1/generate", json={"document": DOC})
+    assert (r1.status_code, r2.status_code) == (202, 202)
+    assert r1.json()["data"]["id"] == r2.json()["data"]["id"]
+
+
 def test_get_generation(client, no_dispatch):
     tid = client.post("/api/v1/generate", json={"document": DOC}).json()["data"]["id"]
     r = client.get(f"/api/v1/generate/{tid}")
