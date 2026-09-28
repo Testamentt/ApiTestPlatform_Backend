@@ -119,3 +119,73 @@ def test_scan_keeps_recent_generation_running(session_factory, monkeypatch):
     with session_factory() as s:
         task = s.get(GenerationTask, gen_id)
         assert task.status == "running"
+
+
+# ---------- PENDING 孤儿回收（review N4）----------
+
+
+def _seed_pending(session_factory) -> int:
+    with session_factory() as s:
+        task = Task(run_id="run_pending_orphan", case_ids=[1], status=TaskStatus.PENDING.value)
+        s.add(task)
+        s.commit()
+        s.refresh(task)
+        return task.id
+
+
+def _age_pending(session_factory, task_id: int, *, seconds_ago: int, celery_id: str = "cid-x"):
+    """把 pending 行的 updated_at 拨回过去——回收按 updated_at 计时（重试会刷新它）。"""
+    from datetime import timedelta
+
+    with session_factory() as s:
+        t = s.get(Task, task_id)
+        t.updated_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(seconds=seconds_ago)
+        t.celery_task_id = celery_id
+        s.commit()
+
+
+def test_scan_reclaims_stale_pending_orphan(session_factory, monkeypatch):
+    # why：消息入队却无人领取会永久 pending 且 run_id 被永久复用——必须能回收（review N4）
+    task_id = _seed_pending(session_factory)
+    _age_pending(session_factory, task_id, seconds_ago=10_000)
+    revoked: list[str | None] = []
+    monkeypatch.setattr("app.tasks.supervisor.SessionLocal", session_factory)
+    monkeypatch.setattr("app.tasks.supervisor.revoke_task", lambda cid: revoked.append(cid) or True)
+
+    assert scan_stale_tasks.delay().get() == 1
+    with session_factory() as s:
+        t = s.get(Task, task_id)
+        assert t.status == "failed"
+        assert t.error_stage == "pending_timeout"
+        assert t.finished_at is not None
+    assert revoked == ["cid-x"]  # broker 里的消息一并撤销，避免 Worker 领取后空跑
+
+
+def test_scan_keeps_recent_pending(session_factory, monkeypatch):
+    task_id = _seed_pending(session_factory)
+    monkeypatch.setattr("app.tasks.supervisor.SessionLocal", session_factory)
+    monkeypatch.setattr("app.tasks.supervisor.revoke_task", lambda cid: True)
+
+    assert scan_stale_tasks.delay().get() == 0
+    with session_factory() as s:
+        assert s.get(Task, task_id).status == "pending"
+
+
+def test_retry_refreshes_updated_at_so_reaper_spares_it(session_factory, monkeypatch):
+    # why：重试会把老行重置为 pending——若回收按 created_at 计时，重试后会被立刻误杀（review N4）
+    from app.services.task_service import TaskService
+
+    task_id = _seed_pending(session_factory)
+    _age_pending(session_factory, task_id, seconds_ago=10_000)
+    monkeypatch.setattr("app.services.task_service.dispatch_execution", lambda *a, **kw: None)
+    with session_factory() as s:
+        task = s.get(Task, task_id)
+        task.status = TaskStatus.FAILED.value
+        s.commit()
+        TaskService(s).retry_task(task_id)
+
+    monkeypatch.setattr("app.tasks.supervisor.SessionLocal", session_factory)
+    monkeypatch.setattr("app.tasks.supervisor.revoke_task", lambda cid: True)
+    assert scan_stale_tasks.delay().get() == 0
+    with session_factory() as s:
+        assert s.get(Task, task_id).status == "pending"
