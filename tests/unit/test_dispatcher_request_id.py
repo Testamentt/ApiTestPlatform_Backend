@@ -10,21 +10,57 @@ def test_dispatch_execution_forwards_request_id(monkeypatch):
 
     captured: dict = {}
 
-    def fake_delay(task_id, **kwargs):
-        captured["task_id"] = task_id
-        captured["request_id"] = kwargs.get("request_id")
+    def fake_apply_async(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
         return type("_R", (), {"id": "celery-1"})()
 
-    monkeypatch.setattr(ec.execute_cases_task, "delay", fake_delay)
+    monkeypatch.setattr(ec.execute_cases_task, "apply_async", fake_apply_async)
     try:
         set_request_id("rid-dispatch-1")
         dispatch_execution(42)
     finally:
         reset_request_id()
-    assert captured == {
-        "task_id": 42,
-        "request_id": "rid-dispatch-1",
-    }  # 请求上下文的 id 透传 Worker
+    # 请求上下文的 id 透传 Worker（§6.2）；任务入参只传 id（RULES §8.4）
+    assert captured["args"] == ()
+    assert captured["kwargs"]["args"] == [42]
+    assert captured["kwargs"]["kwargs"] == {"request_id": "rid-dispatch-1"}
+
+
+def test_dispatch_execution_sets_task_level_time_limits(monkeypatch):
+    """任务级超时跟 tasks.timeout_seconds 走（review N13）：全局 300s 不得掐掉用户设的 600s。"""
+    import app.tasks.execute_cases as ec
+    from app.core.config import get_settings
+    from app.services.dispatcher import dispatch_execution
+
+    captured: dict = {}
+    monkeypatch.setattr(
+        ec.execute_cases_task,
+        "apply_async",
+        lambda *a, **kw: captured.update(kw) or type("_R", (), {"id": "c1"})(),
+    )
+    dispatch_execution(7, timeout_seconds=600)
+    assert captured["soft_time_limit"] == 630
+    assert captured["time_limit"] == 660
+    # §8.2：time_limit 必须 < visibility_timeout，否则运行中任务被重复投递
+    assert captured["time_limit"] < get_settings().celery.visibility_timeout
+
+
+def test_dispatch_execution_time_limits_capped_by_visibility(monkeypatch):
+    import app.tasks.execute_cases as ec
+    from app.core.config import get_settings
+    from app.services.dispatcher import dispatch_execution
+
+    captured: dict = {}
+    monkeypatch.setattr(
+        ec.execute_cases_task,
+        "apply_async",
+        lambda *a, **kw: captured.update(kw) or type("_R", (), {"id": "c1"})(),
+    )
+    visibility = get_settings().celery.visibility_timeout
+    dispatch_execution(7, timeout_seconds=visibility)  # 接口上界 3600 == visibility
+    assert captured["time_limit"] < visibility
+    assert captured["soft_time_limit"] < captured["time_limit"]
 
 
 def test_dispatch_generation_forwards_request_id(monkeypatch):
