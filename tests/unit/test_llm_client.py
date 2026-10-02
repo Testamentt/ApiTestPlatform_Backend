@@ -208,3 +208,64 @@ def test_chat_json_usage_none_defaults_to_zero(monkeypatch):
     client = _make_client(monkeypatch, fake)
     _, usage = client.chat_json("sys", "user", schema=_FakeSchema)
     assert (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens) == (0, 0, 0)
+
+
+# ---------- P2-4：任务级预算透传（deadline）----------
+
+
+def test_deadline_exhausted_skips_call(monkeypatch):
+    """预算已耗尽 → 直接 LLM_DEADLINE_EXCEEDED，一次上游调用都不发（省时省钱）。"""
+    import time
+
+    fake = _FakeCompletions([lambda: _resp(json.dumps({"ok": True}))])
+    client = _make_client(monkeypatch, fake)
+    with pytest.raises(AppError) as ei:
+        client.chat_json("sys", "user", schema=_FakeSchema, deadline=time.monotonic() - 1)
+    assert ei.value.code == "LLM_DEADLINE_EXCEEDED"
+    assert ei.value.status_code == 504
+    assert len(fake.calls) == 0
+
+
+def test_deadline_clamps_read_timeout(monkeypatch):
+    """剩余预算小于配置读超时 → 本次请求的 read 超时被钳位（不再可能等满 60s）。"""
+    import time
+
+    from app.core.config import get_settings
+
+    fake = _FakeCompletions([lambda: _resp(json.dumps({"ok": True}))])
+    client = _make_client(monkeypatch, fake)
+    read_timeout = get_settings().llm.read_timeout
+    client.chat_json("sys", "user", schema=_FakeSchema, deadline=time.monotonic() + 3)
+    timeout = fake.calls[0]["timeout"]
+    assert timeout.read == pytest.approx(3, abs=1.5)
+    assert timeout.read < read_timeout
+
+
+def test_no_deadline_keeps_client_default_timeout(monkeypatch):
+    """不传 deadline 时不显式传 timeout —— 保持历史行为（SDK 的 timeout=None 语义是"不限时"，绝不能误传）。"""
+    fake = _FakeCompletions([lambda: _resp(json.dumps({"ok": True}))])
+    client = _make_client(monkeypatch, fake)
+    client.chat_json("sys", "user", schema=_FakeSchema)
+    assert "timeout" not in fake.calls[0]
+
+
+def test_deadline_stops_retry_backoff(monkeypatch):
+    """剩余预算不足以完成退避 → 不再重试，直接以预算耗尽收尾（避免睡过 deadline 才失败）。"""
+    import time
+
+    import httpx
+    from openai import APIStatusError
+
+    _req = SimpleNamespace(headers=httpx.Headers({}), method="POST", url="http://x")
+    _err = SimpleNamespace(request=_req, headers=httpx.Headers({}), status_code=500)
+
+    def fivexx():
+        raise APIStatusError("server error", response=_err, body=None)
+
+    fake = _FakeCompletions([fivexx, lambda: _resp(json.dumps({"ok": True}))])
+    client = _make_client(monkeypatch, fake)
+    with pytest.raises(AppError) as ei:
+        # 预算 0.5s < 首次退避 1s：第一次失败后就不该再等（sleep 会睡过 deadline）
+        client.chat_json("sys", "user", schema=_FakeSchema, deadline=time.monotonic() + 0.5)
+    assert ei.value.code == "LLM_DEADLINE_EXCEEDED"
+    assert len(fake.calls) == 1  # 首次失败后即放弃
