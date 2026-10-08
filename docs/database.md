@@ -1,12 +1,14 @@
-# 数据库设计（database.md）· Phase 1-3 简化版
+# 数据库设计（database.md）
 
-> 规则引用：`RULES.md` §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移）。本设计所有字段名/表名与 API、执行引擎文档保持一致。
-> **Phase 1-3 简化（面试导向）**：Phase 1 建 `test_cases` + `tasks`（执行闭环）；Phase 2 建 `api_definitions` + `impact_analyses`（影响分析）；Phase 3 建 `generation_tasks` + `generation_logs`（AI 生成）并给 `test_cases`/`impact_analyses` 加字段。软删除 / 多环境 / 结果明细表已砍，后续再补。RULES.md §5 相关 MUST 已放宽为 MVP 例外（见 `RULES.md` §5.1/§5.2）。
+> **定位**：数据怎么存——六张表、列与约束、索引、状态机与迁移策略。
+> **覆盖范围**：Phase 1-3 建表（Phase 4 未新增表）+ 2026-10-08 状态机语义补充 ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
+> **事实源锚点**：`app/models/*.py`、`app/core/database.py`、`app/repositories/` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/database.md`
+> **规则引用**：`RULES.md` §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移，含 MVP 例外）。字段名/表名与 [api.md](api.md)、[execution-engine.md](execution-engine.md) 保持一致；软删除 / 多环境 / 结果明细表按 MVP 例外不建（§5.1/§5.2）。
 
 ## 1. 设计原则（Phase 1 简化）
 
 | 原则 | 要求 |
-| --- | --- |
+| :--- | :--- |
 | 连接工厂 | 所有 SQLite 连接经唯一 `get_engine()` 创建，connect 事件统一执行 `PRAGMA journal_mode=WAL` / `busy_timeout=5000` / `foreign_keys=ON`；**SQLite 必加 `connect_args={"check_same_thread": False}`**（FastAPI 线程池跨线程用 SQLite 会报 "created in a thread"） |
 | 建表 | **MVP 用 `Base.metadata.create_all(engine)`**（main lifespan 启动时同步执行一次，阻塞无妨）；Phase 4 切 Alembic |
 | 短事务 | 禁止持有 Session 期间调用 subprocess/HTTP；统一「先查→提交关事务→算→再开新事务写入」 |
@@ -14,12 +16,14 @@
 | 命名 / 时间 / 枚举 | `snake_case`；主键统一 `id`；时间存 UTC naive（DB/ORM 生成）；状态列 `StrEnum` + `String` |
 | 状态机 | 顺序迁移 + 显式 if 守卫；失败必须记 `error_stage` 与 `error_msg` |
 
-## 2. Phase 1 表结构（2 张）
+## 2. 表结构（6 张）
+
+> 建表阶段：Phase 1 建 `test_cases` + `tasks`；Phase 2 建 `api_definitions` + `impact_analyses`；Phase 3 建 `generation_tasks` + `generation_logs`。Phase 4 未新增表。
 
 ### 2.1 test_cases（用例表）
 
 | 字段 | 类型 | 约束/默认 | 说明 |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | id | INTEGER | PK, autoincrement | |
 | name | VARCHAR(255) | NOT NULL | 用例名 |
 | method | VARCHAR(16) | NOT NULL | GET/POST/PUT/PATCH/DELETE/HEAD/OPTIONS（白名单校验） |
@@ -32,27 +36,27 @@
 | status | VARCHAR(16) | NOT NULL DEFAULT 'draft' | draft/active/archived（StrEnum） |
 | source | VARCHAR(16) | NOT NULL DEFAULT 'manual' | manual/ai/swagger |
 | trust_score | INTEGER | NOT NULL DEFAULT 100 | **血缘可信度 0-100（Phase 3）**：手工=100、AI 校验通过=80、AI 带 warnings=60；赋值位置：`generation_service._run_generation` 逐 operation 落库时写入；`CaseRead` API 可观测；低分需重点 Review，动态降权 Phase 4 |
-| reviewer | VARCHAR(64) | NULL | **批准人审计（RULES §11.2，review R3-2）**：confirm 接口写入；draft→active 的责任追溯 |
+| reviewer | VARCHAR(64) | NULL | **批准人审计（RULES §11.2，review R3-2）**：`confirm` 写入；`active` 用例被 update 改动语义字段时由语义闸清空（批准随内容失效，2026-10-08） |
 | created_at / updated_at | DATETIME | NOT NULL, server_default=now / onupdate | |
 
-索引：`idx_test_cases_operation_id(operation_id)`、`idx_test_cases_status(status)`。
+索引：`ix_test_cases_operation_id(operation_id)`（SQLAlchemy `index=True` 默认前缀）、`idx_test_cases_status(status)`。
 
 ### 2.2 tasks（执行任务表，结果直接落 result_summary JSON）
 
 | 字段 | 类型 | 约束/默认 | 说明 |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | id | INTEGER | PK | |
-| run_id | VARCHAR(64) | NOT NULL, **UNIQUE** | `sha256(sorted case_ids + timeout_seconds)` 指纹（Lookup-Create 幂等键） |
+| run_id | VARCHAR(64) | NOT NULL, **UNIQUE** | `sha256(json.dumps({case_ids: sorted(...), timeout}, sort_keys=True))` 指纹（Lookup-Create 幂等键） |
 | case_ids | JSON | NOT NULL | 用例 id 快照（执行时冻结） |
 | timeout_seconds | INTEGER | NOT NULL DEFAULT 300 | **任务级执行超时**（review M3/B4）：真正控制 subprocess 超时与僵尸扫描阈值（缺省 `execution.pytest_timeout`），API 可配 1–3600 |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'pending' | pending/running/success/failed（StrEnum） |
 | pid | INTEGER | NULL | **subprocess 主进程 PID，超时劫持权威 kill 依据**（mark_running 写入） |
 | celery_task_id | VARCHAR(64) | NULL | Celery task uuid |
-| error_stage | VARCHAR(32) | NULL | parse/subprocess/timeout/internal/dispatch/command（失败阶段定位；command=命令未过白名单，review L7） |
+| error_stage | VARCHAR(32) | NULL | parse/subprocess/timeout/internal/dispatch/command/cancelled/pending_timeout（失败阶段定位；command=未过白名单 review L7；cancelled=用户取消、pending_timeout=排队超时回收 review N4） |
 | error_msg | TEXT | NULL | 失败原因（含 stdout 尾部） |
 | started_at / finished_at | DATETIME | NULL | |
 | result_summary | JSON | NULL | `{total, passed, failed, skipped, duration_ms, results:[{case_id, status, failure_msg}]}`（name 由接口层默认空串兜底，junit 不提取） |
-| report_link | VARCHAR(1024) | NULL | `/static/{task_id}/report.html`（简单 HTML 报告） |
+| report_link | VARCHAR(1024) | NULL | `/api/v1/tasks/{task_id}/report`（带鉴权读报告原文，review N3） |
 | created_at / updated_at | DATETIME | NOT NULL, server_default=now / onupdate | |
 
 索引：`idx_tasks_status(status)`、`UNIQUE(run_id)`。
@@ -62,7 +66,7 @@
 ### 2.3 api_definitions（Swagger 版本快照，Phase 2 影响分析）
 
 | 字段 | 类型 | 约束/默认 | 说明 |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | id | INTEGER | PK, autoincrement | |
 | version | VARCHAR(64) | NOT NULL, **UNIQUE** | 用户标签或 auto `v{n}`；**reparse 覆盖**（同 version 再解析先删旧插新，CI 幂等不膨胀） |
 | hash_version | INTEGER | NOT NULL DEFAULT 2 | 哈希算法代际（config `swagger.hash_version`；2=sha256 指纹，L3 起）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed（防跨算法指纹混比） |
@@ -76,7 +80,7 @@
 ### 2.4 impact_analyses（影响分析结果，Phase 2）
 
 | 字段 | 类型 | 约束/默认 | 说明 |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | id | INTEGER | PK, autoincrement | |
 | old_version / new_version | VARCHAR(64) | NULL / NOT NULL | 对比版本对（首次分析 old 为空） |
 | added_ops / removed_ops / changed_ops | JSON | NOT NULL | 三态集合 |
@@ -94,7 +98,7 @@
 ### 2.5 generation_tasks（AI 生成任务，Phase 3，独立于执行 tasks 表）
 
 | 字段 | 类型 | 约束/默认 | 说明 |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | id | INTEGER | PK, autoincrement | |
 | run_id | VARCHAR(64) | NOT NULL, **UNIQUE** | `sha256(document + operation_ids)` 指纹，Lookup-Create 幂等（重复提交不重复调 LLM） |
 | status | VARCHAR(16) | NOT NULL DEFAULT 'pending' | pending/running/success/failed |
@@ -113,7 +117,7 @@
 ### 2.6 generation_logs（逐 operation LLM 调用日志，成本 + 置信度）
 
 | 字段 | 类型 | 约束/默认 | 说明 |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | id | INTEGER | PK | |
 | generation_task_id | INTEGER | **可空**, FK + index | 关联生成任务；**fix-hints 的 LLM 调用无生成任务 → NULL**（model='fix_hint' 区分来源） |
 | operation_id | VARCHAR(255) | NOT NULL | 本次生成接口（fix-hints 场景恒 'fix_hint'） |
@@ -131,25 +135,50 @@
 
 ### 3.1 test_cases
 
-```
-draft ──(人工 confirm, 传入 reviewer, 重新校验)──▶ active
-draft/active ──(删除)──▶ 物理删除
+```mermaid
+stateDiagram-v2
+    [*] --> draft: 手工创建 / AI 生成（恒为 draft）
+    draft --> active: 人工 confirm（传入 reviewer + 重新校验）
+    active --> draft: 语义字段被 update 修改（语义闸降级，2026-10-08）
+    draft --> [*]: 物理删除
+    active --> [*]: 物理删除
 ```
 
 - AI 生成恒为 `draft`，禁止任何自动化路径直接置 active（防幻觉护栏，RULES.md §11.2）。
-- 执行引擎**只能选中 active** 用例。
+- 执行引擎**只能选中 active** 用例；`active` 是执行资格而非永久标签——内容变更即失效并降级 `draft`。
 
 ### 3.2 tasks
 
-```
-pending ──▶ running ──▶ success
-                ├──▶ failed（error_stage + error_msg）
-pending/running ──(超时劫持 scan_stale_tasks)──▶ failed（error_stage=timeout）
-failed ──(同输入重新提交 POST /tasks，review H4)──▶ pending（重置后重新入队）
-pending ──(入队失败，review M2)──▶ failed（error_stage=dispatch）
+```mermaid
+stateDiagram-v2
+    [*] --> pending: POST /tasks 返回 202
+    pending --> running: Worker 领取（条件更新，已被取消则放弃）
+    running --> success: JUnit 解析 + 报告生成
+    running --> failed: 用例失败 / 超时强杀 / 异常
+    pending --> failed: 排队超时回收（pending_timeout）
+    pending --> failed: 用户取消（error_stage=cancelled）
+    pending --> failed: 入队失败（error_stage=dispatch）
+    failed --> pending: 同输入重新提交（幂等）
+    failed --> pending: 人工重试 POST /tasks/{id}/retry
+    success --> [*]
 ```
 
-顺序迁移 + 显式 if 守卫；失败必记 `error_stage`/`error_msg`；扫描本身不自动重试（重试由用户同输入重新提交触发）。
+顺序迁移 + 显式 if 守卫；失败必记 `error_stage`/`error_msg`；扫描本身不自动重试（重试由用户同输入重新提交或 POST retry 触发）。
+`running` 不可取消（需要杀进程 + 与执行层竞态周旋），故 `cancel` 只接受 `pending`；取消用 `failed(error_stage=cancelled)` 承载，不扩状态枚举。
+
+### 3.3 generation_tasks
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: POST /generate 返回 202
+    pending --> running: Worker 领取（PENDING 状态守卫）
+    running --> success: 逐 operation 落 draft + 审计
+    running --> failed: 解析失败 / 任务内超时 / 内部异常
+    failed --> pending: 同输入重新提交（幂等重置）
+```
+
+- `generation_tasks` 复用 `GenerationStatus`（pending/running/success/failed，`app/models/enums.py`），`error_stage` 取值 parse/internal/timeout/dispatch。
+- 单接口失败**不**迁移任务状态（记 `generation_logs` + `result_summary.rejected_detail`，任务仍 SUCCESS）——与执行任务"用例失败仍 success"同口径。
 
 ## 4. 迁移策略
 
@@ -164,7 +193,7 @@ pending ──(入队失败，review M2)──▶ failed（error_stage=dispatch�
 ## 5. 关键设计决策与理由
 
 | 决策 | 理由 |
-| --- | --- |
+| :--- | :--- |
 | `operation_id` NOT NULL + 索引 | Phase 2 影响分析血缘（面试前瞻卖点：Diff+SQL 反向检索） |
 | `tasks.pid` | 超时劫持权威 kill 依据——scan 从 DB 读 pid 杀整棵树 |
 | `run_id` = sha256 + UNIQUE（Lookup-Create） | 防重复提交：SUCCESS 复用 / FAILED 重置重试（review H4），SQLite 唯一约束兜底（面试锚点） |
@@ -175,8 +204,16 @@ pending ──(入队失败，review M2)──▶ failed（error_stage=dispatch�
 | `affected_case_ids` 快照 + `last_regression_*`（impact_analyses） | 回归依据冻结 + 结果持久化可追溯（F3）；count 由 @validates 写时同步 |
 | reparse 覆盖（version UNIQUE） | 同 version 再解析先删旧插新，CI 重复触发不膨胀版本表 |
 
-## 6. 后续表（延迟，当前不建）
+## 6. 后续表（未建，延后）
 
 - **environments**（多环境管理）：name/base_url/global_headers/timeout_seconds。
 - **case_results**（需逐用例明细时再拆）：task_id/case_id 外键，UNIQUE(task_id, case_id) 幂等。
-- **api_definitions / impact_analyses / generation_tasks / generation_logs**：**Phase 2/3 已建**（见 §2.3-§2.6）。
+
+> `api_definitions` / `impact_analyses` / `generation_tasks` / `generation_logs` 已建（见 §2.3-§2.6），不属本节范围。
+
+## 7. 相关文档
+
+- [api.md](api.md) — 端点与出入参（字段的对外投影）
+- [execution-engine.md](execution-engine.md) — 状态写入点（running/success/failed/超时回收）
+- [architecture.md](architecture.md) — 进程隔离与单写者约束
+- [README.md](README.md) — 文档地图与写作规范 ｜ [roadmap.md](roadmap.md) — 后续表与演进方向
