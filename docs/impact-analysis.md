@@ -1,14 +1,16 @@
-# 变更影响分析设计（impact-analysis.md）· Phase 2-3 实现版
+# 变更影响分析设计（impact-analysis.md）
 
-> 规则引用：`RULES.md` §5.2（索引）、§6.2（日志）。本文描述接口变更影响自动圈定的核心算法：版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归 + fix-hints 修复建议。对应规格书亮点 ②。
-> **Phase 2 已实现（面试导向，纯规则引擎无 AI）**：`parse / impact/analyze / impact/{id}/regression` 三端点；**Phase 3 新增 `impact/{id}/fix-hints`**（breaking 修复建议，轻量 LLM，best-effort）；Git Webhook、字段级差异 UI、priority 字段均延后。
+> **定位**：变更怎么圈定回归——版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归 + fix-hints。
+> **覆盖范围**：Phase 2 纯规则引擎（无 AI）+ Phase 3 新增 fix-hints 联动 ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
+> **事实源锚点**：`app/services/impact_service.py`、`app/utils/impact_diff.py`、`app/utils/openapi_parser.py` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/impact-analysis.md`
+> **规则引用**：`RULES.md` §5.2（索引）、§6.2（日志）。延后项（Git Webhook / 字段级差异 UI / priority 字段）见 §9。
 
 ## 1. 数据源：api_definitions 版本快照
 
 每次 Swagger 变更 → `POST /api/v1/parse` 解析 → 提取 `operation_ids` + **分段 hashes** + **operation_contracts** → 作为新版本 INSERT `api_definitions`。
 
 | 字段 | 说明 |
-| --- | --- |
+| :--- | :--- |
 | version | UNIQUE；用户标签或 auto `v{n}`；**reparse 覆盖**（同 version 再解析先删旧插新，CI 重复触发不膨胀） |
 | hash_version | 哈希算法代际（config `swagger.hash_version`；现值 2=sha256 指纹，L3 起）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed |
 | operation_ids | 血缘全集 |
@@ -20,22 +22,23 @@
 
 ## 2. breaking 联合判定（不只比 required）
 
-hash 回答「结构变没变」；`operation_contracts` 对比回答「是否破坏性」。`_is_breaking` 五场景命中即 breaking：
+hash 回答「结构变没变」；`operation_contracts` 对比回答「是否破坏性」。`_is_breaking` 命中任一即 breaking：
 
 | # | 场景 | 判定 |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | ① | required 收紧（new 多出必需项，false→true） | breaking |
 | ② | 字段 type 变化（string→integer） | breaking |
 | ③ | 枚举值删减（["active","pending"] → ["active"]） | breaking |
 | ④ | 字段被删除（下游断言 KeyError） | breaking |
 | ⑤ | 响应状态码删减/替换（200→202：旧码不再返回，下游按旧码断言失败；F1） | breaking |
+| ⑥ | 契约缺失（old/new contract 为 `None`，如"无 body → 有 body"） | breaking（**安全默认**，宁可多圈一次也不漏） |
 | — | 仅放宽（去掉 required、类型兼容、枚举新增、响应码新增） | **non-breaking，不圈定回归**（避免误报） |
 
-> 面试话术：「仅比 required 会漏报 type 变化/字段删除/枚举删减/状态码替换四类破坏性变更——联合判定五场景全命中，放宽不误圈。」
+> 面试话术：「仅比 required 会漏报 type 变化/字段删除/枚举删减/状态码替换四类破坏性变更——联合判定多场景全命中，放宽不误圈；契约信息不全时保守判破坏性，把判断权交给人审。」
 
 ## 3. Diff 算法
 
-```
+```text
 old = api_definitions[old_version 或最近];  new = 本次解析结果
 
 1. removed = old_ids - new_ids                # 接口删除 → 进迁移清单（不自动回归）
@@ -51,18 +54,18 @@ old = api_definitions[old_version 或最近];  new = 本次解析结果
 ```python
 # affected（圈定回归）：只查破坏性变更绑定的 active 用例
 SELECT * FROM test_cases WHERE operation_id IN (breaking_changed) AND status = 'active'
-# orphaned（迁移清单）：removed 接口绑定的用例
-SELECT * FROM test_cases WHERE operation_id IN (removed_ops)
+# orphaned（迁移清单）：removed 接口绑定的用例（同样限 active——draft 用例不进迁移清单）
+SELECT * FROM test_cases WHERE operation_id IN (removed_ops) AND status = 'active'
 # untested（Phase 3 铺路）：new 版本中未绑任何 active 用例的接口
 SELECT operation_id FROM api_definitions... WHERE operation_id NOT IN (已绑定集合)
 ```
 
-命中 Phase 1 已建索引 `idx_test_cases_operation_id`。
+命中 Phase 1 已建索引 `ix_test_cases_operation_id`（SQLAlchemy `index=True` 默认前缀）。
 
 ## 5. 影响分析结果模型（impact_analyses 表）
 
 | 字段 | 说明 |
-| --- | --- |
+| :--- | :--- |
 | old_version / new_version | 对比版本对 |
 | added_ops / removed_ops / changed_ops | 三态集合 |
 | breaking_changed_ops | **唯一触发回归圈定** |
@@ -75,7 +78,7 @@ SELECT operation_id FROM api_definitions... WHERE operation_id NOT IN (已绑定
 
 ## 6. 一键回归（宽容降级 + 真实口径 + 审计）
 
-```
+```text
 POST /impact/{analysis_id}/regression
   → 读 affected_case_ids 快照
   → 宽容过滤：只执行当前仍 active 的，dropped 附 reason（case deleted / case draft）
@@ -85,9 +88,9 @@ POST /impact/{analysis_id}/regression
   → 202 {task_id}
 ```
 
-## 6.1 fix-hints 修复建议（Phase 3 联动，best-effort）
+### 6.1 fix-hints 修复建议（Phase 3 联动，best-effort）
 
-```
+```text
 POST /impact/{analysis_id}/fix-hints
   → 读 breaking_changed_ops（无则 422）
   → 短事务分界：先查关事务再调 LLM（§2.1）
@@ -112,7 +115,7 @@ POST /impact/{analysis_id}/fix-hints
 ## 9. 边界情况
 
 | 场景 | 处理 |
-| --- | --- |
+| :--- | :--- |
 | 首次入库（无旧版本） | added=untested=全部、无 affected，不报错 |
 | 新旧相同（哈希全等） | identical，无受影响 |
 | operation 改名 | removed+added → orphaned_case_ids + suggested_remap 提示迁移 |
@@ -123,10 +126,17 @@ POST /impact/{analysis_id}/fix-hints
 ## 10. 面试锚点
 
 | 问题 | 话术 |
-|---|---|
+| :--- | :--- |
 | O(1) diff？ | 只存 version+hashes，diff=集合差+哈希比较 |
 | 200→202 会漏检？ | 响应 hash 含状态码指纹（F1） |
-| breaking 漏报？ | required+type/enum 签名联合判定五场景（含响应状态码替换，F1/F2） |
+| breaking 漏报？ | required+type/enum+字段删除+状态码替换+契约缺失，多场景联合判定（F1/F2）；契约信息不全时保守判破坏性 |
 | 接口改名血缘断裂？ | orphaned 迁移清单 + suggested_remap 可操作建议 |
 | 回归可追溯？ | last_regression_* 落库 + 结构化日志 + 真实口径 summary |
 | 为什么不用 AI？ | 确定性规则零成本零幻觉；AI 留给 Phase 3 生成 |
+
+## 11. 相关文档
+
+- [api.md](api.md) — `parse` / `impact/*` 端点契约
+- [database.md](database.md) — `api_definitions`、`impact_analyses` 表结构
+- [ai-generation.md](ai-generation.md) — fix-hints 与定向生成（`untested_ops`）联动
+- [README.md](README.md) — 文档地图与写作规范
