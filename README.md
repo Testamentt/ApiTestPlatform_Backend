@@ -19,24 +19,28 @@
   </p>
 </div>
 
-## 项目描述
+> **定位**：后端项目入口（亮点 / 快速开始 / 目录结构 / 常见问题） ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
+> **文档地图**：[docs/README.md](docs/README.md)（技术文档总览 + 写作规范） ｜ **双轨镜像**：`docs-study/TestPlatform/backend/README.md`
+> **历史记录**：`docs/plans/`、`docs/sessions/`、`docs/reviews/`（过程记录，不回改）
+
+## 1. 项目描述
 
 基于 FastAPI + Celery + AI 的接口测试效能平台后端，打通「用例智能生成 → 变更影响圈定 → 异步执行 → 报告输出」完整测试闭环。配套 Vue 3 前端独立仓库：[ApiTestPlatform_Frontend](https://github.com/Testamentt/ApiTestPlatform_Frontend)。
 
-## 项目预览
+## 2. 项目预览
 
 <!-- TODO: 补充截图（docs/images/）：Swagger UI 生成链路一张 + 任务执行 / HTML 报告一张，或录一张 GIF -->
 
 暂无截图。后端自带 **Swagger UI 交互界面**（`/docs`，带 Authorize 鉴权按钮），任务执行产出**自包含 HTML 报告**；配套前端四页（仪表盘 / 用例管理 / 任务执行 / AI 生成）见前端仓库。
 
-## 核心技术攻坚
+## 3. 核心技术攻坚
 
 | 接口测试痛点 | 平台方案 | 结果数据 |
 | :--- | :--- | :--- |
 | 用例编写重复耗时 | AI 解析 OpenAPI 结构化生成 + 人工审核兜底 | 单接口编写耗时降低约 80% |
 | 变更后回归范围凭经验 | 接口血缘 + 分段哈希比对自动圈定 | 影响圈定 <10 s |
 | 同步执行阻塞卡死 | Celery 异步解耦 + 任务级超时兜底 | Web 响应稳定 <50 ms |
-| 质量缺乏度量门禁 | CI 三 job 门禁 + 全链路追踪 | 测试覆盖率实测 91% |
+| 质量缺乏度量门禁 | CI 三 job 门禁 + 全链路追踪 | 测试覆盖率实测 92%（核心模块 91%，门槛 60/80） |
 
 ### 🧠 AI 用例智能生成
 
@@ -46,7 +50,7 @@
 - **结构化提示词** — 正向 / 逆向 / 边界值三类用例模板，prompt 层强约束每条用例至少 1 条断言；边界规则外置 `prompts/v1/boundary_rules.md`，调整规则不改代码。
 - **三层防幻觉护栏** — LLM 输出先过 Pydantic Schema 严格校验，状态恒为 `draft` 禁止自动激活，`operation_id` 由服务端注入；`trust_score` 记录血缘可信度。
 - **成本审计封装** — `llm_client` 唯一封装：连接 / 读超时 5 s / 60 s，瞬时异常重试上限 3 次（指数退避），输入长度预检 5 万字符；每次生成落 token 与成本审计记录。
-- **极端情况兜底** — LLM 服务不可用或响应超时（生成任务 540 / 600 s 软硬超时）时任务落 FAILED，同输入可重试，不阻塞其他链路。
+- **极端情况兜底** — LLM 服务不可用或响应超时（生成任务总时长预算 `llm.task_timeout_seconds`，默认 600 s，**任务内自检**：`--pool=solo` 下 Celery 的 soft/hard time_limit 会被静默关闭）时任务落 FAILED 并留进度快照，同输入可重试，不阻塞其他链路。
 
 ### 🎯 接口变更影响圈定
 
@@ -63,9 +67,9 @@
 > 针对同步调 pytest 阻塞 Web（同步超时率 30%+）的痛点，设计「Web 服务 ≠ 执行引擎」的进程隔离架构：任务状态以 DB 为单一事实源，Worker 重启任务不丢。
 
 - **任务队列解耦** — Celery + Redis 削峰，`POST /tasks` 立即返回 `task_id`（202），前端轮询至终态，Web 进程零阻塞。
-- **超时强杀兜底** — 任务级超时默认 300 s（接口可配），到期强杀 pytest 进程树；`scan_stale_tasks` 扫描 DB 权威状态，回收僵尸任务。
-- **幂等与重试** — `run_id` Lookup-Create 去重：成功任务复用结果，失败任务同输入可重试，不产生重复执行记录。
-- **可视化测试报告** — 自包含 HTML 单文件，字段转义防 XSS，按任务隔离目录挂载 `reports/`，测试文件不外泄。
+- **超时强杀兜底** — 任务级超时默认 300 s（接口可配，subprocess `communicate(timeout)` 为准，Windows `taskkill /T`、POSIX `killpg` 杀整棵树）；`scan_stale_tasks` 扫描 DB 权威状态，回收 `running` 超时**与 `pending` 排队超时（默认 600 s）**的僵尸任务，`pending` 任务可取消（`POST /tasks/{id}/cancel`）、失败任务可人工重试。
+- **幂等与重试** — `run_id` Lookup-Create 去重：成功任务复用结果，失败任务同输入可重试，不产生重复执行记录；并发撞 `UNIQUE(run_id)` 时查回「赢家」返回，不抛 500。
+- **可视化测试报告** — 自包含 HTML 单文件，字段转义防 XSS，按任务隔离目录落盘，经**带鉴权** `GET /api/v1/tasks/{id}/report` 读取（无鉴权 `/static` 静态面已摘除，防按 id 枚举），测试文件不外泄。
 - **极端情况兜底** — Worker 异常退出时任务状态以 DB 为准，重启后由 `scan_stale_tasks` 回收僵尸任务，任务不丢、不重复执行。
 
 ### 🏭 质量门禁与工程化
@@ -78,7 +82,7 @@
 - **AI 治理红线** — LLM 调用必须走唯一封装、输出必过 Schema 校验、生成结果恒为 `draft`、密钥只放 `.env`、测试必 mock LLM。
 - **工程红线** — 禁止吞异常、外部调用必设 timeout（值来自 config）、SQLite 强制 WAL 模式。
 
-## 系统流程
+## 4. 系统流程
 
 ### 主流程（活动图）
 
@@ -108,14 +112,15 @@ flowchart TD
 ```mermaid
 stateDiagram-v2
     [*] --> PENDING: POST /tasks 返回 202
-    PENDING --> RUNNING: Worker 领取任务
+    PENDING --> RUNNING: Worker 领取任务（条件更新，已被取消则放弃执行）
     RUNNING --> SUCCESS: 解析 JUnit XML + 生成报告
     RUNNING --> FAILED: 用例失败 / 超时强杀 / 异常
-    FAILED --> PENDING: 同输入重试（幂等）
+    PENDING --> FAILED: 排队超时回收（pending_timeout）/ 用户取消（error_stage=cancelled）
+    FAILED --> PENDING: 同输入重试（幂等）/ 人工 POST /tasks/{id}/retry
     SUCCESS --> [*]
 ```
 
-## 技术栈
+## 5. 技术栈
 
 | 层次 | 技术 | 作用 |
 | :--- | :--- | :--- |
@@ -124,9 +129,9 @@ stateDiagram-v2
 | 异步执行层 | Celery 5、subprocess + pytest | 任务解耦、进程隔离执行、超时强杀、报告生成 |
 | AI 能力层 | DeepSeek API（OpenAI 兼容）、自研 OpenAPI 3.0 解析器、结构化 Prompt | 用例智能生成、三层防幻觉护栏与成本审计 |
 | 质量与交付 | pytest、ruff、GitHub Actions、Docker Compose | 测试门禁、静态检查、CI 三 job、一键容器化 |
-| 配套前端 | Vue 3、Element Plus、Pinia、Vite、Vitest | 四页管理界面与 41 个单测（独立仓库，见文首链接） |
+| 配套前端 | Vue 3、Element Plus、Pinia、Vite、Vitest | 四页管理界面与 64 个单测（独立仓库，见文首链接） |
 
-## 快速开始
+## 6. 快速开始
 
 ### 环境要求
 
@@ -143,6 +148,8 @@ stateDiagram-v2
 | :--- | :--- |
 | `pytest -q` | 后端测试门禁（单元 / 接口 / 任务） |
 | `ruff check .` | 静态检查 |
+| `python scripts/doc_check.py` | **文档漂移门禁（P3-6）**：源文档链接/围栏/H2 编号 + 学习版镜像原子块与废弃口径；CI 已接入 |
+| `python scripts/fix_report_links.py [--dry-run]` | **旧库 report_link 迁移（P3-3）**：`/static/{id}/report.html` → `/api/v1/tasks/{id}/report`（幂等） |
 | `scripts\start_all.bat` | 一键拉起 Web + Worker（两个窗口） |
 | `scripts\reset_db.bat` | 重置开发库（schema 漂移时） |
 | `python scripts/mock_target.py` | 启动本地被测 mock 服务（:9999） |
@@ -160,7 +167,7 @@ pip install -e ".[dev]"
 copy config\settings.example.yaml config\settings.yaml
 copy .env.example .env          # 编辑 .env：填入 Redis 密码；AI 生成功能再填 DEEPSEEK_API_KEY
 
-# 3. 启动本地被测 mock 服务（另开终端，保持运行；execution.base_url 默认指向它）
+# 3. 启动本地被测 mock 服务（另开终端，保持运行）；.env.example 的 execution.base_url 即指向它
 python scripts/mock_target.py   # 监听 127.0.0.1:9999
 
 # 4. 启动 Web 服务
@@ -198,12 +205,12 @@ docker compose up --build
 git clone https://github.com/Testamentt/ApiTestPlatform_Frontend
 cd ApiTestPlatform_Frontend     # 需要 Node ≥ 20 + pnpm 10
 pnpm install
-pnpm dev                        # http://localhost:5173（Vite 代理 /api、/static、/docs 到后端 8000）
+pnpm dev                        # http://localhost:5173（Vite 代理 /api、/docs 到后端 8000）
 ```
 
 首次打开在顶栏「令牌」输入 `testplatform-dev-token`，详见前端仓库 [README](https://github.com/Testamentt/ApiTestPlatform_Frontend)。
 
-## 目录结构
+## 7. 目录结构
 
 ```text
 ApiTestPlatform_Backend/        # 本仓库（后端）
@@ -225,31 +232,37 @@ ApiTestPlatform_Backend/        # 本仓库（后端）
 └── docker-compose.yml          # mock + Web + Redis + Worker 一键编排
 ```
 
-## 常见问题
+## 8. 常见问题
 
 | 现象 | 处理方式 |
 | :--- | :--- |
 | `GET /cases` 返回 500 提示缺列 | `create_all` 不 ALTER 旧表导致 schema 漂移：运行 `scripts\reset_db.bat` 重置 dev 库（数据可丢，已 gitignore），或手动 `ALTER TABLE` 补列 |
 | Celery Worker 启动报错 | Windows 本地必须加 `--pool=solo`（不支持 prefork 池） |
-| 接口返回 401 / 403 | Bearer Token 未配置或错误：Swagger 右上角 Authorize 填 `testplatform-dev-token`，或修改 `.env` 的 `TESTPLATFORM_SECURITY_API_TOKEN` |
-| Web 服务连不上 Redis | 确认 127.0.0.1:6379 可达，`.env` 中 `TESTPLATFORM_REDIS_PASSWORD` 与实际 requirepass 一致 |
-| AI 生成任务一直排队 / 失败 | 确认 Worker 已启动、`DEEPSEEK_API_KEY` 已填入 `.env`；生成任务软/硬超时为 540/600 s，可按需调整 |
+| 接口返回 401 / 403 | Bearer Token 未配置或错误：Swagger 右上角 Authorize 填 `testplatform-dev-token`，或修改 `.env` 的 `TESTPLATFORM_SECURITY_API_TOKEN`；若开了 JWT 通道，需带 `exp` 且用 `security.jwt_secret` 验签通过 |
+| 接口返回 429 | 触发了限流（P3-8c）：`security.rate_limit_per_minute` 调大或置 0 关闭；提示里带窗口长度 |
+| 历史任务点「报告」404 | 旧任务行仍存 `/static/...`（该静态面已摘除）：跑 `python scripts/fix_report_links.py` 迁移（P3-3） |
+| Web 服务连不上 Redis | 确认 127.0.0.1:6379 可达，`.env` 中 `TESTPLATFORM_REDIS_PASSWORD` 与实际 requirepass 一致（密码含 `@ : / #` 也会被正确转义，P3-1） |
+| AI 生成任务一直排队 / 失败 | 确认 Worker 已启动、`DEEPSEEK_API_KEY` 已填入 `.env`；生成任务总时长预算 llm.task_timeout_seconds（默认 600 s，任务内自检并透传到每次 LLM 调用） |
 | 执行任务 FAILED | 确认被测服务已启动（`python scripts/mock_target.py`），`execution.base_url` 与之一致；同输入任务可直接重试 |
+| 别的环境的消息被我的 Worker 消费了 | 多环境共用一个 Redis：按环境改 `TESTPLATFORM_CELERY_QUEUE`（P3-2，默认 `testplatform`） |
 | 不想装本地环境 | `docker compose up --build` 一键拉起 mock + Web + Redis + Worker，内置默认 token |
 
-## 文档索引
+## 9. 文档索引
 
 | 文档 | 内容 |
 | :--- | :--- |
+| [docs/README.md](docs/README.md) | **文档地图 + 统一写作规范 + 双轨映射**（从这里进） |
 | [docs/architecture.md](docs/architecture.md) | 双界面、后端三层、进程隔离、异步模型、核心决策 |
-| [docs/database.md](docs/database.md) | 数据模型（6 表字段级设计） |
-| [docs/api.md](docs/api.md) | REST API 设计（端点总表） |
-| [docs/execution-engine.md](docs/execution-engine.md) | Celery 任务、subprocess 执行、超时劫持、被测系统接入、HTML 报告 |
-| [docs/ai-generation.md](docs/ai-generation.md) | OpenAPI 解析、Prompt 设计、draft→active 审核流 |
+| [docs/database.md](docs/database.md) | 数据模型（6 表字段级设计 + 状态机） |
+| [docs/api.md](docs/api.md) | REST API 设计（端点总表 + 错误码表） |
+| [docs/execution-engine.md](docs/execution-engine.md) | Celery 任务、subprocess 执行、超时与僵尸回收、被测系统接入、HTML 报告 |
+| [docs/ai-generation.md](docs/ai-generation.md) | OpenAPI 解析、Prompt 设计、LLM 护栏、draft→active 审核流 |
 | [docs/impact-analysis.md](docs/impact-analysis.md) | 变更影响分析算法、一键回归、fix-hints |
-| [docs/configuration.md](docs/configuration.md) | 配置管理（Pydantic Settings 分段配置） |
+| [docs/configuration.md](docs/configuration.md) | 配置管理（九段配置 + env 覆盖 + 三处同步清单） |
+| [docs/roadmap.md](docs/roadmap.md) · [docs/TODO.md](docs/TODO.md) | 迭代方向（活文档）· 分阶段完成项台账 |
+| `docs/plans/` · `docs/sessions/` · `docs/reviews/` | 计划 / 会话沉淀 / 评审与代码审查报告（过程记录，本地归档） |
 
-## 开源说明
+## 10. 开源说明
 
 本项目为个人独立开发的技术作品，用于学习交流与面试展示。
 
