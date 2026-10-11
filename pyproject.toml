@@ -42,6 +42,10 @@ include = ["app*"]
 line-length = 100
 target-version = "py312"
 src = ["app", "tests"]
+# why：ruff ≥0.11 会格式化 Markdown 里内嵌的 Python 片段——文档里的代码块是**示意片段**
+# （刻意截取/简化，且要与 docs-study 镜像逐字一致），不该被 formatter 自动重排；
+# 否则任何一行超长注释都会让 CI 的 `ruff format --check .` 挂掉。docs 也不参与 lint（CI 只显式检查 app/tests/scripts）。
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
