@@ -49,6 +49,17 @@ STAMP_RE = re.compile(r"^>\s*源版本[:：]\s*[0-9a-f]{7,40}\s*\|\s*同步日�
 # 相对链接跳过的前缀：外链、邮件、纯锚点（docs/README.md §3 第 8 条：仓库内链接才用相对路径）。
 LINK_SKIP_PREFIXES = ("http://", "https://", "mailto:", "#")
 
+# 指向「有意不入库」的本地归档的链接：按 docs/README.md §2 这些目录（历史/过程记录）只留本地、不进仓库，
+# CI 检出里必然不存在，因此不算死链（本地有、CI 没有，若当死链处理会导致门禁只在本地绿）。
+LOCAL_ONLY_PREFIXES = (
+    "sessions/",
+    "plans/",
+    "reviews/",
+    "session-doc-template.md",
+    "../.claude/",
+    ".claude/",
+)
+
 # B5 原子块：源文档里「可机械比对」的事实碎片，逐个断言镜像中存在。
 ENV_ATOM_RE = re.compile(r"\bTESTPLATFORM_[A-Z0-9_]*[A-Z0-9]\b")
 ENDPOINT_ATOM_RE = re.compile(r"(?<![\w/])/api/v1/[A-Za-z0-9_{}\-/]*")
@@ -223,10 +234,25 @@ def source_docs(root: Path) -> list[Path]:
     return [path for path in docs if path.is_file()]
 
 
+def _strip_dot_prefix(relative: str) -> str:
+    """只剥掉开头的 `./`。
+
+    why：不能用 `str.lstrip("./")`——它按**字符集**剥离，会把 `../.claude/x` 剥成 `claude/x`，
+    从而漏判"指向本地归档"的引用（踩过这个坑）。
+    """
+    return relative[2:] if relative.startswith("./") else relative
+
+
 def check_links(root: Path, docs: list[Path]) -> RuleResult:
-    """A1：Markdown 相对链接可达。why：改名/挪目录后最易留下死链，人工扫必然漏。"""
+    """A1：Markdown 相对链接可达。why：改名/挪目录后最易留下死链，人工扫必然漏。
+
+    例外：指向**有意不入库**的本地归档（`docs/sessions|plans|reviews/`、`session-doc-template.md`、
+    `.claude/`）的链接——按 docs/README.md §2 它们是「本地归档，不入库」，CI 检出里必然不存在，
+    属约定而非死链。这类链接计入 skipped 并打印出来（跳过可见，不静默放过）。
+    """
     result = RuleResult("A1", "Markdown 相对链接可达")
     total = 0
+    skipped = 0
     for doc in docs:
         where = rel_to(doc, root)
         text, failure = read_doc(doc, where)
@@ -242,10 +268,14 @@ def check_links(root: Path, docs: list[Path]) -> RuleResult:
                 relative = target.split("#", 1)[0].strip()
                 if not relative:
                     continue  # 纯锚点
+                if _strip_dot_prefix(relative).startswith(LOCAL_ONLY_PREFIXES):
+                    skipped += 1
+                    continue
                 total += 1
                 if not (doc.parent / relative).exists():
                     result.problems.append(Problem(where, lineno, f"相对链接目标不存在：{target}"))
-    result.covered = f"{len(docs)} 篇 / {total} 条相对链接"
+    suffix = f"（跳过 {skipped} 条指向本地归档的引用）" if skipped else ""
+    result.covered = f"{len(docs)} 篇 / {total} 条相对链接{suffix}"
     return result
 
 
