@@ -31,6 +31,12 @@ H2_EXEMPT = frozenset({"docs/TODO.md", "docs/session-doc-template.md"})
 MIRROR_BACKEND_PREFIX = "backend/"
 MIRROR_FRONTEND_PREFIX = "frontend/"
 
+# 学习文档工作区：全项目共用且全盘唯一（RULES.md §19.0-3 / §19.4）。
+# 源码布局为 <容器>/TestPlatform/backend，故工作区根 = 源根上溯两级 / docs-study。
+# 唯一性由规则保证：禁止项目目录内副本，也禁止为单项目再克隆第二份。
+WORKSPACE_DIRNAME = "docs-study"
+MIRROR_PROJECT_DIRNAME = "TestPlatform"
+
 # 版本印记允许出现在 H1 / 徽章之后，故限定「头部 N 行」内命中即可。
 STAMP_HEAD_LINES = 15
 # 单项失败明细上限：防止大范围漂移时刷屏淹没 CI 日志（超出部分只报计数）。
@@ -498,8 +504,11 @@ def resolve_roots(args: argparse.Namespace) -> tuple[Path, Path]:
     """解析源根与镜像根。
 
     what：源根取 `--root`（默认脚本父目录的上一级 = backend/）；镜像根优先级为
-    `--mirror-root` > 环境变量 `DOCS_STUDY_ROOT` > `<源根>/../docs-study/TestPlatform`。
+    `--mirror-root` > 环境变量 `DOCS_STUDY_ROOT` > `<源根>/../../docs-study/TestPlatform`
+    （源码布局为 `<容器>/TestPlatform/backend`，故上溯两级即全局唯一工作区 `E:\\Project\\docs-study`）。
     why：CI 只检出 backend，镜像路径必须可外部注入；本地跨仓库调试又要能直接指定。
+    why：默认值只指向全局唯一工作区，**禁止**回退到「项目目录旁的 docs-study」——多份工作副本
+    会各自提交、互不可见，镜像必然分叉（RULES.md §19.0-3 / §19.4）。
     """
     root = args.root.expanduser().resolve()
     if args.mirror_root is not None:
@@ -507,7 +516,7 @@ def resolve_roots(args: argparse.Namespace) -> tuple[Path, Path]:
     env_value = os.environ.get("DOCS_STUDY_ROOT", "").strip()
     if env_value:
         return root, Path(env_value).expanduser().resolve()
-    return root, (root.parent / "docs-study" / "TestPlatform").resolve()
+    return root, (root.parent.parent / WORKSPACE_DIRNAME / MIRROR_PROJECT_DIRNAME).resolve()
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -526,7 +535,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--mirror-root",
         type=Path,
         default=None,
-        help="学习版镜像根，默认 ../docs-study/TestPlatform，可用环境变量 DOCS_STUDY_ROOT 覆盖",
+        help=(
+            "学习版镜像根，默认 ../../docs-study/TestPlatform（全局唯一工作区 E:\\Project\\docs-study），"
+            "可用环境变量 DOCS_STUDY_ROOT 覆盖"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -583,7 +595,8 @@ def main(argv: list[str] | None = None) -> int:
     if not mirror_root.is_dir():
         print(
             f"  跳过原因：镜像目录不存在：{mirror_root}"
-            "（CI 只检出 backend，属预期；本地用 DOCS_STUDY_ROOT 或 --mirror-root 指定镜像根）"
+            "（CI 只检出 backend，属预期；本地用 DOCS_STUDY_ROOT 或 --mirror-root 指定镜像根，"
+            f"唯一工作区见 {WORKSPACE_DIRNAME}/README.md §0）"
         )
     for rule in mirror_rules:
         emit(rule)

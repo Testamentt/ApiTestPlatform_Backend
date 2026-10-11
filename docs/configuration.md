@@ -2,7 +2,7 @@
 
 > **定位**：配置怎么定义与覆盖——九段字段树、env 覆盖机制、三处同步清单。
 > **覆盖范围**：Phase 1-4 九段 + 2026-10-08 新增 `celery.pending_timeout` ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/core/config.py`、`config/settings.example.yaml`、`.env.example` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/configuration.md`
+> **事实源锚点**：`app/core/config.py`、`config/settings.example.yaml`、`.env.example` ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\configuration.md`
 > **规则引用**：`RULES.md` §3.1（配置与密钥）。配置统一放 `config/`，Pydantic 模型 + 手动 env 合并（见 §1）。
 
 ## 1. 配置分层与加载

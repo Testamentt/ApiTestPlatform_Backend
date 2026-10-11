@@ -2,7 +2,7 @@
 
 > **定位**：AI 怎么生成用例——Swagger 解析 → 结构化 Prompt → LLM → 严格校验 → draft 入库 → 人工确认。
 > **覆盖范围**：Phase 3 链路 + 2026-10-08 加固（定向 ids fail-fast / 空 `cases` 拒绝 / 任务内超时预算） ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/services/generation_service.py`、`app/utils/llm_client.py`、`app/utils/openapi_parser.py`、`prompts/v1/` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/ai-generation.md`
+> **事实源锚点**：`app/services/generation_service.py`、`app/utils/llm_client.py`、`app/utils/openapi_parser.py`、`prompts/v1/` ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\ai-generation.md`
 > **规则引用**：`RULES.md` §3.2（Prompt 管理）、§9（LLM 调用规范）、§10.1/§10.2（注入防护与输出护栏）、§11.2（防幻觉护栏）。明确不做/延后的项见 §10。
 
 ## 1. 总览

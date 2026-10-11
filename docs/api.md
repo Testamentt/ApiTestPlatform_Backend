@@ -2,7 +2,7 @@
 
 > **定位**：对外契约——端点、状态码、请求/响应字段、错误码与鉴权语义。
 > **覆盖范围**：Phase 1-4 全部端点 + 2026-10-08 新增（报告鉴权端点 / 取消 / 人工重试） ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/api/v1/*.py`、`app/schemas/*.py`、`app/core/exceptions.py` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/api.md`
+> **事实源锚点**：`app/api/v1/*.py`、`app/schemas/*.py`、`app/core/exceptions.py` ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\api.md`
 > **规则引用**：`RULES.md` §6（错误处理）、§7（接口规范）；所有端点前缀 `/api/v1`。鉴权在路由层统一挂依赖（见 [architecture.md](architecture.md) §2），任务状态机见 [database.md](database.md) §3.2。
 
 ## 1. 通用约定

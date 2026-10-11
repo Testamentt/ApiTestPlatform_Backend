@@ -2,7 +2,7 @@
 
 > **定位**：变更怎么圈定回归——版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归 + fix-hints。
 > **覆盖范围**：Phase 2 纯规则引擎（无 AI）+ Phase 3 新增 fix-hints 联动 ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/services/impact_service.py`、`app/utils/impact_diff.py`、`app/utils/openapi_parser.py` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/impact-analysis.md`
+> **事实源锚点**：`app/services/impact_service.py`、`app/utils/impact_diff.py`、`app/utils/openapi_parser.py` ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\impact-analysis.md`
 > **规则引用**：`RULES.md` §5.2（索引）、§6.2（日志）。延后项（Git Webhook / 字段级差异 UI / priority 字段）见 §9。
 
 ## 1. 数据源：api_definitions 版本快照

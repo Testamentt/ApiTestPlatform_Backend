@@ -2,7 +2,7 @@
 
 > **定位**：项目往哪走——原则、当前状态、里程碑与下一步（活文档，随迭代更新）。
 > **状态**：活文档 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：本文件（方向）+ [TODO.md](TODO.md)（完成项台账）+ 各专题文档（实现细节） ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/roadmap.md`
+> **事实源锚点**：本文件（方向）+ [TODO.md](TODO.md)（完成项台账）+ 各专题文档（实现细节） ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\roadmap.md`
 > **规则引用**：`RULES.md` §17-R5（变更沉淀）。三者分工：方向 / 台账 / 细节，避免同一事实两处维护而漂移。
 
 ## 1. 项目原则（面试导向）

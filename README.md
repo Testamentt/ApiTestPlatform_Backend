@@ -20,7 +20,7 @@
 </div>
 
 > **定位**：后端项目入口（亮点 / 快速开始 / 目录结构 / 常见问题） ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **文档地图**：[docs/README.md](docs/README.md)（技术文档总览 + 写作规范） ｜ **双轨镜像**：`docs-study/TestPlatform/backend/README.md`
+> **文档地图**：[docs/README.md](docs/README.md)（技术文档总览 + 写作规范） ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\README.md`
 > **历史记录**：`docs/plans/`、`docs/sessions/`、`docs/reviews/`（过程记录，不回改）
 
 ## 1. 项目描述

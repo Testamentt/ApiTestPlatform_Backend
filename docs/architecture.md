@@ -2,7 +2,7 @@
 
 > **定位**：系统长什么样——分层、进程隔离、异步模型与关键取舍。
 > **覆盖范围**：Phase 1-4 全部交付 + 后续加固批次（R3 修复 / 断言引擎 / 2026-10-08 P0-P1 修复） ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/main.py`、`app/api/v1/`、`app/services/`、`docker-compose.yml` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/architecture.md`
+> **事实源锚点**：`app/main.py`、`app/api/v1/`、`app/services/`、`docker-compose.yml` ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\architecture.md`
 > **规则引用**：`RULES.md` §4（分层）、§6（错误与日志）、§8（Celery 治理）；与规则冲突时以 RULES.md 为准。各阶段交付物见 [roadmap.md](roadmap.md)。
 
 ## 1. 目标与非目标

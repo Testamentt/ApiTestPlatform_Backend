@@ -2,7 +2,7 @@
 
 > **定位**：数据怎么存——六张表、列与约束、索引、状态机与迁移策略。
 > **覆盖范围**：Phase 1-3 建表（Phase 4 未新增表）+ 2026-10-08 状态机语义补充 ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/models/*.py`、`app/core/database.py`、`app/repositories/` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/database.md`
+> **事实源锚点**：`app/models/*.py`、`app/core/database.py`、`app/repositories/` ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\database.md`
 > **规则引用**：`RULES.md` §2.1（SQLite 连接工厂与短事务）、§5（数据模型与迁移，含 MVP 例外）。字段名/表名与 [api.md](api.md)、[execution-engine.md](execution-engine.md) 保持一致；软删除 / 多环境 / 结果明细表按 MVP 例外不建（§5.1/§5.2）。
 
 ## 1. 设计原则（Phase 1 简化）

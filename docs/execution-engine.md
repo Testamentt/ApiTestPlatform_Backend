@@ -2,7 +2,7 @@
 
 > **定位**：用例怎么被执行——Celery 任务、subprocess 封装、超时与僵尸回收、报告产物。
 > **覆盖范围**：Phase 1-3 引擎 + 2026-10-08 加固（跨平台杀树 / 子进程 UTF-8 / 排队孤儿回收 / 取消与重试 / 任务内超时预算） ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/tasks/`、`app/services/execution_service.py`、`app/services/dispatcher.py`、`app/utils/subprocess_util.py`、`app/utils/report_util.py` ｜ **双轨镜像**：`docs-study/TestPlatform/backend/docs/execution-engine.md`
+> **事实源锚点**：`app/tasks/`、`app/services/execution_service.py`、`app/services/dispatcher.py`、`app/utils/subprocess_util.py`、`app/utils/report_util.py` ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\execution-engine.md`
 > **规则引用**：`RULES.md` §2.3（统一超时）、§2.4（subprocess 规范，MVP 已放宽）、§8（Celery 任务治理）。
 
 ## 1. Celery 任务清单（Phase 1-3）
