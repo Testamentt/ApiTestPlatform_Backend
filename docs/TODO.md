@@ -116,7 +116,7 @@
 - [x] P1 N2/N5：`run_cmd` 显式 UTF-8 + `errors=replace` + 子进程 `PYTHONIOENCODING`；跨平台杀树（POSIX `killpg` + 组长守卫）；`on_start` 异常先清理
 - [x] P1 N4/C2：`scan_stale_tasks` 增加 `pending` 排队孤儿回收（按 `updated_at` + revoke）；新增 `POST /tasks/{id}/cancel`、`/retry`；`_mark_running` 改条件更新
 - [x] P1 N13：生成链路任务内 deadline + 进度快照；执行任务 soft/time limit 按 `timeout_seconds` 派生并向 `visibility_timeout` 收敛；文档口径修正
-- [x] 门禁：ruff 全绿；后端 301 passed + 1 slow、覆盖率 92.4%（核心 91%）；前端 46 tests + vue-tsc/build 通过；真机三阶段验收
+- [x] 门禁：ruff 全绿；后端 301 passed + 1 slow、覆盖率 92.4%（核心 91%）；前端 46 tests + vue-tsc/build 通过；真机三阶段验收（计数口径以最新 CI 运行为准）
 
 ## 2026-10-08 · 文档治理（格式统一 / 纠错 / 收敛归档）
 
@@ -161,7 +161,7 @@
 
 ## 2026-10-10 · 低优先级优化批次（P2/P3 全部闭环）
 
-> 门禁：`ruff check app tests scripts` 全绿 ｜ `pytest` **356 passed**（新增 58 个用例）｜`scripts/doc_check.py` 全 OK ｜前端 `pnpm test` 64 passed + `pnpm build` 通过。
+> 门禁：`ruff check app tests scripts` 全绿 ｜ `pytest` **356 passed**（新增 58 个用例；计数口径以最新 CI 运行为准）｜`scripts/doc_check.py` 全 OK ｜前端 `pnpm test` 64 passed + `pnpm build` 通过。
 
 | # | 落点（改了什么） | 关键设计取舍 | 验证 |
 | :--- | :--- | :--- | :--- |

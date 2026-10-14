@@ -25,7 +25,7 @@ Pydantic 严格校验（GeneratedCase extra="forbid"，operation_id 服务端注
   ├─ 通过 → 批量落库 test_cases(status=draft, source=ai, trust_score=80/60)
   └─ 失败 → generation_logs(validation_failed + raw_response + confidence=0) → 不建坏用例
   ▼
-result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, cost_total} → SUCCESS
+result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, prompt_version, cost_total, redacted} → SUCCESS
   ▼
 人工审核 POST /cases/{id}/confirm → active（Phase 1 复用）→ 执行引擎只选 active
 ```

@@ -110,7 +110,7 @@ Celery 关键配置：`task_acks_late=True` + `worker_prefetch_multiplier=1` + `
    → 逐 operation：prompts/v1 渲染 → llm_client.chat_json（response_format + _extract_json）→ Pydantic 严格校验
    → 通过：operation_id 服务端注入 + trust_score(warnings?60:80) → 落库 draft
    → 失败：generation_logs(validation_failed + raw_response + confidence=0) → 不建坏用例
-   → result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, cost_total} → SUCCESS
+   → result_summary {generated, draft_created, rejected, rejected_detail, skipped_*, prompt_version, cost_total, redacted} → SUCCESS
 3. GET /cases?status=draft 查生成用例 → POST /cases/{id}/confirm（reviewer）→ active → 可执行
 4. POST /impact/{id}/fix-hints（联动）：breaking 变更按需生成一句话修复建议（复用 llm_client，best-effort）
 ```

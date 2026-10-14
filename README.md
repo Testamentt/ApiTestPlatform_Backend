@@ -40,7 +40,7 @@
 | 用例编写重复耗时 | AI 解析 OpenAPI 结构化生成 + 人工审核兜底 | 单接口编写耗时降低约 80% |
 | 变更后回归范围凭经验 | 接口血缘 + 分段哈希比对自动圈定 | 影响圈定 <10 s |
 | 同步执行阻塞卡死 | Celery 异步解耦 + 任务级超时兜底 | Web 响应稳定 <50 ms |
-| 质量缺乏度量门禁 | CI 三 job 门禁 + 全链路追踪 | 测试覆盖率实测 92%（核心模块 91%，门槛 60/80） |
+| 质量缺乏度量门禁 | CI 三 job 门禁 + 全链路追踪 | 测试覆盖率实测 92%（核心模块 91%，门槛 60/80；口径以最新 CI 运行为准） |
 
 ### 🧠 AI 用例智能生成
 
@@ -66,7 +66,7 @@
 
 > 针对同步调 pytest 阻塞 Web（同步超时率 30%+）的痛点，设计「Web 服务 ≠ 执行引擎」的进程隔离架构：任务状态以 DB 为单一事实源，Worker 重启任务不丢。
 
-- **任务队列解耦** — Celery + Redis 削峰，`POST /tasks` 立即返回 `task_id`（202），前端轮询至终态，Web 进程零阻塞。
+- **任务队列解耦** — Celery + Redis 削峰，`POST /tasks` 立即返回 **202 + `{code, message, data}`，任务 id 在 `data.id`**（不是 `task_id`），前端轮询至终态，Web 进程零阻塞。
 - **超时强杀兜底** — 任务级超时默认 300 s（接口可配，subprocess `communicate(timeout)` 为准，Windows `taskkill /T`、POSIX `killpg` 杀整棵树）；`scan_stale_tasks` 扫描 DB 权威状态，回收 `running` 超时**与 `pending` 排队超时（默认 600 s）**的僵尸任务，`pending` 任务可取消（`POST /tasks/{id}/cancel`）、失败任务可人工重试。
 - **幂等与重试** — `run_id` Lookup-Create 去重：成功任务复用结果，失败任务同输入可重试，不产生重复执行记录；并发撞 `UNIQUE(run_id)` 时查回「赢家」返回，不抛 500。
 - **可视化测试报告** — 自包含 HTML 单文件，字段转义防 XSS，按任务隔离目录落盘，经**带鉴权** `GET /api/v1/tasks/{id}/report` 读取（无鉴权 `/static` 静态面已摘除，防按 id 枚举），测试文件不外泄。
@@ -95,7 +95,7 @@ flowchart TD
     D -- "通过" --> E["草稿 draft<br>trust_score 可信度"]
     E --> F["人工审核 confirm"]
     F --> G["激活 active"]
-    G --> H["提交执行任务<br>202 + task_id 立即返回"]
+    G --> H["提交执行任务<br>202 + data.id 立即返回"]
     H --> I["Celery Worker<br>subprocess 运行 pytest"]
     I --> J{"任务级超时<br>默认 300s"}
     J -- "超时" --> K["强杀进程树<br>标记 FAILED"]
@@ -116,6 +116,7 @@ stateDiagram-v2
     RUNNING --> SUCCESS: 解析 JUnit XML + 生成报告
     RUNNING --> FAILED: 用例失败 / 超时强杀 / 异常
     PENDING --> FAILED: 排队超时回收（pending_timeout）/ 用户取消（error_stage=cancelled）
+    PENDING --> FAILED: 入队失败（error_stage=dispatch）
     FAILED --> PENDING: 同输入重试（幂等）/ 人工 POST /tasks/{id}/retry
     SUCCESS --> [*]
 ```

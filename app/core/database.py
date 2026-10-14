@@ -1,5 +1,5 @@
 # 数据库基座。why：所有 SQLite 连接必须经唯一 get_engine() 工厂，
-# 统一挂 WAL / busy_timeout / foreign_keys（SQLite 默认不启用外键）；MVP 用 create_all 建表（Phase 4 切 Alembic）。
+# 统一挂 WAL / busy_timeout / foreign_keys（SQLite 默认不启用外键）；MVP 用 create_all 建表（**Alembic 未纳入**：Phase 4 已确认维持 create_all，见 docs/database.md §4）。
 # 方言差异（SQLite vs PostgreSQL）收敛在 is_sqlite_url / engine_kwargs 两个纯函数里（P3-8a）。
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ SessionLocal = sessionmaker(bind=get_engine(), expire_on_commit=False)
 
 
 def init_db() -> None:
-    """启动时建表（仅执行一次，阻塞无妨）。why：MVP 用 create_all，Phase 4 切 Alembic（RULES.md §5.1）。"""
+    """启动时建表（仅执行一次，阻塞无妨）。why：MVP 用 create_all；Alembic 未纳入（Phase 4 已确认维持，RULES.md §5.1）。"""
     from app import models  # noqa: F401  # 确保模型注册进 Base.metadata
 
     Base.metadata.create_all(bind=get_engine())

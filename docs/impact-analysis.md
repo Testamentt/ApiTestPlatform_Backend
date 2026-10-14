@@ -72,7 +72,7 @@ SELECT operation_id FROM api_definitions... WHERE operation_id NOT IN (已绑定
 | affected_case_ids + affected_count | breaking 变更的 active 用例 id 快照；count 由模型层 `@validates` **整体赋值时同步**（写入口收敛整体替换，禁止原地 append） |
 | orphaned_case_ids | removed 接口绑定的用例——**迁移清单**，提示人工重绑/删除 |
 | suggested_remap | `{removed_op: added_op}` 相似名配对（difflib 规范化，**只建议不自动重绑**，保守避免误绑） |
-| untested_ops | 未绑用例的接口清单——**首次分析 = 全部接口**，直接做 Phase 3 批量生成骨架 |
+| untested_ops | 未绑 **active** 用例的接口清单——**首次（尚无 active 绑定）时 = 全部接口**，直接做 Phase 3 批量生成骨架 |
 | affected_summary | `{total}`（快照期；**回归时按执行时真实口径重算**） |
 | last_regression_at / last_regression_task_id / last_regression_executed_count | **回归结果持久化**：每次一键回归更新，可追溯「为什么这次只跑了 N 个」 |
 

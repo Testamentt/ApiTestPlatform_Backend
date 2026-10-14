@@ -33,7 +33,7 @@ def get_settings() -> Settings:
 | 字段 | 默认值 | 说明 |
 | :--- | :--- | :--- |
 | app.name | testplatform | |
-| app.debug | false | 开发模式开启 /docs |
+| app.debug | false | **调试模式（控制日志级别）**：true→DEBUG，否则 INFO；/docs 由 `app.docs_enabled` 控制 |
 | app.version | 0.1.0 | |
 | app.host | 0.0.0.0 | |
 | app.port | 8000 | |

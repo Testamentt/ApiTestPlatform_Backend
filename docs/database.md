@@ -10,7 +10,7 @@
 | 原则 | 要求 |
 | :--- | :--- |
 | 连接工厂 | 所有 SQLite 连接经唯一 `get_engine()` 创建，connect 事件统一执行 `PRAGMA journal_mode=WAL` / `busy_timeout=5000` / `foreign_keys=ON`；**SQLite 必加 `connect_args={"check_same_thread": False}`**（FastAPI 线程池跨线程用 SQLite 会报 "created in a thread"） |
-| 建表 | **MVP 用 `Base.metadata.create_all(engine)`**（main lifespan 启动时同步执行一次，阻塞无妨）；Phase 4 切 Alembic |
+| 建表 | **MVP 用 `Base.metadata.create_all(engine)`**（main lifespan 启动时同步执行一次，阻塞无妨）；**Alembic 未纳入**（Phase 4 已确认维持 create_all，见 §4） |
 | 短事务 | 禁止持有 Session 期间调用 subprocess/HTTP；统一「先查→提交关事务→算→再开新事务写入」 |
 | 删除 | **物理删除 `db.delete()`**；MVP 不需要回收站（软删除已砍） |
 | 命名 / 时间 / 枚举 | `snake_case`；主键统一 `id`；时间存 UTC naive（DB/ORM 生成）；状态列 `StrEnum` + `String` |
@@ -89,7 +89,7 @@
 | affected_count | INTEGER | NOT NULL | 冗余计数；模型层 `@validates("affected_case_ids")` **整体赋值时同步**（写入口收敛整体替换） |
 | orphaned_case_ids | JSON | NOT NULL | removed 接口绑定的用例（迁移清单，不自动回归） |
 | suggested_remap | JSON | NOT NULL | `{removed_op: added_op}` 相似名配对（difflib，只建议不自动重绑） |
-| untested_ops | JSON | NOT NULL | 未绑 active 用例的接口清单（首次=全部，Phase 3 铺路） |
+| untested_ops | JSON | NOT NULL | 未绑 active 用例的接口清单（首次尚无 active 绑定时=全部，Phase 3 铺路） |
 | affected_summary | JSON | NOT NULL | `{total}`（快照期；回归时按执行时真实口径重算） |
 | last_regression_at / last_regression_task_id / last_regression_executed_count | DATETIME / VARCHAR / INTEGER | NULL | **回归结果持久化**（每次一键回归更新，可追溯） |
 | ai_fix_hint | JSON | NULL | **修复建议（Phase 3 预留）**：breaking 变更的一句话 LLM 建议；`POST /impact/{id}/fix-hints` 按需生成（best-effort），不阻塞 analyze 纯规则秒回 |
@@ -108,7 +108,7 @@
 | operation_count | INTEGER | NOT NULL DEFAULT 0 | |
 | prompt_version | VARCHAR(16) | NULL | SUCCESS 收尾写入（review R3 批次）；失败明细仍由 `generation_logs.prompt_version` 与 `result_summary.prompt_version` 承载 |
 | error_stage / error_msg | VARCHAR/TEXT | NULL | parse/internal/timeout/dispatch（单接口失败不入任务级，记 generation_logs） |
-| result_summary | JSON | NULL | `{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total}` |
+| result_summary | JSON | NULL | `{generated, draft_created, rejected, rejected_detail:[{operation_id, reason}], skipped_by_filter, skipped_detail, prompt_version, cost_total, redacted}`（`redacted` = LLM 输出被脱敏的片段数，恒写）；任务内超时另带 `timed_out: true` 与 `timed_out_at` |
 | started_at / finished_at | DATETIME | NULL | |
 | created_at / updated_at | DATETIME | TimestampMixin | |
 
@@ -155,6 +155,7 @@ stateDiagram-v2
     pending --> running: Worker 领取（条件更新，已被取消则放弃）
     running --> success: JUnit 解析 + 报告生成
     running --> failed: 用例失败 / 超时强杀 / 异常
+    running --> failed: 用户取消（error_stage=cancelled）
     pending --> failed: 排队超时回收（pending_timeout）
     pending --> failed: 用户取消（error_stage=cancelled）
     pending --> failed: 入队失败（error_stage=dispatch）
@@ -164,7 +165,7 @@ stateDiagram-v2
 ```
 
 顺序迁移 + 显式 if 守卫；失败必记 `error_stage`/`error_msg`；扫描本身不自动重试（重试由用户同输入重新提交或 POST retry 触发）。
-`running` 不可取消（需要杀进程 + 与执行层竞态周旋），故 `cancel` 只接受 `pending`；取消用 `failed(error_stage=cancelled)` 承载，不扩状态枚举。
+`pending` / `running` **均可取消（P2-3）**：`running` 先 best-effort 杀 pytest 进程树（否则状态改了进程还在跑）并**跳过 revoke**（消息早被 Worker 消费），`pending` 则额外 revoke 已入队消息；落终态用**条件更新**（`WHERE status=<读到的状态>`）兜底与执行层的竞态——rowcount=0（已跑完/被重新领取）→ 409 `TASK_NOT_CANCELLABLE`，不谎报成功。取消用 `failed(error_stage=cancelled)` 承载，不扩状态枚举。
 
 ### 3.3 generation_tasks
 
