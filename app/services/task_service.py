@@ -18,14 +18,14 @@ from app.repositories.case_repository import CaseRepository
 from app.repositories.task_repository import TaskRepository
 from app.schemas.task import TaskCreate, TaskResultItem, TaskResults
 from app.services.dispatcher import dispatch_execution, dispatch_or_fail, revoke_task
-from app.utils.report_util import report_path
+from app.utils.report_util import remove_report, report_path
 from app.utils.subprocess_util import kill_process_tree
 
 logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
-    # why：时间统一存 UTC naive（对齐 RULES.md §5.2）。
+    # why：时间统一存 UTC naive。
     return datetime.now(UTC).replace(tzinfo=None)
 
 
@@ -53,13 +53,13 @@ class TaskService:
             )
         timeout = (
             payload.timeout_seconds or get_settings().execution.pytest_timeout
-        )  # 缺省走 config（R3-6）
+        )  # 缺省走 config
         run_id = self.compute_run_id(payload.case_ids, timeout)
-        # Lookup-Create 幂等：SUCCESS 直接复用；FAILED 重置重试；PENDING/RUNNING 返回现状（review H4）
+        # Lookup-Create 幂等：SUCCESS 直接复用；FAILED 重置重试；PENDING/RUNNING 返回现状
         existing = self.task_repo.find_by_run_id(run_id)
         if existing:
             if existing.status == TaskStatus.SUCCESS.value:
-                return existing  # §8.3：已成功不重复执行
+                return existing  # 已成功不重复执行
             if existing.status == TaskStatus.FAILED.value:
                 # why：失败任务允许同输入重试——复用 retry_task 的重置逻辑；任务函数有 PENDING 状态守卫，重复派发安全
                 return self._reset_and_dispatch(existing)
@@ -74,7 +74,7 @@ class TaskService:
             self.task_repo.add(task)
         except IntegrityError as e:
             # why：并发双击/重试撞 UNIQUE(run_id)——唯一约束已拦住重复建，此处把"赢家"查回来返回，
-            # 使并发语义与串行一致（review C1：此前未捕获 → 用户收到 500）
+            # 使并发语义与串行一致（此前未捕获 → 用户收到 500）
             winner = self.task_repo.resolve_after_unique_violation(
                 lambda: self.task_repo.find_by_run_id(run_id)
             )
@@ -86,8 +86,8 @@ class TaskService:
                 ) from e
             logger.info("任务并发创建命中既有任务 id=%s run_id=%s", winner.id, run_id)
             return winner
-        # why：持久化 celery_task_id（RULES §8.3）——任务卡死时可通过 Celery 定位/revoke；
-        # 执行任务把 timeout_seconds 透传给派发器（任务级 soft/time limit 与接口口径对齐，review N13）
+        # why：持久化 celery_task_id——任务卡死时可通过 Celery 定位/revoke；
+        # 执行任务把 timeout_seconds 透传给派发器（任务级 soft/time limit 与接口口径对齐）
         dispatch_or_fail(
             task,
             TaskStatus,
@@ -98,9 +98,9 @@ class TaskService:
         return task
 
     def retry_task(self, task_id: int) -> Task:
-        """人工重试失败任务（RULES §8.5：重试仅人工触发）。
+        """人工重试失败任务（重试仅人工触发）。
 
-        why：取消/排队超时回收后必须有重跑出口（review N4）——否则 run_id 被 FAILED 行永久占死，
+        why：取消/排队超时回收后必须有重跑出口——否则 run_id 被 FAILED 行永久占死，
         用户只能改 timeout 绕开（幂等键含 timeout，纯属意外行为）。
         """
         task = self.task_repo.get_or_raise(task_id)
@@ -113,7 +113,7 @@ class TaskService:
         return self._reset_and_dispatch(task)
 
     def cancel_task(self, task_id: int) -> Task:
-        """取消任务（PENDING 与 RUNNING 均可，P2-3）。
+        """取消任务（PENDING 与 RUNNING 均可）。
 
         why：PENDING 与 RUNNING 的差别只在"要不要动手"——RUNNING 必须先杀 pytest 进程树，
         否则状态改了、进程还在跑（继续占着被测系统）。杀树是 best-effort：杀不掉也不阻塞终态，
@@ -171,20 +171,32 @@ class TaskService:
     def _reset_and_dispatch(self, task: Task) -> Task:
         """FAILED→PENDING 重置并重新入队（创建路径与人工重试共用）。
 
+        why：重置必须把「上一次执行的全部痕迹」清干净——只重置 status/error/pid/finished_at 时，
+        `result_summary` / `report_link` / `started_at` 仍是上一轮的旧值，重试期间
+        `GET /tasks/{id}/results` 会返回旧结果、`GET /tasks/{id}/report` 直接返回旧报告
+        （用户看到「已排队」却读得到上一轮失败/成功的产物，语义自相矛盾）。
+
         why：updated_at 必须随重置刷新——PENDING 孤儿回收按 updated_at 计时，
-        否则一个"创建很久后失败再重试"的任务会被立刻误判为排队超时（review N4）。
+        否则一个"创建很久后失败再重试"的任务会被立刻误判为排队超时。
         """
         task.status = TaskStatus.PENDING.value
         task.error_stage = None
         task.error_msg = None
         task.pid = None
         task.celery_task_id = None
+        # 新一轮执行由 _mark_running 重写 started_at；残留旧值会污染 running 超时判定
+        task.started_at = None
         task.finished_at = None
+        task.result_summary = None
+        task.report_link = None
         try:
             self.session.commit()
         except Exception:
             self.session.rollback()
             raise
+        # why：DB 清空后磁盘上的旧 report.html 仍是可读的——报告端点读文件系统而非 DB，
+        # 不删文件等于换了个地方泄漏旧结果（best-effort，失败仅告警）
+        remove_report(task.id)
         dispatch_or_fail(
             task,
             TaskStatus,
@@ -211,7 +223,7 @@ class TaskService:
         return TaskResults(task=task, results=[TaskResultItem(**item) for item in results])
 
     def get_report_html(self, task_id: int) -> str:
-        """读取任务的 HTML 报告（带鉴权端点专用，review N3）。
+        """读取任务的 HTML 报告（带鉴权端点专用）。
 
         why：报告含用例名与失败信息，此前经无鉴权 /static 静态挂载暴露且 task_id 自增可枚举；
         改由本方法经业务鉴权链路读出。任务不存在与报告未生成区分成 404 与 404（不同 code，便于前端区分文案）。

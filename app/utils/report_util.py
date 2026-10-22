@@ -1,12 +1,15 @@
 # 简单 HTML 报告（替代 Allure）。why：MVP 自包含 HTML 即可演示；必须处理无有效结果（pytest 失败）；
-# 所有插值字段 html.escape——用例名/失败信息来自用户与 pytest 输出，不转义即存储型 XSS（review H2）。
+# 所有插值字段 html.escape——用例名/失败信息来自用户与 pytest 输出，不转义即存储型 XSS。
 # 报告路径唯一来源在 report_path()：写入（执行引擎）与读取（带鉴权端点）共用，避免两处拼接漂移。
 from __future__ import annotations
 
+import logging
 from html import escape
 from pathlib import Path
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def report_path(task_id: int) -> Path:
@@ -21,6 +24,28 @@ def report_path(task_id: int) -> Path:
 
 def _esc(value) -> str:
     return escape(str(value), quote=True)
+
+
+def report_dir(task_id: int) -> Path:
+    """任务报告目录（report.html 的父目录）。why：读写两侧共用，避免目录口径漂移。"""
+    return report_path(task_id).parent
+
+
+def remove_report(task_id: int) -> bool:
+    """删除任务的旧报告文件（重试重置时调用）。
+
+    why：`result_summary` / `report_link` 清空后，磁盘上的 report.html 仍是上一次执行的产物——
+    `GET /tasks/{id}/report` 走的是文件系统而不是 DB（见 TaskService.get_report_html），
+    不删文件就会出现「DB 已是 pending、报告端点仍返回旧内容」的脏读（与重试不清旧结果同源）。
+    best-effort：删不掉只警告，不阻塞重试（report_link 已为 None，前端不会主动拉）。
+    """
+    path = report_path(task_id)
+    try:
+        path.unlink(missing_ok=True)
+        return True
+    except OSError as e:
+        logger.warning("删除任务 %s 旧报告失败（忽略）: %s", task_id, e)
+        return False
 
 
 def write_report_html(task, summary: dict, report_dir: Path) -> Path:

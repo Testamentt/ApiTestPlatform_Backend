@@ -1,6 +1,6 @@
 # AI 生成编排。why：create（Web 短操作）用传入 session + run_id 幂等 + 定向决策；
-# run_generation（Worker 长流程）用 session_factory 短事务分界——LLM 调用不占连接（RULES §2.1）。
-# 防幻觉三层护栏：Pydantic 校验 + draft 恒为 + operation_id 服务端注入（§11.2）。
+# run_generation（Worker 长流程）用 session_factory 短事务分界——LLM 调用不占连接。
+# 防幻觉三层护栏：Pydantic 校验 + draft 恒为 + operation_id 服务端注入。
 from __future__ import annotations
 
 import hashlib
@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from time import monotonic
 
 from celery.exceptions import (
-    SoftTimeLimitExceeded,  # 服务层须识别软超时以放行（R3-1），异常类型耦合可接受
+    SoftTimeLimitExceeded,  # 服务层须识别软超时以放行，异常类型耦合可接受
 )
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -44,7 +44,7 @@ def compute_run_id(document: dict, operation_ids: list[str] | None) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-# 进 Prompt 的结构约束白名单；description/example/title/default/x-* 等文档字段剥离（§10.1）
+# 进 Prompt 的结构约束白名单；description/example/title/default/x-* 等文档字段剥离
 _PROMPT_STRUCT_KEYS = {
     "type",
     "properties",
@@ -66,12 +66,12 @@ _PROMPT_STRUCT_KEYS = {
 }
 
 _SCRIPT_TAG_RE = re.compile(r"<[^>]*script[^>]*>", re.IGNORECASE)
-# §10.2 完整清洗（review R3-4）：危险标签族（script/iframe/object/embed/base/link/style）+ 控制字符
+# 完整清洗：危险标签族（script/iframe/object/embed/base/link/style）+ 控制字符
 _DANGEROUS_TAG_RE = re.compile(
     r"<\s*/?\s*(?:script|iframe|object|embed|base|link|style)\b[^>]*>", re.IGNORECASE
 )
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-# §10.1-4 敏感扫描（review R3-3）：注入句式/密钥形态/内网地址——命中即拦截该 operation
+# 敏感扫描：注入句式/密钥形态/内网地址——命中即拦截该 operation
 _INJECTION_HINTS_RE = re.compile(
     r"ignore (?:all )?(?:previous|prior) instructions|忽略(?:以上|上述|之前)的?(?:全部)?指令"
     r"|sk-[A-Za-z0-9]{16,}|BEGIN (?:RSA )?PRIVATE KEY",
@@ -81,10 +81,10 @@ _PRIVATE_NET_RE = re.compile(
     r"(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
     r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|127\.\d{1,3}\.\d{1,3}\.\d{1,3})"
 )
-# §10.1-1 逐字段截断上限（review R3-3）：结构键的字符串值（pattern/enum 项等）进 prompt 前限长
+# 逐字段截断上限：结构键的字符串值（pattern/enum 项等）进 prompt 前限长
 _PROMPT_STR_LIMIT = 256
 
-# why：输出侧敏感片段（P2-5/D2）——schema 只管形状、原 `_sanitize_llm_field` 只删标签与控制字符；
+# why：输出侧敏感片段——schema 只管形状、原 `_sanitize_llm_field` 只删标签与控制字符；
 # 若 LLM 把内网地址/密钥形态/注入句式回显出来，会随用例落库并在前端展示。命中即替换为占位符（不静默：记数）。
 _REDACTED_PLACEHOLDER = "[REDACTED]"
 
@@ -100,7 +100,7 @@ def _redact_sensitive(text: str) -> tuple[str, int]:
 
 
 def _sanitize_llm_field(value, *, counter: list[int] | None = None):
-    """LLM 输出文本清洗（§10.2 + P2-5）。why：LLM 输出不可信——先剔除危险标签与控制字符
+    """LLM 输出文本清洗。why：LLM 输出不可信——先剔除危险标签与控制字符
     （防 XSS/存储注入），再脱敏敏感片段（密钥形态/内网地址/注入句式）；counter 传入时累计命中次数，
     供调用方写审计日志（不静默）。"""
     if isinstance(value, str):
@@ -118,9 +118,8 @@ def _sanitize_llm_field(value, *, counter: list[int] | None = None):
 
 def _strip_doc_fields(value):
     """递归剥离 schema 文档字段，只留结构约束进 Prompt。
-    why：§10.1 预处理——用户 Swagger 的 description/example 可含指令/HTML/敏感文本，不得进入 LLM 输入；
-    保留的结构键字符串值（pattern/enum/default）仍可能夹带注入句式/超长内容——控制字符剥离 + 逐字段截断
-    （review R3-3，§10.1-1/2）。"""
+    why：预处理——用户 Swagger 的 description/example 可含指令/HTML/敏感文本，不得进入 LLM 输入；
+    保留的结构键字符串值（pattern/enum/default）仍可能夹带注入句式/超长内容——控制字符剥离 + 逐字段截断。"""
     if isinstance(value, dict):
         return {k: _strip_doc_fields(v) for k, v in value.items() if k in _PROMPT_STRUCT_KEYS}
     if isinstance(value, list):
@@ -132,7 +131,7 @@ def _strip_doc_fields(value):
 
 
 def _scan_prompt_risk(text: str) -> str | None:
-    """敏感信息/注入句式扫描（§10.1-4，review R3-3）。
+    """敏感信息/注入句式扫描。
 
     why：白名单+截断仍可能放过「忽略上述指令」类句式或意外携带的密钥/内网地址——
     入 prompt 前扫描，命中即拦截该 operation 并告警（不调 LLM）。Returns 命中描述或 None。
@@ -146,7 +145,7 @@ def _scan_prompt_risk(text: str) -> str | None:
 
 def _operation_to_json(op: ParsedOperation) -> str:
     """operation 可读描述（Prompt 注入）。why：只取结构化字段（结构键白名单，剥离 description/example
-    等文档字段），防注入（RULES §10.1）。"""
+    等文档字段），防注入。"""
     params = [
         {
             "name": p["name"],
@@ -189,7 +188,7 @@ def _write_log(
     raw: str | None = None,
     error: str | None = None,
 ) -> None:
-    """逐 operation 审计日志（RULES §9.6）：成功/校验失败/错误均落库，不静默丢失败。"""
+    """逐 operation 审计日志：成功/校验失败/错误均落库，不静默丢失败。"""
     with session_factory() as s:
         s.add(
             GenerationLog(
@@ -232,7 +231,7 @@ def _fail(
 
 def force_fail_timeout(session_factory, task_id: int) -> None:
     """软超时兜底：置终态并落 failed(timeout)。
-    why：Celery 软超时中断任务函数后 DB 状态可能停在 running，须迁移 failed（RULES §8.2），
+    why：Celery 软超时中断任务函数后 DB 状态可能停在 running，须迁移 failed，
     否则 run_id 幂等会永久复用该卡死任务、无法重新生成。"""
     with session_factory() as s:
         task = s.get(GenerationTask, task_id)
@@ -250,11 +249,11 @@ def force_fail_timeout(session_factory, task_id: int) -> None:
 
 
 def run_generation(session_factory, task_id: int, *, llm: LlmClient | None = None) -> None:
-    """生成编排入口。why：兜底任何未预期异常，保证任务进入明确终态（不卡 RUNNING，RULES §8.3）。"""
+    """生成编排入口。why：兜底任何未预期异常，保证任务进入明确终态（不卡 RUNNING）。"""
     try:
         _run_generation(session_factory, task_id, llm=llm)
     except SoftTimeLimitExceeded:
-        # 放行给任务层专属 handler（force_fail_timeout 落 timeout，否则 run_id 永久污染）——R3-1
+        # 放行给任务层专属 handler（force_fail_timeout 落 timeout，否则 run_id 永久污染）
         raise
     except Exception:
         logger.exception("run_generation 任务 %s 未预期异常", task_id)
@@ -301,8 +300,8 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
     generated = draft_created = rejected = 0
     rejected_detail: list[dict] = []
     cost_total = 0.0
-    redacted_total = 0  # P2-5：输出脱敏命中总数（进 result_summary，可审计）
-    # why：任务级时间预算必须由任务自己守（review N13）——Celery 的 soft/hard time_limit 在
+    redacted_total = 0  # 输出脱敏命中总数（进 result_summary，可审计）
+    # why：任务级时间预算必须由任务自己守——Celery 的 soft/hard time_limit 在
     # `--pool=solo`（Windows 本地与 docker-compose 都用它）下被静默关闭（官方文档：切换到非 prefork 池
     # 会静默关闭 soft_timeout 等特性；实测 soft=3s 对 10s 任务毫无效果），此前这条链路没有任何总时长上限，
     # 338 个 operation 串行循环可以跑几小时。检查点放在每个 operation 之前——超时最多多花"一个 operation
@@ -319,7 +318,7 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             "skipped_detail": skipped_detail,
             "prompt_version": PROMPT_VERSION,
             "cost_total": round(cost_total, 6),
-            "redacted": redacted_total,  # P2-5：LLM 输出被脱敏的片段数（0 = 未命中）
+            "redacted": redacted_total,  # LLM 输出被脱敏的片段数（0 = 未命中）
             **extra,
         }
 
@@ -337,7 +336,7 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
         op = ops_map[op_id]
         op_json = _operation_to_json(op)
         user = render_user_prompt(op_json, json_schema)
-        # §10.1-4 敏感扫描（R3-3）+ P2-7：**只扫注入的数据面**（operation 结构化描述）——此前扫整段渲染后
+        # 敏感扫描：**只扫注入的数据面**（operation 结构化描述）——此前扫整段渲染后
         # prompt，模板/JSON Schema 文本里出现关键词会误拦全部 operation（扫描面过宽）。
         risk = _scan_prompt_risk(op_json)
         if risk:
@@ -356,7 +355,7 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             continue
         start = monotonic()
         try:
-            # P2-4：把任务级 deadline 透传给 llm_client——单次调用（含重试）被剩余预算钳位，
+            # 把任务级 deadline 透传给 llm_client——单次调用（含重试）被剩余预算钳位，
             # 不再出现"检查点之间又花掉一个完整 LLM 预算"的粗粒度超时
             parsed_cases, usage = llm.chat_json(
                 system, user, schema=GeneratedCaseList, deadline=deadline
@@ -364,7 +363,7 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
         except AppError as e:
             latency_ms = int((monotonic() - start) * 1000)
             if e.code == "LLM_VALIDATION_FAILED":
-                # 校验失败同样落库（不建坏用例）+ raw_response + 具体错误（间隙 2）
+                # 校验失败同样落库（不建坏用例）+ raw_response + 具体错误
                 _write_log(
                     session_factory,
                     task_id=task_id,
@@ -441,10 +440,8 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             )
             s.commit()
         if redactions[0]:
-            # why：脱敏是"改写用户数据"，必须留痕（P2-5）——否则排查"为什么用例里出现 [REDACTED]"无迹可循
-            logger.warning(
-                "operation %s LLM 输出命中敏感片段，已脱敏 %d 处（P2-5）", op_id, redactions[0]
-            )
+            # why：脱敏是"改写用户数据"，必须留痕——否则排查"为什么用例里出现 [REDACTED]"无迹可循
+            logger.warning("operation %s LLM 输出命中敏感片段，已脱敏 %d 处", op_id, redactions[0])
             redacted_total += redactions[0]
         generated += 1
         draft_created += len(parsed_cases.cases)
@@ -456,9 +453,7 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
         if task is None:
             return
         task.operation_count = generated
-        task.prompt_version = (
-            PROMPT_VERSION  # 任务层版本溯源（review R3-2 批次：列定义了此前从未写入）
-        )
+        task.prompt_version = PROMPT_VERSION  # 任务层版本溯源（此前该列从未写入）
         task.result_summary = _snapshot()
         task.status = GenerationStatus.SUCCESS.value
         task.finished_at = _utcnow()
@@ -487,7 +482,7 @@ class GenerationService:
             )
 
         if operation_ids is not None:
-            # why：显式定向必须与文档对齐（review A1 输入层）——此前自由文本无任何校验，全部未命中会跑成
+            # why：显式定向必须与文档对齐——此前自由文本无任何校验，全部未命中会跑成
             # "SUCCESS + operation_count=0"的假成功；现改为 fail fast（同 NO_UNTESTED_OPS 的 422 口径），
             # 并把「文档中合法 id 长什么样」直接回给用户（消息里带示例，用户不必去猜 operation_id 规则）
             current_ids = set(parse_openapi(document).operation_ids)
@@ -511,7 +506,7 @@ class GenerationService:
                 logger.warning("定向 operation_id 部分未命中（将记入 skipped_detail）: %s", missing)
 
         if operation_ids is None and not force_full:
-            # 系统智能决策（间隙 1）：按 created_at 降序取最新一次分析；无历史 → 全量（开箱即用）。
+            # 系统智能决策：按 created_at 降序取最新一次分析；无历史 → 全量（开箱即用）。
             # why：校验最新分析的 untested_ops 与当前提交的 document 对应——过期快照可能静默全量跳过
             # （generated=0 仍 SUCCESS）；parse 顺带提前校验文档合法性（fail fast）。
             current_ids = set(parse_openapi(document).operation_ids)
@@ -534,15 +529,19 @@ class GenerationService:
         existing = self.repo.find_by_run_id(run_id)
         if existing:
             if existing.status == GenerationStatus.SUCCESS.value:
-                return existing  # §8.3：已成功不重复生成
+                return existing  # 已成功不重复生成
             if existing.status == GenerationStatus.FAILED.value:
-                # why：失败任务允许同输入重试——重置 PENDING 重新入队（review H4）；
-                # run_generation 有 PENDING 状态守卫（重复派发安全），否则 run_id 被 FAILED 永久占用
+                # why：失败任务允许同输入重试——重置 PENDING 重新入队；
+                # run_generation 有 PENDING 状态守卫（重复派发安全），否则 run_id 被 FAILED 永久占用。
+                # 与执行任务同口径：上一轮的进度快照/开跑时间一并清空，否则重试期间
+                # GET /generate/{id} 会返回上一次的 result_summary（generated/draft_created 等旧数字）
                 existing.status = GenerationStatus.PENDING.value
                 existing.error_stage = None
                 existing.error_msg = None
                 existing.celery_task_id = None
+                existing.started_at = None
                 existing.finished_at = None
+                existing.result_summary = None
                 try:
                     self.session.commit()
                 except Exception:
@@ -567,7 +566,7 @@ class GenerationService:
         try:
             self.repo.add(task)
         except IntegrityError as e:
-            # why：同输入并发提交撞 UNIQUE(run_id)——查回赢家返回，避免 500（review C1，与 TaskService 同口径），
+            # why：同输入并发提交撞 UNIQUE(run_id)——查回赢家返回，避免 500（与 TaskService 同口径），
             # 这条路径尤其重要：不给用户 500 才不会让他再点一次从而多花一份 LLM 钱
             winner = self.repo.resolve_after_unique_violation(
                 lambda: self.repo.find_by_run_id(run_id)

@@ -34,7 +34,7 @@ def test_create_task_202_and_execute(
     t = client.get(f"/api/v1/tasks/{tid}").json()["data"]
     assert t["status"] == "success"
     assert t["result_summary"]["passed"] == 1
-    assert t["report_link"] == f"/api/v1/tasks/{tid}/report"  # 带鉴权端点（review N3）
+    assert t["report_link"] == f"/api/v1/tasks/{tid}/report"  # 带鉴权端点
 
 
 def test_lookup_create_returns_same_task(
@@ -77,7 +77,7 @@ def test_get_missing_task_404(client):
 def test_report_endpoint_returns_html(
     client, patch_sessionlocal, fake_execution, active_case_factory
 ):
-    # why：报告改走带鉴权端点（review N3）——原 /static 静态挂载可被无凭证枚举
+    # why：报告改走带鉴权端点——原 /static 静态挂载可被无凭证枚举
     cid = active_case_factory()
     tid = client.post("/api/v1/tasks", json={"case_ids": [cid]}).json()["data"]["id"]
     r = client.get(f"/api/v1/tasks/{tid}/report")
@@ -109,7 +109,7 @@ def test_static_mount_removed(client):
 
 
 def test_failed_task_retry_same_input(client, patch_sessionlocal, active_case_factory, monkeypatch):
-    # why：失败任务同输入重试——重置 PENDING 重新入队（review H4），同一任务行复用
+    # why：失败任务同输入重试——重置 PENDING 重新入队，同一任务行复用
     cid = active_case_factory()
     monkeypatch.setattr(
         "app.services.execution_service.run_cmd",
@@ -134,7 +134,7 @@ def test_failed_task_retry_same_input(client, patch_sessionlocal, active_case_fa
 def test_dispatch_failure_marks_failed(
     client, patch_sessionlocal, active_case_factory, monkeypatch
 ):
-    # why：Celery/Redis 不可用时入队失败——落 FAILED(dispatch) 而非 PENDING 孤儿（review M2）
+    # why：Celery/Redis 不可用时入队失败——落 FAILED(dispatch) 而非 PENDING 孤儿
     cid = active_case_factory()
 
     def _boom(*args, **kwargs):
@@ -153,7 +153,7 @@ def test_dispatch_failure_marks_failed(
 def test_task_timeout_controls_subprocess(
     client, patch_sessionlocal, active_case_factory, monkeypatch
 ):
-    # why：timeout_seconds 必须真正控制 subprocess 超时（review M3/B4），而非仅参与幂等键
+    # why：timeout_seconds 必须真正控制 subprocess 超时，而非仅参与幂等键
     captured = {}
 
     def _fake_run(args, timeout, *, check=True, cwd=None, on_start=None):
@@ -173,7 +173,7 @@ def test_task_timeout_controls_subprocess(
 
 
 def test_page_size_too_large_422(client):
-    # why：分页上限（review M5）——page_size 越界拒绝，禁无上限全量返回
+    # why：分页上限——page_size 越界拒绝，禁无上限全量返回
     r = client.get("/api/v1/tasks?page_size=1000")
     assert r.status_code == 422
 
@@ -181,7 +181,7 @@ def test_page_size_too_large_422(client):
 def test_concurrent_same_input_returns_existing(
     client, patch_sessionlocal, fake_execution, active_case_factory, monkeypatch
 ):
-    """C1 回归：并发同输入不得 500。
+    """竞态回归：并发同输入不得 500。
 
     why：把「两个请求都先查、都未命中」的 TOCTOU 时序固定下来——第二次 lookup 强制返回 None，
     于是第二个请求必然撞 UNIQUE(run_id)；正确行为是查回赢家返回同一任务，而非 500。
@@ -207,7 +207,7 @@ def test_concurrent_same_input_returns_existing(
     assert page["total"] == 1  # 唯一约束 + 查回赢家 = 1 条记录、0 个 500
 
 
-# ---------- 取消 / 重试（review C2/N4）：PENDING 孤儿的出口 ----------
+# ---------- 取消 / 重试：PENDING 孤儿的出口 ----------
 
 
 @pytest.fixture()
@@ -249,7 +249,7 @@ def test_cancel_missing_404(client):
 def test_retry_cancelled_task_runs(
     client, pending_task, patch_sessionlocal, fake_execution, monkeypatch
 ):
-    # why：取消后必须能重跑（N4 的另一半）——否则 run_id 被 FAILED 行永久占死
+    # why：取消后必须能重跑——否则 run_id 被 FAILED 行永久占死
     tid = pending_task()
     assert client.post(f"/api/v1/tasks/{tid}/cancel").json()["data"]["status"] == "failed"
     # 恢复真实派发（pending_task 期间为造 pending 态替换成了 no-op），让重试走 eager 真跑
@@ -274,7 +274,88 @@ def test_retry_pending_409(client, pending_task):
     assert r.json()["code"] == "TASK_NOT_RETRYABLE"
 
 
-# ---------- P2-3：RUNNING 任务可取消（先杀进程树，再落取消终态）----------
+# ---------- 重试必须清干净上一轮结果（results / report 不得返回旧数据）----------
+
+
+@pytest.fixture()
+def failed_task_with_stale_result(client, session_factory, active_case_factory, monkeypatch):
+    """造一个 failed 任务，但行里残留上一轮 success 的 result_summary / report_link / started_at。"""
+    from app.models.enums import TaskStatus
+    from app.models.task import Task
+    from app.utils.report_util import report_path
+
+    monkeypatch.setattr("app.services.task_service.dispatch_execution", lambda *a, **kw: "cid-1")
+    monkeypatch.setattr("app.services.task_service.revoke_task", lambda cid: True)
+    cid = active_case_factory()
+    tid = client.post("/api/v1/tasks", json={"case_ids": [cid]}).json()["data"]["id"]
+
+    stale_summary = {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "results": [{"case_id": cid, "name": "上一轮", "status": "pass"}],
+    }
+    old_report = report_path(tid).parent / "report.html"
+    old_report.parent.mkdir(parents=True, exist_ok=True)
+    old_report.write_text("<html>上一轮的报告</html>", encoding="utf-8")
+    with session_factory() as s:
+        t = s.get(Task, tid)
+        t.status = TaskStatus.FAILED.value
+        t.error_stage = "subprocess"
+        t.result_summary = stale_summary
+        t.report_link = f"/api/v1/tasks/{tid}/report"
+        t.started_at = t.created_at
+        s.commit()
+    return tid, cid
+
+
+def test_retry_clears_stale_results_and_report(failed_task_with_stale_result, client):
+    """核心回归：重试期间 /results 与 /report 不得返回上一次的旧数据。
+
+    why：`_reset_and_dispatch` 此前只重置 status/error/pid/finished_at，
+    `result_summary` / `report_link` / `started_at` 原样保留——用户看到「已排队」，
+    却能从 /results 读到上一轮的通过明细、从 /report 打开上一轮的报告。
+    """
+    tid, _cid = failed_task_with_stale_result
+    r = client.post(f"/api/v1/tasks/{tid}/retry")
+    assert r.status_code == 202
+    data = r.json()["data"]
+    assert data["status"] == "pending"
+    assert data["result_summary"] is None  # 旧结果必须清空
+    assert data["report_link"] is None  # 旧报告链接必须清空
+    assert data["started_at"] is None  # 新一轮开跑时间由 _mark_running 重写
+
+    # /results 只能给出空结果集，不能回放上一轮
+    results = client.get(f"/api/v1/tasks/{tid}/results").json()["data"]
+    assert results["results"] == []
+
+    # /report 必须 404：报告端点读文件系统，光清 DB 字段不够
+    report = client.get(f"/api/v1/tasks/{tid}/report")
+    assert report.status_code == 404
+    assert report.json()["code"] == "REPORT_NOT_FOUND"
+
+
+def test_reset_clears_all_run_state(failed_task_with_stale_result, session_factory):
+    """重置字段清单的单元级锁定：漏掉任何一个都会造成「排队中读得到上一轮数据」。"""
+    from app.models.task import Task
+    from app.services.task_service import TaskService
+
+    tid, _cid = failed_task_with_stale_result
+    with session_factory() as s:
+        TaskService(s).retry_task(tid)
+    with session_factory() as s:
+        t = s.get(Task, tid)
+        assert t.status == "pending"
+        assert t.result_summary is None
+        assert t.report_link is None
+        assert t.started_at is None
+        assert t.finished_at is None
+        assert t.pid is None
+        assert t.error_stage is None
+        assert t.error_msg is None
+
+
+# ---------- RUNNING 任务可取消（先杀进程树，再落取消终态）----------
 
 
 def test_cancel_running_task_kills_tree(client, session_factory, pending_task, monkeypatch):

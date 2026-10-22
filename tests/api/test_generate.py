@@ -119,7 +119,7 @@ def test_explicit_operation_ids_partial_hit_runs(client, session_factory, no_dis
 
 
 def test_generate_concurrent_same_input_returns_existing(client, monkeypatch):
-    """C1 同类回归：生成任务并发同输入不得 500（run_id 唯一约束）。"""
+    """竞态回归：生成任务并发同输入不得 500（run_id 唯一约束）。"""
     from app.repositories.generation_task_repository import GenerationTaskRepository
 
     monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda tid: None)
@@ -152,7 +152,7 @@ def test_get_generation_missing_404(client):
 
 
 def test_create_generate_dispatch_failure_marks_failed(client, session_factory, monkeypatch):
-    # why：入队失败（Celery/Redis 不可用）落 FAILED(dispatch) 而非 PENDING 孤儿（review M2）
+    # why：入队失败（Celery/Redis 不可用）落 FAILED(dispatch) 而非 PENDING 孤儿
     def _boom(*args, **kwargs):
         raise ConnectionError("redis down")
 
@@ -167,7 +167,7 @@ def test_create_generate_dispatch_failure_marks_failed(client, session_factory, 
 
 
 def test_failed_generate_retry_same_input(client, session_factory, monkeypatch):
-    # why：失败生成任务同输入重试——重置 PENDING 重新入队（review H4），同一任务行复用
+    # why：失败生成任务同输入重试——重置 PENDING 重新入队，同一任务行复用
     def _boom(*args, **kwargs):
         raise ConnectionError("redis down")
 
@@ -187,3 +187,71 @@ def test_failed_generate_retry_same_input(client, session_factory, monkeypatch):
         assert task.error_stage is None
         assert task.error_msg is None
     assert r2.json()["data"]["id"] == task.id
+
+
+def test_failed_generate_retry_clears_stale_summary(client, session_factory, monkeypatch):
+    """重试必须清掉上一轮的进度快照——否则轮询会读到「上一次跑了多少」的旧数字。
+
+    why：与执行任务的重试同源缺陷——只重置状态字段时，`result_summary` / `started_at`
+    仍是上一轮的值，`GET /generate/{id}` 在排队期间返回旧进度。
+    """
+    from datetime import UTC, datetime
+
+    from app.models.enums import GenerationStatus
+    from app.services.generation_service import compute_run_id
+
+    with session_factory() as s:
+        task = GenerationTask(
+            # why：run_id 必须与 DOC 的真实指纹一致，否则同输入 create 会新建一行而不是走重置分支
+            run_id=compute_run_id(DOC, None),
+            document=DOC,
+            status=GenerationStatus.FAILED.value,
+            error_stage="timeout",
+            error_msg="上一轮超时",
+            result_summary={"generated": 9, "draft_created": 9, "timed_out": True},
+            started_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+        s.add(task)
+        s.commit()
+
+    def _boom(*args, **kwargs):
+        raise ConnectionError("redis down")
+
+    # 同输入 create 走 FAILED 分支重置后派发；派发失败落回 failed(dispatch)
+    monkeypatch.setattr("app.services.generation_service.dispatch_generation", _boom)
+    r = client.post("/api/v1/generate", json={"document": DOC})
+    assert r.status_code == 503
+    with session_factory() as s:
+        task = s.query(GenerationTask).one()
+        assert task.result_summary is None  # 旧快照已清
+        assert task.started_at is None
+
+
+def test_retry_clears_generation_progress_snapshot(client, session_factory, monkeypatch):
+    """重置逻辑单元级锁定：FAILED→PENDING 时 result_summary / started_at 必须为 NULL。"""
+    from datetime import UTC, datetime
+
+    from app.models.enums import GenerationStatus
+    from app.services.generation_service import GenerationService, compute_run_id
+
+    with session_factory() as s:
+        task = GenerationTask(
+            run_id=compute_run_id(DOC, None),
+            document=DOC,
+            status=GenerationStatus.FAILED.value,
+            error_stage="timeout",
+            result_summary={"generated": 4},
+            started_at=datetime.now(UTC).replace(tzinfo=None),
+        )
+        s.add(task)
+        s.commit()
+
+    monkeypatch.setattr("app.services.generation_service.dispatch_generation", lambda tid: None)
+    with session_factory() as s:
+        GenerationService(s).create_generation_task(DOC)
+    with session_factory() as s:
+        task = s.query(GenerationTask).one()
+        assert task.status == "pending"
+        assert task.result_summary is None
+        assert task.started_at is None
+        assert task.error_stage is None and task.error_msg is None
