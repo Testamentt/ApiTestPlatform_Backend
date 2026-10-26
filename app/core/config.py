@@ -25,7 +25,7 @@ class AppSettings(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8000
     docs_enabled: bool = (
-        True  # Swagger UI /docs 开关（§10.5：生产设 TESTPLATFORM_APP_DOCS_ENABLED=false 即关）
+        True  # Swagger UI /docs 开关（生产设 TESTPLATFORM_APP_DOCS_ENABLED=false 即关）
     )
 
 
@@ -43,7 +43,7 @@ class RedisSettings(BaseModel):
     port: int = 6379
     password: str = ""
     db: int = 0
-    socket_timeout: float = 2.0  # 健康检查探测超时（RULES §2.3：来自 config，禁止硬编码）
+    socket_timeout: float = 2.0  # 健康检查探测超时（来自 config，禁止硬编码）
 
 
 class CelerySettings(BaseModel):
@@ -56,10 +56,15 @@ class CelerySettings(BaseModel):
     visibility_timeout: int = 3600
     max_retries: int = 3
     result_expires: int = 3600
-    # why：PENDING 孤儿判定阈值（review N4）——消息已入队但无人领取（Redis 丢消息/Worker 长期缺席/
-    # 队列被清）时，任务会永久停在 pending 且同输入被永久复用；超过该时长由 scan_stale_tasks 回收为 FAILED
+    # why：PENDING 孤儿判定阈值——消息已入队但无人领取（Redis 丢消息/Worker 长期缺席/
+    # 队列被清）时，任务会永久停在 pending 且同输入被永久复用；超过该时长由 scan_stale_tasks 回收为 FAILED。
+    # 注意本值是「无人领取」的基础宽限，不是「排队上限」：solo 串行下前面任务的执行时间会按队列位置叠加
+    # （见 app/tasks/supervisor.py:pending_allowance_seconds）
     pending_timeout: int = 600
-    # why：队列名即「环境命名空间」（P3-2）——dev/CI/多环境共用同一 Redis 时，同队列会互相消费对方消息
+    # why：僵尸回收的周期（秒）——此前只在 Worker 启动时扫一次，Worker 长期不重启则僵尸任务永不回收。
+    # 0 = 关闭 Beat 周期扫描（仅保留启动扫描，兼容无 Beat 的部署形态）
+    stale_scan_interval: int = 60
+    # why：队列名即「环境命名空间」——dev/CI/多环境共用同一 Redis 时，同队列会互相消费对方消息
     # （实测：新起的 Worker 消费到另一个库发出的任务并 skip）；按环境改本值即可物理隔离
     queue: str = "testplatform"
 
@@ -67,16 +72,19 @@ class CelerySettings(BaseModel):
 class ExecutionSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # why：执行器可切换——local=平台自起 pytest 子进程；jenkins=投递到 Jenkins 并回读 JUnit。
+    # 默认 local 保持既有行为；切换只改配置，不动调用链。
+    executor: str = "local"
     workspace_dir: str = ".workspace"
     base_url: str = "http://httpbin.org"
     pytest_timeout: int = 300
     # why=含 python3*：代码默认须与 settings.example.yaml 契约对齐——新环境无 settings.yaml 时
-    # （如容器内未挂配置）Linux/Docker 的 sys.executable=python3.12 才能过白名单（H1 复现预防，R3）
+    # （如容器内未挂配置）Linux/Docker 的 sys.executable=python3.12 才能过白名单
     command_whitelist: list[str] = ["python", "python3*", "pytest"]
     # 被测系统鉴权适配（配置驱动，如管伊佳ERP 的 X-Access-Token）。why：扁平字段而非嵌套——
     # env 合并逻辑（_merge_env_overrides）只支持一级 section.field，嵌套 dict 无法经 env 覆盖；
     # enabled 时执行层生成登录 conftest：session 级登录一次取 token 注入每个请求头，
-    # 凭证经 env 名引用（密钥只放 .env，§8），生成的测试文件不含密钥
+    # 凭证经 env 名引用（密钥只放 .env），生成的测试文件不含密钥
     auth_enabled: bool = False
     auth_login_path: str = ""  # 登录接口路径（与 base_url 同源拼接）
     auth_login_body: dict = {"username": "{username}", "password": "{password}"}  # 字段名模板
@@ -93,8 +101,8 @@ class SwaggerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     max_upload_bytes: int = 2_000_000
-    # why=2：L3 指纹算法 md5→sha256 时按本字段语义递增——旧快照（1/md5）与新解析（2/sha256）
-    # diff 时保守全标 changed，防跨算法指纹混比（文档漂移审计 2026-09-03）
+    # why=2：指纹算法 md5→sha256 时按本字段语义递增——旧快照（1/md5）与新解析（2/sha256）
+    # diff 时保守全标 changed，防跨算法指纹混比
     hash_version: int = 2
     max_operation_ids_warn: int = 200
 
@@ -110,25 +118,45 @@ class LlmSettings(BaseModel):
     model: str = "deepseek-chat"
     temperature: float = 0
     max_tokens: int = 4096
-    max_input_chars: int = 50000  # 调用前输入长度预检阈值（§9.3：超限拒绝，防上下文裸奔）
+    max_input_chars: int = 50000  # 调用前输入长度预检阈值（超限拒绝，防上下文裸奔）
     connect_timeout: float = 5
     read_timeout: float = 60
     max_retries: int = 3
     retry_backoff: float = 1
     cost_per_1k_tokens: float = 0.001
     task_soft_timeout_seconds: int = (
-        540  # 生成任务软超时（< task_timeout_seconds，留 60s 清理窗口；RULES §8.2）
+        540  # 生成任务软超时（< task_timeout_seconds，留 60s 清理窗口）
     )
     task_timeout_seconds: int = 600
 
 
+class JenkinsSettings(BaseModel):
+    """Jenkins 集成配置（execution.executor=jenkins 时生效）。
+
+    why：平台不内嵌 Jenkins 凭据——api_token_env 存的是「环境变量名」，真实 token 只放 .env；
+    artifact_path 指向 Jenkins 构建里产出的 JUnit XML（默认沿用本仓库 Jenkinsfile 的 reports 布局）。
+    全字段带默认值：未启用 Jenkins 的环境无需在 settings.yaml 里补段也能启动。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str = ""  # 如 http://jenkins.internal:8080
+    username: str = ""  # API Token 对应的用户名
+    api_token_env: str = "JENKINS_API_TOKEN"  # 密钥只放 .env，配置里只存变量名
+    job_name: str = ""  # 流水线 job 名（如 testplatform-cases）
+    artifact_path: str = "reports/junit.xml"  # 构建制品中 JUnit XML 的相对路径
+    poll_interval_seconds: int = 5
+    connect_timeout: float = 5.0
+    read_timeout: float = 30.0
+
+
 class SecuritySettings(BaseModel):
     """鉴权与准入配置。why：api_token 的 dev 默认仅供本地演示开箱即用；
-    生产/CI 必须经 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（§3.1 禁写死密钥，dev 占位默认值不泄真实密钥）。
+    生产/CI 必须经 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（禁写死密钥，dev 占位默认值不泄真实密钥）。
 
-    - jwt_secret（P3-8b）：留空 = 关闭 JWT 通道（只认静态 api_token，保持历史行为）；填入后额外接受
+    - jwt_secret：留空 = 关闭 JWT 通道（只认静态 api_token，保持历史行为）；填入后额外接受
       HS256 签名的 JWT（校验签名 + exp/nbf + 可选 iss/aud），为后续「登录发令牌」留出入口。
-    - rate_limit_per_minute（P3-8c）：0 = 关闭（默认，不改历史行为）；>0 时按「令牌（无则客户端 IP）+
+    - rate_limit_per_minute：0 = 关闭（默认，不改历史行为）；>0 时按「令牌（无则客户端 IP）+
       固定窗口」限流，超限 429。Redis 不可用时**放行并告警**——限流是保护而非正确性前提，不能因它挂掉整站。
     """
 
@@ -144,7 +172,7 @@ class SecuritySettings(BaseModel):
 
 
 class FrontendSettings(BaseModel):
-    """Phase 4 CORS 配置（预留）。why：MVP 零前端，默认空白名单不发 CORS 头（§10.5 禁止 *）；
+    """Phase 4 CORS 配置（预留）。why：MVP 零前端，默认空白名单不发 CORS 头（禁止 *）；
     前端做时把来源填进 cors_origins 即自动挂 CORSMiddleware。"""
 
     model_config = ConfigDict(extra="forbid")
@@ -166,6 +194,7 @@ class Settings(BaseModel):
     execution: ExecutionSettings = ExecutionSettings()
     swagger: SwaggerSettings = SwaggerSettings()
     llm: LlmSettings = LlmSettings()
+    jenkins: JenkinsSettings = JenkinsSettings()
     security: SecuritySettings = SecuritySettings()
     frontend: FrontendSettings = FrontendSettings()
 
@@ -184,7 +213,7 @@ class Settings(BaseModel):
         )
 
     def _redis_auth(self) -> str:
-        """Redis 认证片段。why：密码必须 URL 编码（P3-1）——含 `@ : / # ?` 等保留字符时会拼坏 URL
+        """Redis 认证片段。why：密码必须 URL 编码——含 `@ : / # ?` 等保留字符时会拼坏 URL
         （如 `p@ss` 会被解析成 host 的一部分），而本地 `.env` 的密码恰好是任意字符串。"""
         if not self.redis.password:
             return ""
