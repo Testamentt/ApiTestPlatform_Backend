@@ -1,4 +1,4 @@
-# CI 门禁（面试导向）：门禁测试 + 慢测试 + Docker 镜像构建验证。
+# CI 门禁：门禁测试 + 慢测试 + Docker 镜像构建验证。
 # 本机无 Docker 时，docker-build job 即 Dockerfile/compose 的正确性验证闭环。
 name: CI
 
@@ -6,6 +6,12 @@ on:
   push:
     branches: [master]
   pull_request:
+
+# 测试结果发布走 Checks / PR 注释，需显式授予写权限（默认 GITHUB_TOKEN 只读）
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
 
 # 重复 push 自动取消在跑 job（省 CI 分钟）
 concurrency:
@@ -28,16 +34,51 @@ jobs:
         run: |
           ruff check app tests scripts
           ruff format --check .
-      - name: 文档漂移门禁（源文档结构 + 学习版镜像一致性，P3-6）
-        # why：链接可达 / 围栏语言 / H2 编号漂移，以及镜像原子块缺失、废弃口径回流，
-        # 此前只靠一次性人工对账脚本（doc_lint / mirror_verify / mirror_style_check）——
-        # 没有门禁，下一轮文档批量改动后必然重新漂移。B 类需要 docs-study 镜像仓库，
-        # CI 只检出 backend 时整类打印 skip 不误报；本地复核用 DOCS_STUDY_ROOT 指定镜像根。
+      - name: 文档结构门禁
+        # why：链接可达 / 围栏语言 / H2 编号这类结构漂移只能靠人工翻文档发现，
+        # 没有门禁，下一轮文档批量改动后必然重新漂移；脚本只校验 backend 仓库内的源文档。
         run: python scripts/doc_check.py
-      - name: 快速测试 + 全项目覆盖率（pytest 默认排除 slow）
-        run: pytest --cov=app --cov-report=term-missing
-      - name: 核心模块覆盖率门槛（services+utils ≥80，§11.3）
+      - name: 快速测试 + 全项目覆盖率（产出 JUnit / coverage / Allure 标准报告）
+        # why：此前 CI 只有控制台文本，失败时只能翻日志找用例，PR/Checks 与 Jenkins 都无从发布结果；
+        # junitxml + coverage xml + allure-results 是流水线消费的标准交换格式——报告要同时是「页面」和「制品」。
+        run: |
+          mkdir -p reports
+          pytest --cov=app \
+            --junitxml=reports/junit.xml \
+            --alluredir=reports/allure-results --clean-alluredir \
+            --cov-report=xml:reports/coverage.xml \
+            --cov-report=html:reports/htmlcov \
+            --cov-report=term-missing
+      - name: 核心模块覆盖率门槛（services+utils ≥80）
         run: coverage report --include='app/services/*.py,app/utils/*.py' --fail-under=80
+      - name: 生成 Allure HTML 报告（Jenkins 侧同源，故 CI 也用同一 CLI）
+        # why continue-on-error：Allure 只是展示层，报告生成失败不该把已通过的测试门禁判红；
+        # 版本固定 2.32.0 与 Jenkins 全局工具一致，避免本地/CI 报告渲染差异。
+        if: always() && hashFiles('reports/allure-results/**') != ''
+        continue-on-error: true
+        run: |
+          curl -sSL -o /tmp/allure.zip \
+            https://github.com/allure-framework/allure2/releases/download/2.32.0/allure-2.32.0.zip
+          unzip -q /tmp/allure.zip -d /tmp/allure-cli
+          /tmp/allure-cli/allure-2.32.0/bin/allure generate reports/allure-results \
+            -o reports/allure-report --clean
+      - name: 发布逐用例结果（Checks / PR 注释）
+        # why hashFiles 守卫：pytest 收集期崩溃时不会产出 junit.xml，直接发布会让「测试失败」
+        # 变成「发布步骤失败」，把真正的失败原因埋掉。
+        # why continue-on-error：结果发布是辅助通道，权限/服务抖动不应把已通过的测试门禁判红
+        if: always() && hashFiles('reports/junit.xml') != ''
+        continue-on-error: true
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: reports/junit.xml
+      - name: 归档测试报告（JUnit + coverage + Allure 结果与 HTML）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-report
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 14
 
   test-slow:
     name: 慢测试（e2e 冒烟）
@@ -50,7 +91,7 @@ jobs:
           cache: pip
       - name: 安装依赖
         run: pip install -e ".[dev]"
-      - name: 确认 slow 用例收集非空（防 addopts -m 覆盖语义失效导致空跑绿灯，R3 批次）
+      - name: 确认 slow 用例收集非空（防 addopts -m 覆盖语义失效导致空跑绿灯）
         # why -o addopts= + 恰好一个 -q：无 -q 时 collect-only 输出树形格式（无 "::"）；
         # -qq（addopts 与步骤各带 -q 叠加）则降级为纯计数摘要——两种输出 grep 都必空，
         # 只有「清空 addopts + 单个 -q」输出完整用例 id（pytest 8.4 实测）
@@ -67,10 +108,10 @@ jobs:
         run: docker compose config
       - name: 构建镜像（验证多阶段 + 非 editable 安装路径）
         run: docker build -t testplatform:ci .
-      - name: 容器内 H1 白名单实测（python3* 前缀 + run_cmd 真实执行）
-        # why：H1 修复此前仅代码层验证，本机无 Docker——CI runner 自带 Docker，
-        # 挂载脚本进容器验证真实可执行路径过白名单 + 子进程真实执行（roadmap 待闭环项）。
-        # PYTHONPATH=/app（R2-H1）：python 直接跑 /mnt 脚本时 sys.path 只有 /mnt + site-packages，
+      - name: 容器内白名单实测（python3* 前缀 + run_cmd 真实执行）
+        # why：白名单此前只在代码层验证，本机无 Docker——CI runner 自带 Docker，
+        # 挂载脚本进容器验证真实可执行路径能过白名单且子进程真实执行。
+        # PYTHONPATH=/app：python 直接跑 /mnt 脚本时 sys.path 只有 /mnt + site-packages，
         # import app 会命中安装副本（PROJECT_ROOT 漂移到 site-packages，读不到 /app/config/settings.yaml，
         # 白名单回落默认值）——显式指向源码副本，与 uvicorn/celery 的 cwd 语义对齐
         run: docker run --rm -e PYTHONPATH=/app -v "$PWD/scripts/verify_container.py:/mnt/verify_container.py:ro" testplatform:ci python /mnt/verify_container.py
