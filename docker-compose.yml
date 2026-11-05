@@ -1,6 +1,6 @@
-# docker compose up 一键启动：FastAPI + Redis + Celery Worker + SQLite（面试演示，RULES §3.3 硬规则）。
+# docker compose up 一键启动：FastAPI + Redis + Celery Worker + SQLite（演示环境，Worker 单写者串行）。
 # 本地开发仍可直跑（README 快速开始）；容器形态用于「一键拉起」演示。
-# 注意：Worker 固定 --pool=solo --concurrency=1 单写者串行写 SQLite，禁止改大（§3.3/§8 防并发写）。
+# 注意：Worker 固定 --pool=solo --concurrency=1 单写者串行写 SQLite，禁止改大（防并发写锁库）。
 services:
   redis:
     image: redis:7-alpine
@@ -20,7 +20,7 @@ services:
       MOCK_TARGET_HOST: 0.0.0.0
     volumes:
       - ./scripts/mock_target.py:/app/mock_target.py:ro
-    # why：与 redis 同等就绪门禁（R2-M2）——api/worker 等它健康后再起，消除首启竞态
+    # why：与 redis 同等就绪门禁——api/worker 等它健康后再起，消除首启竞态
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:9999/health')"]
       interval: 5s
@@ -36,15 +36,20 @@ services:
       # 容器内绝对路径，摆脱 CWD 依赖（config 默认 sqlite:///./data 是相对 CWD 的）
       TESTPLATFORM_DATABASE_URL: sqlite:////app/data/platform.db
       TESTPLATFORM_REDIS_HOST: redis
-      TESTPLATFORM_REDIS_PASSWORD: ${TESTPLATFORM_REDIS_PASSWORD:-}
+      # why：redis 服务在容器网内无 requirepass，客户端密码必须为空。
+      # 不能透传宿主 .env 的 TESTPLATFORM_REDIS_PASSWORD——compose 变量插值会读到本地开发密码，
+      # 而客户端带密码连无密码 redis 会被 AUTH 拒绝（health 探针 degraded、Celery 连不上 broker）。
+      TESTPLATFORM_REDIS_PASSWORD: ""
       TESTPLATFORM_SECURITY_API_TOKEN: ${TESTPLATFORM_SECURITY_API_TOKEN:-testplatform-dev-token}
       TESTPLATFORM_APP_DOCS_ENABLED: ${TESTPLATFORM_APP_DOCS_ENABLED:-true}
-      # 默认指向 mock 服务（全离线稳定）；联真实外网时设 TESTPLATFORM_EXECUTION_BASE_URL 覆盖
-      TESTPLATFORM_EXECUTION_BASE_URL: ${TESTPLATFORM_EXECUTION_BASE_URL:-http://mock:9999}
+      # why：必须用容器内服务名 mock（127.0.0.1 在容器里指向容器自身，执行链路必然连不通）。
+      # 同名 TESTPLATFORM_EXECUTION_BASE_URL 会被宿主 .env 插值覆盖成 http://127.0.0.1:9999，
+      # 故改用独立的容器专用变量名：宿主 .env 不再干扰，需联真实外网时显式设 TESTPLATFORM_CONTAINER_EXECUTION_BASE_URL。
+      TESTPLATFORM_EXECUTION_BASE_URL: ${TESTPLATFORM_CONTAINER_EXECUTION_BASE_URL:-http://mock:9999}
     volumes: &appvol
-      # SQLite named volume 持久化；-wal/-shm 附属文件与 db 同目录同卷，禁止拆分挂载（§3.3）
+      # SQLite named volume 持久化；-wal/-shm 附属文件与 db 同目录同卷，禁止拆分挂载
       - dbdata:/app/data
-      # 测试报告（.workspace/reports）持久化，面试演示可追溯
+      # 测试报告（.workspace/reports）持久化，执行结果可追溯
       - reports:/app/.workspace
     depends_on:
       redis:
@@ -60,9 +65,53 @@ services:
 
   worker:
     build: .
-    # 单写者：Windows 亦可用 --pool=solo；并发写 SQLite 会锁库，面试演示必须串行
-    command: celery -A app.celery_app:celery_app worker --pool=solo --concurrency=1
+    # 单写者：Windows 亦可用 --pool=solo；并发写 SQLite 会锁库，必须串行
+    # why 显式 --loglevel=INFO：Celery worker 默认级别是 WARNING，而「Task received/succeeded」
+    # 都是 INFO——不设的话容器日志只有启动横幅，任务执行过程完全不可见（排查问题无从下手）。
+    command: celery -A app.celery_app:celery_app worker --pool=solo --concurrency=1 --loglevel=INFO
     environment: *appenv
+    volumes: *appvol
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock:
+        condition: service_healthy
+
+  # 前端静态站点：nginx 托管 Vue 构建产物，并把 /api 与 /docs 同源反代到 api 服务。
+  # why：后端 CORS 白名单默认空（不发 CORS 头），同源反向代理是唯一无需改后端配置的联调方式，
+  # 与本地 dev 的 Vite 代理（vite.config.ts:17-20）行为一致。
+  #
+  # why 用 profile 隔离：前端是**独立仓库**（../frontend），backend 仓本身不含它。
+  # 若 web 参与默认 profile，只 clone backend 的人执行 `docker compose up --build` 会直接失败：
+  #   unable to prepare context: path ".../frontend" not found
+  # 所以默认 `docker compose up --build` 只起后端 5 个服务；要看完整四页界面时，
+  # 把前端仓库 clone 到同级 ../frontend 后执行：docker compose --profile frontend up --build
+  web:
+    profiles: ["frontend"]
+    build: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # nginx:alpine 无 curl，用 wget 探活首页。
+      # why 必须用 127.0.0.1 而非 localhost：容器 /etc/hosts 里 localhost 同时映射 ::1，
+      # wget 优先走 IPv6，而 nginx 默认只监听 IPv4 0.0.0.0:80 → 连 ::1 会被 refuse，healthcheck 永远 unhealthy
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  beat:
+    # why 独立服务：僵尸回收（scan_stale_tasks）靠 Beat 周期触发，只在 Worker 启动扫一次时
+    # "Worker 一直不重启 → 僵尸任务一直不回收"；Beat 只发消息不执行任务，与 worker 分开可各自重启。
+    # 调度表来自 app/celery_app.py:beat_schedule（间隔 = celery.stale_scan_interval），此处不写死节拍
+    build: .
+    command: celery -A app.celery_app:celery_app beat --loglevel=INFO --schedule=/app/data/celerybeat-schedule
+    environment: *appenv
+    # why schedule 落到 dbdata 卷：Beat 用文件记录上次触发时间，容器重建后不丢；
+    # 放容器可写层（默认 /app/celerybeat-schedule）会被 appuser 权限/重建一并带走
     volumes: *appvol
     depends_on:
       redis:

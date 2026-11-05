@@ -1,11 +1,13 @@
-# 多阶段构建（面试导向）：builder 装依赖（层可缓存）+ runtime 精简层、非 root（RULES §3.3）。
+# 多阶段构建：builder 装依赖（层可缓存）+ runtime 精简层，容器内以非 root 运行。
 # 本机 Docker 未装时由 GitHub Actions 的 docker-build job 验证本文件。
 FROM python:3.12-slim AS builder
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY app ./app
 # why：非 editable 安装——-e 会创建指向 builder 阶段 /app 的软链接，runtime 阶段无源码会 ModuleNotFoundError
-RUN pip install --no-cache-dir --prefix=/install .
+# why 装 executor extra：execution.executor=local 时执行层在子进程跑 `python -m pytest` 产出 JUnit，
+# pytest 是运行时依赖；只装基础依赖会让任务在 parse 阶段因缺少 report.xml 失败
+RUN pip install --no-cache-dir --prefix=/install ".[executor]"
 
 FROM python:3.12-slim
 WORKDIR /app
@@ -17,7 +19,7 @@ COPY --from=builder /app/app ./app
 COPY prompts ./prompts
 # settings.yaml 被 gitignore 不入库，容器用 example 兜底默认值，运行配置走 env 覆盖
 COPY config/settings.example.yaml ./config/settings.yaml
-# 预建数据/工作目录并 chown appuser：named volume 首次挂载继承该属主，非 root 可写（§3.3）
+# 预建数据/工作目录并 chown appuser：named volume 首次挂载继承该属主，非 root 可写
 RUN mkdir -p /app/data /app/.workspace && useradd -m appuser && chown -R appuser /app
 USER appuser
 EXPOSE 8000

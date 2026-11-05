@@ -15,8 +15,12 @@ dependencies = [
     "PyYAML>=6.0,<7.0",
     "httpx>=0.27,<1.0",
     "openai>=1.0,<3.0",
-    # P3-8b：JWT 鉴权通道（security.jwt_secret 为空时该通道关闭；依赖随包安装以保持导入稳定）
+    # JWT 鉴权通道（security.jwt_secret 为空时该通道关闭；依赖随包安装以保持导入稳定）
     "PyJWT>=2.8,<3.0",
+    # why 显式声明：kombu 的 redis 传输在模块顶层无条件 import packaging.version，
+    # 但 kombu 自身未把它列为依赖。本地 dev 环境因 pytest 顺带装了 packaging 而不报错，
+    # 容器只装运行时依赖 → ModuleNotFoundError，Celery Worker/Beat 直接起不来。
+    "packaging>=24,<27",
 ]
 
 [project.optional-dependencies]
@@ -25,7 +29,13 @@ dev = [
     "pytest-cov>=5,<7",
     "ruff>=0.16,<0.17",
 ]
-# P3-8a：切 PostgreSQL 时 `pip install -e ".[postgres]"`——SQLAlchemy 侧无需改代码
+# why 独立 extra：execution.executor=local 时执行层在子进程里跑 `python -m pytest` 生成 JUnit，
+# 故 pytest 是该模式的**运行时**依赖（而非仅开发期）。容器镜像必须带上它，
+# 否则任务会以 parse 阶段 'No such file or directory: report.xml' 失败（pytest 根本没跑起来）。
+executor = [
+    "pytest>=8.2,<9.0",
+]
+# 切 PostgreSQL 时 `pip install -e ".[postgres]"`——SQLAlchemy 侧无需改代码
 # （方言差异已收敛在 app/core/database.py 的纯函数里），只换驱动与 database.url
 postgres = [
     "psycopg[binary]>=3.2,<4.0",
@@ -43,8 +53,8 @@ line-length = 100
 target-version = "py312"
 src = ["app", "tests"]
 # why：ruff ≥0.11 会格式化 Markdown 里内嵌的 Python 片段——文档里的代码块是**示意片段**
-# （刻意截取/简化，且要与 docs-study 镜像逐字一致），不该被 formatter 自动重排；
-# 否则任何一行超长注释都会让 CI 的 `ruff format --check .` 挂掉。docs 也不参与 lint（CI 只显式检查 app/tests/scripts）。
+# （刻意截取/简化），不该被 formatter 自动重排；否则任何一行超长注释都会让 CI 的
+# `ruff format --check .` 挂掉。docs 也不参与 lint（CI 只显式检查 app/tests/scripts）。
 extend-exclude = ["docs"]
 
 [tool.ruff.lint]
@@ -63,7 +73,7 @@ markers = [
 ]
 
 [tool.coverage.report]
-# §11.3 全项目门槛；核心模块（services+utils）≥80 由 CI 单独 fail-under 校验
+# 全项目覆盖率门槛；核心模块（services+utils）≥80 由 CI 单独 fail-under 校验
 fail_under = 60
 show_missing = true
 skip_covered = true

@@ -9,7 +9,7 @@ app:
   version: 0.1.0
   host: 0.0.0.0
   port: 8000
-  docs_enabled: true          # Swagger UI /docs 开关（§10.5：生产设 false 即关）
+  docs_enabled: true          # Swagger UI /docs 开关（生产设 false 即关）
 
 database:
   url: sqlite:///./data/platform.db   # 生产: postgresql://user:pass@host:5432/db
@@ -30,15 +30,18 @@ celery:
   visibility_timeout: 3600            # 必须 > time_limit，否则任务重复投递
   max_retries: 3                      # 仅瞬时异常重试
   result_expires: 3600               # result backend 仅短期状态，存活时长
-  pending_timeout: 600                # PENDING 孤儿阈值（秒）：入队却无人领取超此时长即回收为 failed
-  queue: testplatform                 # 队列名=环境命名空间（P3-2）：多环境同机共用 Redis 时改此值隔离消息
+  pending_timeout: 600                # PENDING 孤儿基础宽限（秒）：入队却无人领取超此时长即回收为 failed；
+                                      # 实际判定值按队列位置叠加前序任务的 timeout_seconds（solo 串行排队不算孤儿）
+  stale_scan_interval: 60             # 僵尸回收扫描周期（秒，Celery Beat）；0=关闭周期扫描（仅 Worker 启动补扫）
+  queue: testplatform                 # 队列名=环境命名空间：多环境同机共用 Redis 时改此值隔离消息
 
 execution:
+  executor: local                     # 执行器：local=平台子进程跑 pytest；jenkins=投递 Jenkins 并回读 JUnit
   workspace_dir: .workspace           # 动态测试文件 / report.xml / HTML 报告
   base_url: http://httpbin.org        # 被测接口 base_url（写死，Phase 2 再补多环境）
   pytest_timeout: 300                 # subprocess 超时阈值（来自 config，禁止硬编码）
   command_whitelist: [python, python3*, pytest] # run_cmd 白名单；* 尾缀=前缀匹配（兼容 Linux/Docker 的 python3.12）
-  # 被测系统鉴权适配（auth_enabled 时执行层自动登录取 token 注入请求头；凭证走 .env 的 env 名引用，§8）
+  # 被测系统鉴权适配（auth_enabled 时执行层自动登录取 token 注入请求头；凭证走 .env 的 env 名引用）
   # 示例为管伊佳ERP（X-Access-Token + 密码 MD5 传输）；登录体是 dict，仅支持 yaml 配置
   # auth_enabled: true
   # auth_login_path: /user/login
@@ -49,9 +52,19 @@ execution:
   # auth_token_field: data.token
   # auth_password_encoding: md5
 
+jenkins:                              # Jenkins 集成（execution.executor=jenkins 时生效；全带默认值，未启用不影响启动）
+  base_url: ""                        # 如 http://jenkins.internal:8080（留空=未启用）
+  username: ""                        # API Token 对应的用户名
+  api_token_env: JENKINS_API_TOKEN    # 密钥只放 .env，这里只存环境变量名
+  job_name: ""                        # 流水线 job 名（如 testplatform-cases）
+  artifact_path: reports/junit.xml    # 构建制品里 JUnit XML 的相对路径（与本仓库 Jenkinsfile 布局一致）
+  poll_interval_seconds: 5            # 队列/构建轮询间隔（秒）
+  connect_timeout: 5.0                # 连接超时（秒，禁止硬编码在客户端）
+  read_timeout: 30.0                  # 单次请求读超时（秒）
+
 swagger:                              # Phase 2 影响分析（全带 default，缺失不阻塞启动）
   max_upload_bytes: 2000000           # Swagger 文档大小上限（超限拒绝解析）
-  hash_version: 2                     # 哈希算法版本（升级递增；2=sha256 指纹，L3 起，旧快照不重建）
+  hash_version: 2                     # 哈希算法版本（升级递增；2=sha256 指纹，旧快照不重建）
   max_operation_ids_warn: 200         # operation 数告警阈值（超限只 warning 继续入库）
 
 llm:                                  # Phase 3 AI 生成（全带 default，缺失不阻塞启动）
@@ -60,7 +73,7 @@ llm:                                  # Phase 3 AI 生成（全带 default，缺
   model: deepseek-chat
   temperature: 0                      # 确定性，可复现
   max_tokens: 4096                    # 生成上限
-  max_input_chars: 50000              # 输入长度预检阈值（§9.3：超限拒绝）
+  max_input_chars: 50000              # 输入长度预检阈值（超限拒绝）
   connect_timeout: 5                  # 连接超时（秒）
   read_timeout: 60                    # 读超时（秒）
   max_retries: 3                      # 瞬时异常重试次数
@@ -69,14 +82,14 @@ llm:                                  # Phase 3 AI 生成（全带 default，缺
   task_soft_timeout_seconds: 540      # 生成任务软超时（< 硬超时，留清理窗口）
   task_timeout_seconds: 600           # 生成任务硬超时（200 接口串行 ≈400s 兜底）
 
-security:                             # Bearer 鉴权 + 可选加固（P3-8b/c；两项默认关闭，不改变历史行为）
-  api_token: testplatform-dev-token   # dev 默认仅供本地演示；生产必须 TESTPLATFORM_SECURITY_API_TOKEN 覆盖（§3.1）
-  jwt_secret: ""                      # 留空=关闭 JWT 通道；填入后额外接受 HS256 签名且带 exp 的 JWT（P3-8b）
+security:                             # Bearer 鉴权 + 可选加固（两项默认关闭，不改变历史行为）
+  api_token: testplatform-dev-token   # dev 默认仅供本地演示；生产必须由 TESTPLATFORM_SECURITY_API_TOKEN 覆盖
+  jwt_secret: ""                      # 留空=关闭 JWT 通道；填入后额外接受 HS256 签名且带 exp 的 JWT
   jwt_algorithm: HS256                # 仅用于验签，白名单机制防 alg=none 降级
   jwt_issuer: ""                      # 可选：要求 iss 匹配
   jwt_audience: ""                    # 可选：要求 aud 匹配
-  rate_limit_per_minute: 0            # 0=关闭限流；>0 时按「令牌哈希/IP + 固定窗口」计数，超限 429（P3-8c）
+  rate_limit_per_minute: 0            # 0=关闭限流；>0 时按「令牌哈希/IP + 固定窗口」计数，超限 429
   rate_limit_window_seconds: 60       # 固定窗口长度（秒）
 
-frontend:                             # Phase 4 CORS 白名单（MVP 零前端，默认空=不挂中间件）
+frontend:                             # CORS 白名单（默认空 = 不挂中间件）
   cors_origins: []                    # 前端做时填来源，如 [http://localhost:5173]
