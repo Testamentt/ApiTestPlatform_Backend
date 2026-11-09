@@ -1,4 +1,4 @@
-# 旧库 report_link 迁移（P3-3）。why：报告访问从「无鉴权 /static 静态面」改为「带鉴权 API 端点」后，
+# 旧库 report_link 迁移。why：报告访问从「无鉴权 /static 静态面」改为「带鉴权 API 端点」后，
 # 历史任务行里存的仍是 /static/{id}/report.html，点开就是 404；本脚本把旧链接就地改写成新端点。
 # 幂等：已是新形态（或为空）的行不动，可反复执行。
 from __future__ import annotations
@@ -50,9 +50,7 @@ def migrate(*, dry_run: bool = False) -> tuple[int, int]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="把历史任务的 report_link 迁移到带鉴权端点（P3-3）"
-    )
+    parser = argparse.ArgumentParser(description="把历史任务的 report_link 迁移到带鉴权端点")
     parser.add_argument("--dry-run", action="store_true", help="只打印将改写的行，不落库")
     args = parser.parse_args()
     scanned, changed = migrate(dry_run=args.dry_run)

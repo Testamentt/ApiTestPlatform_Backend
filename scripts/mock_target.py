@@ -51,7 +51,7 @@ async def echo_get(request: Request) -> dict:
 )
 def status_by_code(code: int, response: Response) -> dict:
     # why：4xx/5xx 场景直接驱动 expected_status 断言（如 401/403/404/500），无需真实业务逻辑；
-    # 夹逼 100-599——0/600 等非法值会让 httpx 报协议错误而非拿到预期状态码（R3 批次）
+    # 夹逼 100-599——0/600 等非法值会让 httpx 报协议错误而非拿到预期状态码
     response.status_code = max(100, min(code, 599))
     return {"code": code}
 
@@ -60,7 +60,7 @@ def status_by_code(code: int, response: Response) -> dict:
 async def delay(seconds: float, request: Request) -> dict:
     # why：演示「任务超时劫持」——tasks.timeout_seconds 调小 + 本端点长延迟即触发 SUBPROCESS_TIMEOUT；
     # 上限 10s 防 mock 自身被长请求拖死。await asyncio.sleep（而非 time.sleep）：不阻塞事件循环，
-    # 延迟期间其他演示请求照常服务（R2-M1，§7.2 async def 内禁阻塞调用）
+    # 延迟期间其他演示请求照常服务（async def 内禁阻塞调用）
     await asyncio.sleep(min(seconds, 10))
     return _echo_base(request)
 

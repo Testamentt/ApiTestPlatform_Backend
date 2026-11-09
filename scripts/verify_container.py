@@ -1,4 +1,4 @@
-# H1 容器内白名单实测（CI docker-build job 专用）。why：白名单 `python3*` 前缀修复（review H1）
+# 容器内白名单实测（CI docker-build job 专用）。why：白名单 `python3*` 前缀的容器内验证
 # 此前仅代码层验证，需在真实容器（python:3.12-slim，sys.executable 形态与宿主不同）内确认；
 # 本机无 Docker 时由 CI 兜底：docker run 挂载本脚本执行，不改镜像内容。
 from __future__ import annotations
@@ -14,7 +14,7 @@ from app.utils.subprocess_util import _name_allowed, run_cmd
 
 
 def main() -> None:
-    # ⓪ import 路径自检（R2-H1）：python 直接跑挂载脚本时 sys.path 不含 /app，
+    # ⓪ import 路径自检：python 直接跑挂载脚本时 sys.path 不含 /app，
     # import app 会命中 site-packages 副本（PROJECT_ROOT 漂移 → settings.yaml 读不到 →
     # 白名单回落默认值，后续断言给出误导性失败）。此处 fail-fast 给出明确修复指引。
     app_root = Path(app.__file__).resolve().parents[1]
@@ -25,9 +25,9 @@ def main() -> None:
     whitelist = get_settings().execution.command_whitelist
     exe_name = os.path.basename(sys.executable).lower()
 
-    # ① 容器内真实可执行路径必须过白名单（H1 核心场景）
+    # ① 容器内真实可执行路径必须过白名单（核心场景）
     assert _name_allowed(exe_name, whitelist), f"容器内 {exe_name} 未过白名单 {whitelist}"
-    # ② python3.12 形态名命中 `python3*` 前缀模式（H1 修复点）
+    # ② python3.12 形态名命中 `python3*` 前缀模式（修复点）
     assert _name_allowed("python3.12", whitelist), "python3* 前缀模式未命中 python3.12"
     # ③ run_cmd 真实执行一条子进程（端到端，不只是字符串匹配）
     result = run_cmd(
