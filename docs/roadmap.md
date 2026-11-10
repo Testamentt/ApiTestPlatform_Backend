@@ -2,8 +2,9 @@
 
 > **定位**：项目往哪走——原则、当前状态、里程碑与下一步（活文档，随迭代更新）。
 > **状态**：活文档 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：本文件（方向）+ [TODO.md](TODO.md)（完成项台账）+ 各专题文档（实现细节） ｜ **双轨镜像**：`E:\Project\docs-study\TestPlatform\backend\docs\roadmap.md`
+> **事实源锚点**：本文件（方向）+ [TODO.md](TODO.md)（完成项台账）+ 各专题文档（实现细节） ｜ **双轨镜像**：`本地私有镜像（不入库）`
 > **规则引用**：`RULES.md` §17-R5（变更沉淀）。三者分工：方向 / 台账 / 细节，避免同一事实两处维护而漂移。
+> **链接约定**：`docs/plans/`、`docs/sessions/`、`docs/reviews/` 为本地归档、不入库；正文只写反引号路径，不提供超链接。
 
 ## 1. 项目原则（面试导向）
 
@@ -19,7 +20,7 @@
 
 **全部交付完成**：Phase 1 执行闭环 / Phase 2 影响分析 / Phase 3 AI 智能生成 / Phase 4 生产化 + Vue 前端 / 2026-08-12 全量 Code Review 批次 A·B / **批次 C Minor 加固（L1-L12 + request_id 全链路追踪）** / **2026-09-03 R3 子代理交叉验证修复** / **2026-10-08 全量代码审查（14 条新发现）+ P0/P1 修复（9 项）**。门禁全绿：后端 pytest + slow e2e、前端 vitest、ruff、覆盖率（数值以 CI 为准，见 [README.md](../README.md) §3）。
 
-> 原「唯一未闭环验证项」H1 已于 2026-08-31 经 CI 容器内实测闭环（见「待解决问题」已闭环区）；无遗留验证阻塞。已知边界与代价清单见 [reviews/2026-10-08-p0-p1-fix-report.md](reviews/2026-10-08-p0-p1-fix-report.md)（本地归档）。
+> 原「唯一未闭环验证项」H1 已于 2026-08-31 经 CI 容器内实测闭环（见「待解决问题」已闭环区）；无遗留验证阻塞。已知边界与代价清单见 `reviews/2026-10-08-p0-p1-fix-report.md`（本地归档）。
 
 ## 3. 交付里程碑总览
 
@@ -30,8 +31,8 @@
 | Phase 2 · 变更影响分析 | ✅ 完成 | 版本快照 + 分段 hash O(1) diff + breaking 联合判定 + 一键回归 | 新旧 Swagger → diff → 圈定 → 一键回归 |
 | Phase 3 · AI 智能生成 | ✅ 完成 | llm_client + prompts/v1 + 三层防幻觉护栏 + 审计 | 生成 draft → 审核 → active |
 | Phase 4 · 生产化与前端 | ✅ 完成 | Docker Compose + CI 三 job + Bearer Token + Vue 4 页 | 一键 `docker compose up` + 前端页面可用 |
-| 2026-08-12 · Code Review A/B | ✅ 完成 | H1-H4（白名单/报告转义/僵尸扫描/失败重试）+ M1-M5/M7 | 见 [reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md) |
-| 2026-10-08 · 审查 + P0/P1 修复 | ✅ 完成 | 并发 500 / 假成功 / Worker 日志断环 / 报告鉴权 / 用例更新闸 / 排队孤儿回收 + 取消重试 / 任务内超时 | 见 [reviews/2026-10-08-p0-p1-fix-report.md](reviews/2026-10-08-p0-p1-fix-report.md) |
+| 2026-08-12 · Code Review A/B | ✅ 完成 | H1-H4（白名单/报告转义/僵尸扫描/失败重试）+ M1-M5/M7 | 见 `reviews/2026-08-12-full-code-review.md` |
+| 2026-10-08 · 审查 + P0/P1 修复 | ✅ 完成 | 并发 500 / 假成功 / Worker 日志断环 / 报告鉴权 / 用例更新闸 / 排队孤儿回收 + 取消重试 / 任务内超时 | 见 `reviews/2026-10-08-p0-p1-fix-report.md` |
 
 ## 4. 面试演示路径（按卖点）
 
@@ -65,7 +66,7 @@
 - [x] 子进程 UTF-8 编解码 + 跨平台杀树（POSIX `killpg`）+ `on_start` 异常清理。
 - [x] PENDING 排队孤儿回收（`celery.pending_timeout` + revoke）+ 取消/人工重试端点 + `_mark_running` 条件更新。
 - [x] 生成链路任务内超时预算 + 进度快照；执行任务级 soft/time limit 按 `timeout_seconds` 派生。
-- 详情：[sessions/2026-10-08-p0-p1-fixes.md](sessions/2026-10-08-p0-p1-fixes.md) ｜ 修复报告：[reviews/2026-10-08-p0-p1-fix-report.md](reviews/2026-10-08-p0-p1-fix-report.md)
+- 详情：`sessions/2026-10-08-p0-p1-fixes.md` ｜ 修复报告：`reviews/2026-10-08-p0-p1-fix-report.md`
 
 **已闭环（2026-09-01 · 被测系统迁移：管伊佳ERP）**
 - [x] **Swagger2→OpenAPI3 转换**：`scripts/convert_swagger2.py`（线上 `/v2/api-docs` 拉取/本地文件兜底；basePath→servers、definitions→components、in:body→requestBody、参数 schema 包裹），产物 320 paths/338 operations、parse 0 warning。见 [examples/jsherp-openapi3.json](examples/jsherp-openapi3.json)。
@@ -76,13 +77,13 @@
 - [x] **本地 mock 目标服务**：`scripts/mock_target.py`（httpbin 兼容子集：回显/`/status/{code}`/`/delay/{n}`/`/bearer`）；`.env.example` 与 compose 默认切本地 mock（`http://mock:9999`），`docker compose up` 全离线可复现。冒烟：2 用例执行 success（passed=2/2）+ HTML 报告，全程 3.4s。见 [execution-engine.md](execution-engine.md) §8.1。
 - [x] **H1 容器内实测**：本机无 Docker → 搬进 CI——`docker-build` job 构建后 `docker run` 挂载 `scripts/verify_container.py` 容器内验证（真实可执行路径过白名单 + `python3.12` 前缀命中 + run_cmd 真实执行 + 白名单外命令真实拒绝）。
 - [x] **prompt 断言强约束**：真实 LLM 冒烟发现 `assertions=0` → system.md 要求每条用例至少 1 条断言（响应 schema 字段校验，未定义 schema 用 `status_code` 等值）；复核冒烟 9 条用例 `assertions=1` 全命中、0 rejected。
-- [x] **断言引擎（2026-09）**：`AssertionItem` 校验（path 白名单/op 白名单）接入创建/更新/AI 生成三入口；执行引擎渲染契约层基线 + 字段层点路径断言逐条求值（非法历史条目注释跳过）；system.md 升级为「契约层 1 条 + 字段层 2-4 条」。见 [sessions/2026-09-09-assertion-engine.md](sessions/2026-09-09-assertion-engine.md)。
+- [x] **断言引擎（2026-09）**：`AssertionItem` 校验（path 白名单/op 白名单）接入创建/更新/AI 生成三入口；执行引擎渲染契约层基线 + 字段层点路径断言逐条求值（非法历史条目注释跳过）；system.md 升级为「契约层 1 条 + 字段层 2-4 条」。见 `sessions/2026-09-09-assertion-engine.md`。
 
 **已闭环（原批次 C，2026-08 完成）**
 - [x] request_id 全链路追踪（§6.2）、health redis close、`hmac.compare_digest`、MD5→sha256、`_BOUNDARY_RULES` 外置 prompts/、openapi 递归深度限制、execution_service 错误分类、GeneratedCase 长度对齐、repository rollback 包装、前端类型安全解包、Python 版本统一、测试 marker 归类、**前端 CI**（L10——见 [frontend/.github/workflows/ci.yml](https://github.com/Testamentt/ApiTestPlatform_Frontend/blob/master/.github/workflows/ci.yml)）。
 
 **已闭环（AI 生成真实 LLM 冒烟，2026-08-28）**
-- [x] 真实 DeepSeek 调用端到端冒烟（`.env` key 生效验证）：`POST /generate` → eager 任务 → `llm_client` 真调 `deepseek-chat` → 2/2 operation 覆盖、9 条 draft 用例（`source=ai`/`trust=80`、operation_id 服务端注入）、0 rejected、成本 ≈$0.002；request_id 全链路日志核验通过。沉淀：[sessions/2026-08-28-ai-generation-smoke.md](sessions/2026-08-28-ai-generation-smoke.md)。
+- [x] 真实 DeepSeek 调用端到端冒烟（`.env` key 生效验证）：`POST /generate` → eager 任务 → `llm_client` 真调 `deepseek-chat` → 2/2 operation 覆盖、9 条 draft 用例（`source=ai`/`trust=80`、operation_id 服务端注入）、0 rejected、成本 ≈$0.002；request_id 全链路日志核验通过。沉淀：`sessions/2026-08-28-ai-generation-smoke.md`。
 
 **已定但未做**
 - 自愈看板（Vue 页）：**不做**——AI UI 项目卖点，不重复造轮子（Phase 4 备注）。

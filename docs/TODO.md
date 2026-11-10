@@ -3,6 +3,7 @@
 > **定位**：按里程碑分组的**完成项台账**（过程记录，不参与双轨镜像）；方向见 [roadmap.md](roadmap.md)，实现细节见各专题文档。
 > **状态**：现行有效（追加式，不回改历史条目） ｜ **最后核对**：2026-10-08
 > **计数口径**：各历史条目里的用例数为**当时**数值；当前门禁数值一律以 CI 为准（后端 pytest + slow e2e、前端 vitest、ruff、覆盖率），不要引用历史条目里的数字。
+> **链接约定**：`docs/plans/`、`docs/sessions/`、`docs/reviews/` 为本地归档、不入库；正文只写反引号路径，不提供超链接。
 
 ## Phase 0 · 文档与基建（已完成）
 
@@ -13,7 +14,7 @@
 
 ## Phase 1 · 核心执行闭环（已完成，MVP 简化）
 
-> MVP 简化（面试导向）：砍掉 Alembic（create_all 替代）、request_id 中间件、Allure（HTML 报告替代）、每 5 分钟扫描（仅启动扫描一次）、`{{base_url}}` 环境管理（base_url 写死 config）。沉淀：[docs/sessions/2026-08-06-phase1-mvp.md](sessions/2026-08-06-phase1-mvp.md)。
+> MVP 简化（面试导向）：砍掉 Alembic（create_all 替代）、request_id 中间件、Allure（HTML 报告替代）、每 5 分钟扫描（仅启动扫描一次）、`{{base_url}}` 环境管理（base_url 写死 config）。沉淀：`docs/sessions/2026-08-06-phase1-mvp.md`。
 
 - [x] pyproject.toml（依赖 + ruff + pytest 配置）+ app/ 分层骨架
 - [x] 配置加载（BaseModel 手动合并 yaml/env + get_engine + 日志 + AppError）
@@ -26,7 +27,7 @@
 
 ## Phase 2 · 变更影响分析（已完成，核心卖点 1）
 
-> 纯规则引擎（无 AI）。沉淀：[docs/sessions/2026-08-08-review-fixes.md](sessions/2026-08-08-review-fixes.md)。
+> 纯规则引擎（无 AI）。沉淀：`docs/sessions/2026-08-08-review-fixes.md`。
 
 - [x] api_definitions 表（operation_id / path / method / request_schema_hash，`hashlib.md5` 指纹）
 - [x] `POST /api/v1/parse`：Swagger 解析入库（$ref / allOf / oneOf 递归 + reparse 覆盖）
@@ -61,7 +62,7 @@
 
 ## 2026-08-12 · 全量 Code Review 修复（批次 A/B，已完成）
 
-> 评审：[docs/reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md)；计划：[docs/plans/2026-08-12-fix-plan.md](plans/2026-08-12-fix-plan.md)。
+> 评审：`docs/reviews/2026-08-12-full-code-review.md`；计划：`docs/plans/2026-08-12-fix-plan.md`。
 
 - [x] H1 命令白名单 `python3*` 前缀匹配（容器执行路径）；H2 HTML 报告转义 + /static 收敛 reports/；H3 `scan_stale_tasks` 覆盖生成任务；H4 FAILED 任务同输入可重试（Lookup-Create 语义修订）
 - [x] M1 前端时间补 Z（UTC naive 显示偏移）；M2 入队失败落 FAILED(dispatch) + 503；M3/B4 `tasks.timeout_seconds` 真正控制执行超时（dev 库已 reset）；M5 `page_size`≤100 / `case_ids`≤500；M7 仪表盘按 status 统计
@@ -69,7 +70,7 @@
 
 ## 2026-08-·批次 C（Minor 加固，已全部完成）
 
-> 沉淀：[docs/sessions/2026-08-batch-c.md](sessions/2026-08-batch-c.md)；评审明细 [reviews/2026-08-12-full-code-review.md](reviews/2026-08-12-full-code-review.md) §3.3。
+> 沉淀：`docs/sessions/2026-08-batch-c.md`；评审明细 `reviews/2026-08-12-full-code-review.md` §3.3。
 
 - [x] L1 health redis close；L2 `hmac.compare_digest` 常数时间 token 比对；L3 合同指纹 MD5→sha256（旧数据 re-parse 覆盖）
 - [x] L4 generation_task_repository commit 补 rollback 包装（与 TaskRepository 对齐）；L5 `_BOUNDARY_RULES` 外置 `prompts/v1/boundary_rules.md`
@@ -80,7 +81,7 @@
 
 ## 2026-09-01 · 被测系统迁移：管伊佳ERP（已完成）
 
-> 沉淀：[docs/sessions/2026-09-01-jsherp-migration.md](sessions/2026-09-01-jsherp-migration.md)。演示形态二选一：离线 mock（兜底）/ 管伊佳ERP（真实业务系统）。
+> 沉淀：`docs/sessions/2026-09-01-jsherp-migration.md`。演示形态二选一：离线 mock（兜底）/ 管伊佳ERP（真实业务系统）。
 
 - [x] Swagger2→OpenAPI3 转换脚本 `scripts/convert_swagger2.py` + 产物 `docs/examples/jsherp-openapi3.json`（320 paths/338 ops，parse 0 warning）+ 解析片段单测
 - [x] 执行层鉴权适配：`execution.auth_*` 配置（登录路径/体模板/密码编码 md5/token 头与提取路径）+ workspace 登录 conftest（session 级一次登录，凭证仅 env 引用）+ 用例模板 token 头注入；单测含密钥不落盘断言
@@ -89,7 +90,7 @@
 
 ## 2026-08-31 · 演示稳定性 + H1 闭环 + prompt 断言（已完成）
 
-> 沉淀：[docs/sessions/2026-08-31-demo-stability-h1.md](sessions/2026-08-31-demo-stability-h1.md)；另含 CI lint 门禁修复（ruff format 全仓 + PEP695 + 版本落锁，commit ff05fd3）。
+> 沉淀：`docs/sessions/2026-08-31-demo-stability-h1.md`；另含 CI lint 门禁修复（ruff format 全仓 + PEP695 + 版本落锁，commit ff05fd3）。
 
 - [x] 本地 mock 目标服务 `scripts/mock_target.py`（httpbin 兼容子集）；.env.example/compose 默认本地 mock，`docker compose up` 全离线；执行冒烟 2/2 passed + HTML 报告（3.4s）
 - [x] H1 容器内实测搬进 CI：docker-build job 构建后 `docker run` 挂载 `scripts/verify_container.py` 容器内验证白名单（真实路径/python3.12 前缀/真实执行/越权拒绝四断言）
@@ -97,7 +98,7 @@
 
 ## 2026-09-09 · 断言引擎上线（已完成）
 
-> 沉淀：[docs/sessions/2026-09-09-assertion-engine.md](sessions/2026-09-09-assertion-engine.md)
+> 沉淀：`docs/sessions/2026-09-09-assertion-engine.md`
 
 - [x] `AssertionItem` schema（path 白名单正则 / op 白名单 / extra=forbid）接入 CaseCreate/CaseUpdate/GeneratedCase 三入口，非法断言 422 或整 case 校验拒绝
 - [x] 执行引擎渲染断言：契约层 status_code 基线恒渲染 + 字段层 `_dig` 点路径逐条求值；非法历史条目注释跳过；失败消息带 case id/path/op/expected 进 JUnit
@@ -105,7 +106,7 @@
 
 ## 2026-10-08 · 全量代码审查 + P0/P1 修复（已完成）
 
-> 沉淀：[docs/sessions/2026-10-08-p0-p1-fixes.md](sessions/2026-10-08-p0-p1-fixes.md) ｜ 审查报告 + 修复报告见 `docs/reviews/`（本地归档）。本轮只改文档口径的部分见「待办清单维护」一节。
+> 沉淀：`docs/sessions/2026-10-08-p0-p1-fixes.md` ｜ 审查报告 + 修复报告见 `docs/reviews/`（本地归档）。本轮只改文档口径的部分见「待办清单维护」一节。
 
 - [x] 审查：全量源码 + 已知问题清单逐条核验（A1/C1/C3 等）+ 真机端到端；新发现 14 条（1 High / 5 Medium）
 - [x] P0 C1：并发同输入撞 `UNIQUE(run_id)` → 查回赢家返回（task/generate 两链路，不再 500）
