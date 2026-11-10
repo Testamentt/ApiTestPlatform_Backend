@@ -30,7 +30,7 @@
 | `docs/reviews/` | 评审记录（含全量代码审查报告） | 本地归档，不入库，不回改；正文只写路径 |
 | `docs/session-doc-template.md` | 会话文档模板 | 本地归档，不入库 |
 | [TODO.md](TODO.md) | 完成项台账 | 只勾选、不回改描述 |
-| [examples/](examples/) | 示例数据（Swagger 产物） | 数据文件，非文档 |
+| [examples/jsherp-openapi3.json](examples/jsherp-openapi3.json) | 示例数据（Swagger 产物） | 数据文件，非文档 |
 
 > 归档约定：**任何评审/报告类产物（如代码审查报告）一律归入 `docs/reviews/`**（本地归档，不入库，不提供链接），不留在仓库根或容器根。
 
