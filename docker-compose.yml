@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # docker compose up 一键启动：FastAPI + Redis + Celery Worker + SQLite（演示环境，Worker 单写者串行）。
 # 本地开发仍可直跑（README 快速开始）；容器形态用于「一键拉起」演示。
 # 注意：Worker 固定 --pool=solo --concurrency=1 单写者串行写 SQLite，禁止改大（防并发写锁库）。
@@ -46,6 +47,14 @@ services:
       # 同名 TESTPLATFORM_EXECUTION_BASE_URL 会被宿主 .env 插值覆盖成 http://127.0.0.1:9999，
       # 故改用独立的容器专用变量名：宿主 .env 不再干扰，需联真实外网时显式设 TESTPLATFORM_CONTAINER_EXECUTION_BASE_URL。
       TESTPLATFORM_EXECUTION_BASE_URL: ${TESTPLATFORM_CONTAINER_EXECUTION_BASE_URL:-http://mock:9999}
+      # why：容器不透传宿主环境变量，密钥不在 compose 里声明就取不到——AI 生成会在
+      # openai.OpenAIError: Missing credentials 上直接失败（Worker 里 lru_cache 的 settings
+      # 首次读取时就定型，再补环境变量只能重建容器）。默认留空：不配 key 时执行链路照常可用，
+      # 只有 /generate 会明确报错，不静默。
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      TESTPLATFORM_LLM_API_KEY_ENV: ${TESTPLATFORM_LLM_API_KEY_ENV:-DEEPSEEK_API_KEY}
+      TESTPLATFORM_LLM_BASE_URL: ${TESTPLATFORM_LLM_BASE_URL:-https://api.deepseek.com}
+      TESTPLATFORM_LLM_MODEL: ${TESTPLATFORM_LLM_MODEL:-deepseek-chat}
     volumes: &appvol
       # SQLite named volume 持久化；-wal/-shm 附属文件与 db 同目录同卷，禁止拆分挂载
       - dbdata:/app/data
