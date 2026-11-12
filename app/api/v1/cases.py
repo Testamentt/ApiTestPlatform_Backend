@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 用例路由。why：路由只做参数解析/转发，业务逻辑在 service。
 from __future__ import annotations
 

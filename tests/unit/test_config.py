@@ -1,4 +1,5 @@
-"""Phase 4 配置建模测试。
+# 本项目编码格式：UTF-8（无 BOM）。
+"""生产化与前端配置建模测试。
 
 why：验证新增 security / frontend / app.docs_enabled 的默认值契约与
 TESTPLATFORM_* env 覆盖链路（配置契约三处同步）。
@@ -7,8 +8,8 @@ TESTPLATFORM_* env 覆盖链路（配置契约三处同步）。
 from app.core.config import get_settings
 
 
-def test_phase4_defaults():
-    """默认契约：/docs 开、dev token、CORS 空白名单（MVP 零前端）。"""
+def test_frontend_defaults():
+    """默认契约：/docs 开、dev token、CORS 空白名单（零前端部署时不发 CORS 头）。"""
     settings = get_settings()
     assert settings.app.docs_enabled is True
     assert settings.security.api_token == "testplatform-dev-token"

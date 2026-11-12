@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 状态枚举。why：状态列用 StrEnum + String（SQLite 无原生 ENUM），代码层校验。
 from enum import StrEnum
 

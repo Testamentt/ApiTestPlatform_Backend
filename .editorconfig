@@ -1,0 +1,32 @@
+# 本项目编码格式：UTF-8（无 BOM）。
+# 编辑器与 IDE 的编码约定：让「存盘」这一步就不可能产出非 UTF-8 文件。
+#
+# why：中文乱码最常见的成因不是代码写错，而是「同一份文件在不同机器上用不同默认编码存盘」。
+# Windows 上不少编辑器/重定向默认 cp936 或 UTF-16，一次存盘就能把整个文件变成乱码，
+# 且此后解码永远成功、只有人眼能看出。把编码写进这里，新环境打开编辑器即生效。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Python：与 ruff 的 line-length / 缩进一致
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+# 前端：与 .prettierrc 习惯一致（2 空格）
+[*.{ts,js,mjs,vue,json,yml,yaml,scss,css,html}]
+indent_size = 2
+
+# Markdown：不裁剪行尾空格——两个空格是换行语义
+[*.md]
+trim_trailing_whitespace = false
+
+# 批处理：cmd 对 LF 解析不稳，必须 CRLF
+[*.{bat,cmd}]
+end_of_line = crlf

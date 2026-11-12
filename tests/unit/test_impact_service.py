@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # ImpactService 测试：analyze（首次/二次 diff/breaking 圈定/identical/版本碰撞守卫）+
 # regression（宽容降级/无受影响抛错）+ 模型 affected_count 同步。
 from __future__ import annotations

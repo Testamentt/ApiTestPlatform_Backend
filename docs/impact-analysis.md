@@ -1,28 +1,28 @@
+<!-- 本项目编码格式：UTF-8（无 BOM）。 -->
 # 变更影响分析设计（impact-analysis.md）
 
-> **定位**：变更怎么圈定回归——版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归 + fix-hints。
-> **覆盖范围**：Phase 2 纯规则引擎（无 AI）+ Phase 3 新增 fix-hints 联动 ｜ **状态**：现行有效 ｜ **最后核对**：2026-10-08
-> **事实源锚点**：`app/services/impact_service.py`、`app/utils/impact_diff.py`、`app/utils/openapi_parser.py` ｜ **双轨镜像**：`本地私有镜像（不入库）`
-> **规则引用**：`RULES.md` §5.2（索引）、§6.2（日志）。延后项（Git Webhook / 字段级差异 UI / priority 字段）见 §9。
+> 定位：变更怎么圈定回归：版本快照 → 分段 hash O(1) diff → breaking 判定 → SQL 反向检索 → 一键回归 + fix-hints。
+> 事实源：`app/services/impact_service.py`、`app/utils/impact_diff.py`、`app/utils/openapi_parser.py` ｜ 最后核对：2026-11-12
 
 ## 1. 数据源：api_definitions 版本快照
 
-每次 Swagger 变更 → `POST /api/v1/parse` 解析 → 提取 `operation_ids` + **分段 hashes** + **operation_contracts** → 作为新版本 INSERT `api_definitions`。
+每次 Swagger 变更 → `POST /api/v1/parse` 解析 → 提取 `operation_ids`、分段 hashes 与 operation_contracts → 作为新版本 INSERT `api_definitions`。
 
 | 字段 | 说明 |
 | :--- | :--- |
-| version | UNIQUE；用户标签或 auto `v{n}`；**reparse 覆盖**（同 version 再解析先删旧插新，CI 重复触发不膨胀） |
-| hash_version | 哈希算法代际（config `swagger.hash_version`；现值 2=sha256 指纹，L3 起）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed |
+| version | UNIQUE；用户标签或 auto `v{n}`；reparse 覆盖（同 version 再解析先删旧插新，CI 重复触发不膨胀） |
+| hash_version | 哈希算法代际（config `swagger.hash_version`；现值 2=sha256 指纹）；升级时旧快照不重建，diff 版本不一致公共接口保守全标 changed |
 | operation_ids | 血缘全集 |
-| operation_hashes | **分段** `{op_id: {"request": sha256, "response": sha256}}`（review L3：MD5→sha256 防恶意碰撞）——回答「请求变了还是响应变了」，为 Phase 3 字段级差异留数据口子 |
+| operation_hashes | 分段 `{op_id: {"request": sha256, "response": sha256}}`（MD5→sha256，防止恶意碰撞）——回答「请求变了还是响应变了」，为 AI 生成 字段级差异留数据口子 |
 | operation_contracts | `{op_id: {"required": [...], "signature": {field_path: {"type","enum"}}, "response_status_codes": [...]}}`——breaking 判定的第二层输入（response_status_codes 供状态码变化判定） |
 
-> **分段 hash 关键**：`response` 段含**状态码指纹** `{"status_codes": sorted, "schemas": {...}}`——200→202（异步化改造，语义变响应体不变）也必须被检测，否则用例按 200 断言会静默失败。
-> **hash 白名单键**：只对影响用例请求/断言的结构键（type/required/enum/min-max…）规范化，description/example/default 不参与——改注释不误报、改约束必命中。
+> 分段 hash 的关键：`response` 段含状态码指纹 `{"status_codes": sorted, "schemas": {...}}`，200→202（异步化改造，语义变响应体不变）也必须被检测，否则用例按 200 断言会静默失败。
+> hash 白名单键：只对影响用例请求/断言的结构键（type/required/enum/min-max…）规范化，description/example/default 不参与，改注释不误报、改约束必命中。
+> 版本碰撞守卫：`new_version` 与对比基线相同时 `analyze` 直接返回 409 `VERSION_COLLISION`——否则新快照会覆盖历史版本，diff 源永久丢失。
 
 ## 2. breaking 联合判定（不只比 required）
 
-hash 回答「结构变没变」；`operation_contracts` 对比回答「是否破坏性」。`_is_breaking` 命中任一即 breaking：
+hash 回答「结构变没变」；`operation_contracts` 对比回答「是否破坏性」。`_is_breaking`（`app/utils/impact_diff.py`）共六类判定，命中任一即 breaking：
 
 | # | 场景 | 判定 |
 | :--- | :--- | :--- |
@@ -30,11 +30,11 @@ hash 回答「结构变没变」；`operation_contracts` 对比回答「是否�
 | ② | 字段 type 变化（string→integer） | breaking |
 | ③ | 枚举值删减（["active","pending"] → ["active"]） | breaking |
 | ④ | 字段被删除（下游断言 KeyError） | breaking |
-| ⑤ | 响应状态码删减/替换（200→202：旧码不再返回，下游按旧码断言失败；F1） | breaking |
-| ⑥ | 契约缺失（old/new contract 为 `None`，如"无 body → 有 body"） | breaking（**安全默认**，宁可多圈一次也不漏） |
-| — | 仅放宽（去掉 required、类型兼容、枚举新增、响应码新增） | **non-breaking，不圈定回归**（避免误报） |
+| ⑤ | 响应状态码删减/替换（200→202：旧码不再返回，下游按旧码断言失败） | breaking |
+| ⑥ | 契约缺失（old/new contract 为 `None`，如"无 body → 有 body"） | breaking（安全默认，宁可多圈一次也不漏） |
+| — | 仅放宽（去掉 required、类型兼容、枚举新增、响应码新增） | non-breaking，不圈定回归（避免误报） |
 
-> 面试话术：「仅比 required 会漏报 type 变化/字段删除/枚举删减/状态码替换四类破坏性变更——联合判定多场景全命中，放宽不误圈；契约信息不全时保守判破坏性，把判断权交给人审。」
+> 仅比 required 会漏报 type 变化、字段删除、枚举删减、状态码替换四类破坏性变更。联合判定覆盖这些场景，放宽类变更不误圈；契约信息不全时保守判破坏性，把判断权交人审。
 
 ## 3. Diff 算法
 
@@ -45,22 +45,26 @@ old = api_definitions[old_version 或最近];  new = 本次解析结果
 2. added   = new_ids - old_ids                # 新增 → 提示可生成用例
 3. common  = old_ids ∩ new_ids
 4. changed = [op in common if old_hashes[op] != new_hashes[op]]   # 结构变化
+   # hash_version 不一致时（旧快照用旧算法）：common 全部标 changed，避免跨算法指纹混比
 5. breaking_changed = [op in changed if _is_breaking(old.contracts[op], new.contracts[op])]
+   non_breaking_changed = changed - breaking_changed
 6. identical = not added and not removed and not changed
 ```
 
-## 4. SQL 反向检索（面试必问核心 SQL）
+## 4. SQL 反向检索
 
-```python
-# affected（圈定回归）：只查破坏性变更绑定的 active 用例
-SELECT * FROM test_cases WHERE operation_id IN (breaking_changed) AND status = 'active'
-# orphaned（迁移清单）：removed 接口绑定的用例（同样限 active——draft 用例不进迁移清单）
-SELECT * FROM test_cases WHERE operation_id IN (removed_ops) AND status = 'active'
-# untested（Phase 3 铺路）：new 版本中未绑任何 active 用例的接口
-SELECT operation_id FROM api_definitions... WHERE operation_id NOT IN (已绑定集合)
+```sql
+-- affected（圈定回归）：只查破坏性变更绑定的 active 用例
+SELECT * FROM test_cases WHERE operation_id IN (breaking_changed) AND status = 'active';
+-- orphaned（迁移清单）：removed 接口绑定的用例（同样限 active，draft 用例不进迁移清单）
+SELECT * FROM test_cases WHERE operation_id IN (removed_ops) AND status = 'active';
+-- untested（AI 生成 铺路）：新版接口里还没有 active 用例绑定的
+SELECT DISTINCT operation_id FROM test_cases
+ WHERE operation_id IN (new_ids) AND status = 'active';
+-- 上面取到「已绑定集合」，再与 parsed.operation_ids 在 Python 侧求差（不是 SQL 子查询）
 ```
 
-命中 Phase 1 已建索引 `ix_test_cases_operation_id`（SQLAlchemy `index=True` 默认前缀）。
+命中 `ix_test_cases_operation_id` 索引（SQLAlchemy `index=True` 默认前缀）；`affected_case_ids` / `orphaned_case_ids` 落库前排序去重。
 
 ## 5. 影响分析结果模型（impact_analyses 表）
 
@@ -68,13 +72,14 @@ SELECT operation_id FROM api_definitions... WHERE operation_id NOT IN (已绑定
 | :--- | :--- |
 | old_version / new_version | 对比版本对 |
 | added_ops / removed_ops / changed_ops | 三态集合 |
-| breaking_changed_ops | **唯一触发回归圈定** |
-| affected_case_ids + affected_count | breaking 变更的 active 用例 id 快照；count 由模型层 `@validates` **整体赋值时同步**（写入口收敛整体替换，禁止原地 append） |
-| orphaned_case_ids | removed 接口绑定的用例——**迁移清单**，提示人工重绑/删除 |
-| suggested_remap | `{removed_op: added_op}` 相似名配对（difflib 规范化，**只建议不自动重绑**，保守避免误绑） |
-| untested_ops | 未绑 **active** 用例的接口清单——**首次（尚无 active 绑定）时 = 全部接口**，直接做 Phase 3 批量生成骨架 |
-| affected_summary | `{total}`（快照期；**回归时按执行时真实口径重算**） |
-| last_regression_at / last_regression_task_id / last_regression_executed_count | **回归结果持久化**：每次一键回归更新，可追溯「为什么这次只跑了 N 个」 |
+| breaking_changed_ops | 唯一触发回归圈定 |
+| affected_case_ids + affected_count | breaking 变更的 active 用例 id 快照；count 由模型层 `@validates` 整体赋值时同步（写入口收敛整体替换，禁止原地 append） |
+| orphaned_case_ids | removed 接口绑定的用例——迁移清单，提示人工重绑/删除 |
+| suggested_remap | `{removed_op: added_op}` 相似名配对（difflib 规范化，只建议不自动重绑，保守避免误绑） |
+| untested_ops | 未绑 active 用例的接口清单——首次（尚无 active 绑定）时 = 全部接口，直接做 AI 生成 批量生成骨架 |
+| affected_summary | `{total}`（快照期；回归时按执行时真实口径重算） |
+| last_regression_at / last_regression_task_id / last_regression_executed_count | 回归结果持久化：每次一键回归更新，可追溯「为什么这次只跑了 N 个」 |
+| ai_fix_hint | breaking 变更的一句话修复建议（`POST /impact/{id}/fix-hints` 按需生成，best-effort，失败为 NULL） |
 
 ## 6. 一键回归（宽容降级 + 真实口径 + 审计）
 
@@ -82,20 +87,21 @@ SELECT operation_id FROM api_definitions... WHERE operation_id NOT IN (已绑定
 POST /impact/{analysis_id}/regression
   → 读 affected_case_ids 快照
   → 宽容过滤：只执行当前仍 active 的，dropped 附 reason（case deleted / case draft）
-  → 全失效 → 422；复用 Phase 1 TaskService.create_execution_task（Lookup-Create 幂等）
+  → 全失效 → 422；超过单任务用例上限（MAX_CASE_IDS）→ 422 TOO_MANY_CASES，提示分批圈定
+  → 复用 执行闭环 TaskService.create_execution_task（Lookup-Create 幂等）
   → summary 执行时真实口径 {total: executed+dropped, executed, dropped}（不用旧快照，防误导）
   → mark_regression 落库 last_regression_* + 结构化日志审计（analysis_id/task_id/executed/dropped/reasons）
   → 202 {task_id}
 ```
 
-### 6.1 fix-hints 修复建议（Phase 3 联动，best-effort）
+### 6.1 fix-hints 修复建议（AI 生成 联动，best-effort）
 
 ```text
 POST /impact/{analysis_id}/fix-hints
   → 读 breaking_changed_ops（无则 422）
-  → 短事务分界：先查关事务再调 LLM（§2.1）
-  → prompts/v1/fix_hint_* 模板渲染（breaking_ops 经 repr 定界注入，§3.2/§10.1）
-  → llm_client.chat_json(FixHint schema) → 审计写 generation_logs(model='fix_hint'，成功/失败均落库，§9.6)
+  → 短事务分界：先查关事务再调 LLM
+  → prompts/v1/fix_hint_* 模板渲染（breaking_ops 经 repr 定界注入）
+  → llm_client.chat_json(FixHint schema) → 审计写 generation_logs(model='fix_hint'，成功/失败均落库)
   → 成功：ai_fix_hint = {breaking_changed_ops, suggestion}；失败：置 None 不阻塞（best-effort）
 ```
 
@@ -104,13 +110,14 @@ POST /impact/{analysis_id}/fix-hints
 
 ## 7. 宽容解析（带 warnings，不静默）
 
-解析器**只提取不校验**：$ref 目标不存在、跨文件 $ref、operation_id 重复等**逐条记入 `warnings`** 并透出到 ParseResult/AnalyzeResult；Service 不阻塞入库但用户可感知「哪些接口的 hash 可能不可靠」。
+解析器只提取不校验：$ref 目标不存在、跨文件 $ref、operation_id 重复等逐条记入 `warnings` 并透出到 ParseResult/AnalyzeResult；Service 不阻塞入库但用户可感知「哪些接口的 hash 可能不可靠」。
 
 ## 8. 复杂度与验收
 
 - O(1) diff（只存 hashes）+ 索引检索 <10ms → 整体 <10s；`operation_id` 血缘覆盖全部用例 → 回归范围 100%。
 - 验收：Swagger 1.0 建 3 用例 → Swagger 2.0 改 1 接口入参 → diff 返回「变更 1、影响 1」→ 一键回归成功。
-- 演示场景：非 breaking 不误圈 / 状态码 200→202 命中 / 接口改名给迁移清单 / 退化回归 summary 真实口径 / 重复 id 告警。
+- 可复现的验证场景：非 breaking 不误圈 / 状态码 200→202 命中 / 接口改名给迁移清单 / 退化回归 summary 真实口径 / 重复 id 告警。
+- 明确延后：Git Webhook 自动触发分析、字段级差异 UI、priority 字段。
 
 ## 9. 边界情况
 
@@ -120,23 +127,23 @@ POST /impact/{analysis_id}/fix-hints
 | 新旧相同（哈希全等） | identical，无受影响 |
 | operation 改名 | removed+added → orphaned_case_ids + suggested_remap 提示迁移 |
 | operation_id 缺失/重复 | 缺失自动生成（路径参数归一化 `/users/{id}`→`/users/:param`）；重复进 warnings（血缘可能误圈定） |
-| 回归时用例已删/改 draft | 宽容降级只执行 active，dropped 附 reason；全失效 422 |
+| 回归时用例已删/改 draft | 宽容降级只执行 active，dropped 附 reason（不存在记 case deleted，存在但非 active 记 case draft）；全失效 422 |
 | 哈希算法升级 | hash_version 区分新旧，diff 不一致全标 changed |
 
-## 10. 面试锚点
+## 10. 设计问答
 
-| 问题 | 话术 |
+| 问题 | 结论 |
 | :--- | :--- |
-| O(1) diff？ | 只存 version+hashes，diff=集合差+哈希比较 |
-| 200→202 会漏检？ | 响应 hash 含状态码指纹（F1） |
-| breaking 漏报？ | required+type/enum+字段删除+状态码替换+契约缺失，多场景联合判定（F1/F2）；契约信息不全时保守判破坏性 |
-| 接口改名血缘断裂？ | orphaned 迁移清单 + suggested_remap 可操作建议 |
-| 回归可追溯？ | last_regression_* 落库 + 结构化日志 + 真实口径 summary |
-| 为什么不用 AI？ | 确定性规则零成本零幻觉；AI 留给 Phase 3 生成 |
+| O(1) diff 怎么做到？ | 只存 version+hashes，diff=集合差+哈希比较 |
+| 200→202 会漏检吗？ | 响应 hash 含状态码指纹 |
+| breaking 会漏报吗？ | 六类联合判定（required 收紧、type 变化、枚举删减、字段删除、状态码删减/替换、契约缺失）；契约信息不全时保守判破坏性 |
+| 接口改名血缘断裂吗？ | orphaned 迁移清单 + suggested_remap 可操作建议 |
+| 回归可追溯吗？ | last_regression_* 落库 + 结构化日志 + 真实口径 summary |
+| 为什么不用 AI？ | 规则判定确定、可复现、无 token 成本；AI 只用在 AI 生成 的用例生成与修复建议 |
 
 ## 11. 相关文档
 
 - [api.md](api.md) — `parse` / `impact/*` 端点契约
 - [database.md](database.md) — `api_definitions`、`impact_analyses` 表结构
 - [ai-generation.md](ai-generation.md) — fix-hints 与定向生成（`untested_ops`）联动
-- [README.md](README.md) — 文档地图与写作规范
+- [README.md](README.md) — 文档地图与阅读路径

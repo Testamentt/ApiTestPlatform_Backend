@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # CI 门禁：门禁测试 + 慢测试 + Docker 镜像构建验证。
 # 本机无 Docker 时，docker-build job 即 Dockerfile/compose 的正确性验证闭环。
 name: CI
@@ -38,6 +39,17 @@ jobs:
         # why：链接可达 / 围栏语言 / H2 编号这类结构漂移只能靠人工翻文档发现，
         # 没有门禁，下一轮文档批量改动后必然重新漂移；脚本只校验 backend 仓库内的源文档。
         run: python scripts/doc_check.py
+      - name: 文档与注释去 AI 味门禁
+        # why：内部工单编号、协作过程叙述（审查后/本轮）、自贬措辞与生成式套话一旦回流，
+        # 外部读者看到的就不是设计，而是协作痕迹。纯文本约定靠自觉必然回潮，固化成门禁才拦得住。
+        # 规则见 RULES.md §20；语义类问题（编造数字、技术事实错误）仍靠人复核，正则抓不到。
+        run: python scripts/doc_hygiene.py
+      - name: 编码格式门禁
+        # why：中文乱码几乎都来自三类可机械判定的漂移——文件不是 UTF-8（GBK/cp936 存盘）、
+        # 带了 BOM、新文件忘了写首行声明。乱码一旦落到日志/报告/子进程输出，排查成本远高于
+        # 在提交时拦下；本仓库的脚本与文档是重灾区，必须由门禁而不是自觉来保证。
+        # 规则见 RULES.md 的「项目编码格式」一节。
+        run: python scripts/encoding_check.py
       - name: 快速测试 + 全项目覆盖率（产出 JUnit / coverage / Allure 标准报告）
         # why：此前 CI 只有控制台文本，失败时只能翻日志找用例，PR/Checks 与 Jenkins 都无从发布结果；
         # junitxml + coverage xml + allure-results 是流水线消费的标准交换格式——报告要同时是「页面」和「制品」。

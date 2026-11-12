@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 执行器单测：工厂选择 + Jenkins 执行器回读链路（假客户端，无网络）。
 # why：执行器是「在哪里跑」的唯一分叉点——这里锁死 local 不被误路由、Jenkins 结果与失败码不失真。
 from __future__ import annotations

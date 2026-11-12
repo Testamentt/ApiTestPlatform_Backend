@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 影响分析数据访问。why：mark_regression 持久化每次一键回归结果（可追溯）。
 from __future__ import annotations
 

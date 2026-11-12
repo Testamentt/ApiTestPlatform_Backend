@@ -1,4 +1,5 @@
-# 影响分析路由。why：路由零逻辑，转发 ImpactService；regression 复用 Phase 1 执行引擎（Lookup-Create 幂等）；
+# 本项目编码格式：UTF-8（无 BOM）。
+# 影响分析路由。why：路由零逻辑，转发 ImpactService；regression 复用执行闭环执行引擎（Lookup-Create 幂等）；
 # fix-hints 按需生成 breaking 修复建议（联动点 2，轻量 LLM，best-effort）。
 from __future__ import annotations
 

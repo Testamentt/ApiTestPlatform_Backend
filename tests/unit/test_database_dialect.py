@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 数据库方言适配测试：SQLite / PostgreSQL 的引擎参数分派。
 # why：WAL pragma 与 check_same_thread 只对 SQLite 有效，对 PostgreSQL 执行会直接报错——
 # 方言判定必须是纯函数、可测、唯一。

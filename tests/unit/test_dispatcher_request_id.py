@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 派发器透传测试：request_id 随任务参数跨进程传递。
 from __future__ import annotations
 

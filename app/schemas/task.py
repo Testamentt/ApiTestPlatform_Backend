@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 任务出入参。why：TaskCreate 只收 case_ids 快照 + 超时；results 读 result_summary（无独立结果表）。
 from __future__ import annotations
 

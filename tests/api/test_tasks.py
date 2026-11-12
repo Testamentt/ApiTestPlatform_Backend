@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 任务接口测试：202 立即返回 / Lookup-Create 幂等 / draft 不可执行 / 结果查询 / 重试与入队兜底。
 from __future__ import annotations
 

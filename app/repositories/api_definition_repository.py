@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 版本快照数据访问。why：get_latest（id desc 取最近）+ upsert 实现 reparse 覆盖（同 version 先删旧插新）。
 from __future__ import annotations
 

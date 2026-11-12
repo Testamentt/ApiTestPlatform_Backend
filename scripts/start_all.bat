@@ -1,3 +1,4 @@
+@rem 本项目编码格式：UTF-8（无 BOM）。
 @echo off
 rem One-click launch: uvicorn + celery worker + celery beat, one tab per window (Ctrl+C stops each).
 rem Why Windows Terminal: cmd (conhost) does not render ANSI color codes, so uvicorn's colored logs show as '[' chars.

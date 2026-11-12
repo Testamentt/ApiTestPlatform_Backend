@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 执行器工厂。why：把「在哪里跑」收敛成一个配置项（execution.executor=local|jenkins），
 # 编排层只依赖 Executor 协议；新增执行器（如 K8s Job）只需加实现 + 在这里注册一行。
 from __future__ import annotations

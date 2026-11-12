@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Jenkins REST 客户端：外部调用的唯一封装（与 llm_client 同构）。
 # why：① 业务代码禁止裸调 httpx，超时集中来自 config；② API Token 只从 .env 的 env 名读取，
 # 绝不入日志/入 URL（query 里放凭据会被访问日志与代理记录）；③ 触发→排队→轮询→取制品的

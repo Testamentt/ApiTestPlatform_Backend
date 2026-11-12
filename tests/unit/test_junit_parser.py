@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # junit_parser 单元测试：累加 testsuite / 逐用例 / 损坏兜底。
 from __future__ import annotations
 

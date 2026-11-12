@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 全局测试夹具。why：内存 SQLite + dependency_overrides 隔离；Celery eager 不连真实 Redis；
 # workspace 隔离见 tests/_env.py（必须排在所有 app.* 导入之前）。
 from __future__ import annotations
@@ -70,7 +71,7 @@ def client(session_factory):
             db.close()
 
     app.dependency_overrides[get_db] = _override_get_db
-    # Phase 4：现有测试绕过鉴权（test_auth.py 用独立 auth_client 走真实 verify_token）
+    # 生产化与前端：现有测试绕过鉴权（test_auth.py 用独立 auth_client 走真实 verify_token）
     app.dependency_overrides[verify_token] = lambda: None
     # 不用上下文管理器：避免触发 lifespan 去动真实 DB
     yield TestClient(app)

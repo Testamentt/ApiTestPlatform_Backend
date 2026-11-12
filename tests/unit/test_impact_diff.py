@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # diff 纯函数单测：added/removed/changed/identical + breaking 联合判定四场景 + hash_version 演进 + suggested_remap。
 from __future__ import annotations
 

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 用例接口测试：CRUD / operation_id 必填 / confirm 防幻觉 / 物理删除。
 from __future__ import annotations
 

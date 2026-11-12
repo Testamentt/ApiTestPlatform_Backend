@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Worker 日志接管测试。why：全链路 request_id 的可观测性靠"Worker 进程真的装了
 # Filter/Formatter 且格式串含 request_id"这一事实维持——此前只有 Web 侧安装，Worker 日志既无统一格式
 # 也无 request_id；且实测发现"只换 Formatter 对象、保留 Celery 的 format 串"等于没接管（格式里没有占位符）。

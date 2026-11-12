@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 容器内白名单实测（CI docker-build job 专用）。why：白名单 `python3*` 前缀的容器内验证
 # 此前仅代码层验证，需在真实容器（python:3.12-slim，sys.executable 形态与宿主不同）内确认；
 # 本机无 Docker 时由 CI 兜底：docker run 挂载本脚本执行，不改镜像内容。

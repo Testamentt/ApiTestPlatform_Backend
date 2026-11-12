@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 用例数据访问。
 from __future__ import annotations
 

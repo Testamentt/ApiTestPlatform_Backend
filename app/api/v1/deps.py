@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 依赖注入。why：get_db 每个请求独立会话，try-finally 保证关闭（泄漏会锁库）；
 # verify_token 统一「准入控制」——Bearer 鉴权（静态 token 或 JWT）+ 可选限流，
 # JWT 与限流默认关闭以保持历史行为。

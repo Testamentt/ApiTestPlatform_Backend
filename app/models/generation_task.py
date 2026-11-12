@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # AI 生成任务。why：独立于执行 tasks 表（语义分离）；run_id 幂等（Lookup-Create 防重复调 LLM）；
 # document 落库——大对象不传队列（任务入参只传 task_id）。
 from __future__ import annotations

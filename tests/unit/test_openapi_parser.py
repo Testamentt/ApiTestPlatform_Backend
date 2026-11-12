@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # OpenAPI 解析器单测：提取/$ref/allOf/oneOf/array/自动生成归一化/分段 hash/contracts/warnings/宽容解析/非法文档。
 from __future__ import annotations
 

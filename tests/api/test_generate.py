@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # generate API 测试：202 / Lookup-Create 幂等 / 超大小 422 / 定向 / NO_UNTESTED / 任务查询。
 from __future__ import annotations
 

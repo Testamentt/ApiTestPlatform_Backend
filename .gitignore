@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 密钥与本地配置（密钥只放 .env）
 .env
 .env.*
@@ -49,3 +50,6 @@ docs/plans/
 docs/reviews/
 docs/sessions/
 docs/session-doc-template.md
+
+# 文档维护规范（内部指导，不对外展示；对外的文档地图见 docs/README.md）
+docs/README.internal.md

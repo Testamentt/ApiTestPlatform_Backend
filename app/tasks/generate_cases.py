@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # generate_cases Celery 任务。why：LLM 调用不阻塞 Web；
 # soft_time_limit/task_timeout 取 llm 配置（200 接口串行 ≈400s 兜底），软超时捕获落 FAILED；
 # 不设 autoretry——LLM 瞬时重试已在 llm_client 内部收敛，Celery 层重跑会重复生成 draft（副作用）。

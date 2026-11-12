@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 唯一 LLM 入口。why：超时/错误分类/重试/成本日志收敛在单一边界（业务禁止裸调 SDK）；
 # response_format 强制 JSON + _extract_json 格式清洗双重容错；校验失败抛 AppError 携带 raw_response 供 generation_log 落库。
 from __future__ import annotations

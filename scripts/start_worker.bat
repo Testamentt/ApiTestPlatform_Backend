@@ -1,3 +1,4 @@
+@rem 本项目编码格式：UTF-8（无 BOM）。
 @echo off
 rem 单启 Celery Worker（Windows 必须 --pool=solo；不支持 prefork）
 cd /d "%~dp0.."

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # subprocess_util 单元测试：白名单 / 超时 / returncode / 编码 / 杀树。
 from __future__ import annotations
 

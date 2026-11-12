@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 任务路由。why：POST /tasks 走 Lookup-Create（存在即返回）+ Celery 异步，立即 202。
 from __future__ import annotations
 

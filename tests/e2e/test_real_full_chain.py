@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 真实全链路 e2e：不替换 LLM 客户端、不伪造 run_cmd、不 mock HTTP 客户端。
 #
 # 与 test_generate_flow.py（FakeLlmClient + fake run_cmd）相反，本文件外部依赖全部真实：

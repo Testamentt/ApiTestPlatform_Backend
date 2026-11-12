@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 解析与影响分析接口测试：parse 落库 / analyze 对比 / regression 一键回归（eager + FakeSubprocess 隔离）。
 from __future__ import annotations
 

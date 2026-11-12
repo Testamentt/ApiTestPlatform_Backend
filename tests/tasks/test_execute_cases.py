@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Celery 任务测试（eager）：成功写结果 / 超时→failed / 解析失败降级。
 from __future__ import annotations
 

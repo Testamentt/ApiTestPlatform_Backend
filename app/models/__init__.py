@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 模型注册入口。why：core.database.init_db() 依赖此处 import，确保 Base.metadata 已收集全部表。
 from app.models.api_definition import ApiDefinition
 from app.models.generation_log import GenerationLog

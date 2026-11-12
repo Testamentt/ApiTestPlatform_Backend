@@ -1,4 +1,5 @@
-"""Phase 4 Bearer Token 鉴权测试。
+# 本项目编码格式：UTF-8（无 BOM）。
+"""生产化与前端 Bearer Token 鉴权测试。
 
 why：现有测试经 conftest 的 client fixture override verify_token 绕过鉴权；
 本文件用独立 auth_client（真实 verify_token）验证 401/403/200 语义、health 免鉴权，

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 影响分析出入参。why：AnalyzeResult 完整透出 breaking/orphaned/untested/warnings；
 # RegressionResult 带执行时真实口径 summary + dropped 原因。
 from __future__ import annotations

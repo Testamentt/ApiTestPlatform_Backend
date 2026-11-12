@@ -1,4 +1,5 @@
-# 简单 HTML 报告（替代 Allure）。why：MVP 自包含 HTML 即可演示；必须处理无有效结果（pytest 失败）；
+# 本项目编码格式：UTF-8（无 BOM）。
+# 自包含 HTML 报告。why：单文件、不依赖 Java 工具链；必须处理无有效结果（pytest 失败）；
 # 所有插值字段 html.escape——用例名/失败信息来自用户与 pytest 输出，不转义即存储型 XSS。
 # 报告路径唯一来源在 report_path()：写入（执行引擎）与读取（带鉴权端点）共用，避免两处拼接漂移。
 from __future__ import annotations

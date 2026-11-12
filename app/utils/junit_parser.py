@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # JUnit XML 解析。why：遍历全部 <testsuite> 累加（pytest-xdist 会产出多个）；
 # 同时轻量提取逐用例状态（供 /results 展示）；损坏时抛 AppError 由 execution_service 降级。
 from __future__ import annotations

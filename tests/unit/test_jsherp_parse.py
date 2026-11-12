@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # jshERP 转换产物解析冒烟（unit）。why：docs/examples/jsherp-openapi3.json 由 convert_swagger2.py
 # 生成，此处内嵌真实转换片段验证 parse 闭环（结构契约回归：2.0→3.0 映射不被 parser 拒绝）。
 from __future__ import annotations

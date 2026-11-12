@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # request_id 中间件测试：响应头回写 / 客户端透传 / 日志 Filter 注入。
 from __future__ import annotations
 

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 执行任务模型。why：run_id（sha256 指纹）唯一，支撑 Lookup-Create 幂等；pid 记录 pytest 进程供超时劫持。
 from __future__ import annotations
 

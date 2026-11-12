@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # generate_cases Celery 任务测试（eager + FakeLlmClient）：成功落库 / 校验失败 / 解析失败。
 from __future__ import annotations
 

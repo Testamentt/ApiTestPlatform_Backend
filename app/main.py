@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 应用入口。why：路由聚合 + 统一异常 handler（业务/入参/兜底三层）；lifespan 启动时同步建表（仅一次，先建表再收请求）。
 from __future__ import annotations
 
@@ -65,7 +66,7 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.app.docs_enabled else None,
         redoc_url="/redoc" if settings.app.docs_enabled else None,
     )
-    # why：CORS 按需挂载——frontend.cors_origins 为空（MVP 零前端）时不发 CORS 头，遵循白名单原则
+    # why：CORS 按需挂载——frontend.cors_origins 为空（零前端部署）时不发 CORS 头，遵循白名单原则
     if settings.frontend.cors_origins:
         app.add_middleware(
             CORSMiddleware,

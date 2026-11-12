@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # diff 纯函数。why：集合差 + 分段 hash 比较 + breaking 联合判定，无 Session 便于单测；
 # suggested_remap 只做相似名建议（difflib 粗筛），不自动重绑（保守防误绑）。
 from __future__ import annotations

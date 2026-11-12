@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # execute_cases Celery 任务。why：Redis broker 为 at-least-once 投递，
 # 写库幂等靠 run_id UNIQUE + 状态守卫（PENDING 才执行）；只对瞬时异常重试，业务错误直接 failed。
 from __future__ import annotations

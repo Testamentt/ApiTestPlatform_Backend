@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 超时劫持测试（eager）：超时→failed/timeout + 杀树；未超时保持 running；pid 缺失跳过杀树；
 # 生成任务同样扫描；PENDING 孤儿按「队列位置 + 前序任务超时」放宽（solo 串行不误杀）。
 from __future__ import annotations

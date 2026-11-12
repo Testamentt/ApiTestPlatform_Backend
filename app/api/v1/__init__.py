@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 from fastapi import APIRouter
 
 from app.api.v1 import cases, generate, health, impact, parse, tasks

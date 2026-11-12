@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 多阶段构建：builder 装依赖（层可缓存）+ runtime 精简层，容器内以非 root 运行。
 # 本机 Docker 未装时由 GitHub Actions 的 docker-build job 验证本文件。
 FROM python:3.12-slim AS builder

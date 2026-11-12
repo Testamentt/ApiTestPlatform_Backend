@@ -1,4 +1,5 @@
-# 通用数据访问。why：收敛查询（分页/异常/唯一约束竞态），避免业务代码散落 session.query；MVP 物理删除。
+# 本项目编码格式：UTF-8（无 BOM）。
+# 通用数据访问。why：收敛查询（分页/异常/唯一约束竞态），避免业务代码散落 session.query；当前物理删除。
 from __future__ import annotations
 
 import time
@@ -76,7 +77,7 @@ class BaseRepository[ModelT: Base]:
         return None
 
     def delete(self, obj: ModelT) -> None:
-        """物理删除（MVP，无软删除）。"""
+        """物理删除（无软删除）。why：单用户场景不需要回收站，删除即不可逆。"""
         self.session.delete(obj)
         try:
             self.session.commit()

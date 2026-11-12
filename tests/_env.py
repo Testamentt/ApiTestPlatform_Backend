@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 测试进程环境准备。why：必须在任何 app.* 导入之前设好 env（get_settings 是启动单例，导入期即固化配置）。
 # 这里把执行 workspace 指到临时目录——测试会真实生成 test_*.py 与 report.html，不能污染仓库 .workspace，
 # 更不能因跨测试/跨轮次复用同一 task_id 而读到上一轮遗留的报告文件。

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Celery 实例。why：显式读 get_settings() 拼 broker/backend URL（Celery 不会自动加载 FastAPI Settings）；
 # Beat 周期调度 scan_stale_tasks（僵尸回收）+ worker_ready 启动时补扫一次。
 from __future__ import annotations

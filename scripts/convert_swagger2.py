@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Swagger 2.0 → OpenAPI 3.0 一次性转换（被测系统文档接入前置）。
 # why：平台解析器 openapi_parser 只认 openapi 主版本 3；管伊佳ERP（jshERP-boot）文档是 Swagger 2.0。
 # 优先从被测系统线上 /v2/api-docs 拉取（源头最新），本地文件兜底（自动剥 markdown 围栏）。

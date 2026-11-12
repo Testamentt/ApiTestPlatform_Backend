@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Swagger 解析落库。why：大小校验 + Parser 提取（无 Session，CPU 密集不占连接）+ reparse 覆盖 upsert；
 # operation 数超阈值只记 warning 继续入库（IN(...200) 检索仍无碍，仅分析响应变长）。
 from __future__ import annotations

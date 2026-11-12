@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # case_generator 单元测试：渲染合法 Python + 断言状态码 + 注入防护 + 鉴权模式渲染 + 断言引擎。
 from __future__ import annotations
 

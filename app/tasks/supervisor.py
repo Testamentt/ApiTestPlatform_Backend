@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 超时劫持。why：权威兜底——从 DB 读 mark_running 写入的 tasks.pid 杀整棵树；
 # 僵尸任务迁移 failed（error_stage=timeout），禁止自动重试（重试仅人工）。
 # 执行任务与生成任务都扫：Worker 强杀后 generation_tasks 卡 RUNNING 会污染 run_id；

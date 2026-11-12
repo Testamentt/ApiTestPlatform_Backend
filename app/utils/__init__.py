@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 from app.utils.case_generator import render_test_file
 from app.utils.junit_parser import JunitSummary, parse_junit_xml
 from app.utils.report_util import write_report_html

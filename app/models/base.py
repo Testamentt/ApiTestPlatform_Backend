@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 模型公共 Mixin。why：时间由 DB 生成（server_default），应用层不传时间，保证时区/精度一致。
 from __future__ import annotations
 

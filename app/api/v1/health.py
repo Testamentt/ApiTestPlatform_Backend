@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 健康检查。why：不做鉴权（部署探针用）；db/redis 状态供运维判断。
 from __future__ import annotations
 

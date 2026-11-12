@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # llm_client 单测（mock OpenAI）：成功/可重试耗尽/校验失败带 raw/非 JSON 兜底/参数断言。
 from __future__ import annotations
 

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 配置管理。why：settings.yaml 管可读默认值，.env / 环境变量管密钥与运行时覆盖；
 # 显式合并保证「yaml 默认、env 覆盖」方向正确——pydantic-settings 的 init 参数优先级高于 env，
 # 不能直接 Settings(**yaml)（会把 .env 覆盖吞掉）。
@@ -96,7 +97,7 @@ class ExecutionSettings(BaseModel):
 
 
 class SwaggerSettings(BaseModel):
-    """Phase 2 影响分析配置。why：全带 default——settings.yaml/.env 缺失新字段时启动不阻塞（兼容 Phase 1 已部署配置）。"""
+    """影响分析配置。why：全带 default——settings.yaml/.env 缺失新字段时启动不阻塞（兼容 执行闭环已部署配置）。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -108,7 +109,7 @@ class SwaggerSettings(BaseModel):
 
 
 class LlmSettings(BaseModel):
-    """Phase 3 AI 生成配置。why：密钥经环境变量名引用（api_key_env，只放 .env）；
+    """AI 生成配置。why：密钥经环境变量名引用（api_key_env，只放 .env）；
     cost 为 demo 均价估算（精算留生产）；task_timeout_seconds 是生成任务 Celery 硬超时。"""
 
     model_config = ConfigDict(extra="forbid")
@@ -172,7 +173,7 @@ class SecuritySettings(BaseModel):
 
 
 class FrontendSettings(BaseModel):
-    """Phase 4 CORS 配置（预留）。why：MVP 零前端，默认空白名单不发 CORS 头（禁止 *）；
+    """CORS 配置（预留）。why：零前端部署时默认空白名单，不发 CORS 头（禁止 *）；
     前端做时把来源填进 cors_origins 即自动挂 CORSMiddleware。"""
 
     model_config = ConfigDict(extra="forbid")
@@ -181,7 +182,7 @@ class FrontendSettings(BaseModel):
 
 
 class Settings(BaseModel):
-    """全量配置。extra=forbid：未建模键（含将来 Phase 2+ 的 TESTPLATFORM_LLM_* 等）会启动即报错。
+    """全量配置。extra=forbid：未建模键（含将来 影响分析+ 的 TESTPLATFORM_LLM_* 等）会启动即报错。
     why：env 合并是手动的（settings.yaml 默认值 + .env/os.environ 覆盖），故用 BaseModel 而非 BaseSettings——
     BaseSettings 的 env_prefix 会把 TESTPLATFORM_APP_DEBUG 当扁平字段注入，与嵌套结构冲突。"""
 

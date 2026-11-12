@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 任务数据访问。why：run_id 唯一（Lookup-Create）；update_status 做简单状态机守卫。
 from __future__ import annotations
 

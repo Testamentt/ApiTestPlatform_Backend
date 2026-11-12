@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 限流测试：固定窗口命中 429 / 关闭时不碰 Redis / Redis 不可用放行（降级策略）。
 # why：限流是"保护"不是"正确性前提"——降级行为必须被测试锁住，否则一次 Redis 抖动会变成全站 429。
 from __future__ import annotations

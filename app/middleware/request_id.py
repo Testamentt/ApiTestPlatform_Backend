@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 全链路 request_id。why：一次"创建→执行→报告"的运维追踪必须能跨
 # Web 请求 / Celery 任务 / LLM 日志串联；ContextVar 承载（async 原生、线程安全），
 # 跨进程（Web→Worker）靠任务参数显式透传（Worker 内重新 set 恢复）。

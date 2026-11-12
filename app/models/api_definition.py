@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Swagger 版本快照。why：只存 operation_ids + 分段 hashes + contracts（不存原文），支撑 O(1) diff；
 # reparse 覆盖由 repository 的 upsert 实现（同 version 先删旧插新，CI 幂等不膨胀）。
 from __future__ import annotations

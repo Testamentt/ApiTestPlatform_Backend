@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Prompt 加载与渲染。why：版本化外置（prompts/{version}/），占位符模板注入（禁止 f-string 拼 prompt）；
 # 版本一致性由 tests/unit/test_prompts.py 断言（prompt 已改而代码仍用旧版 → 测试失败）。
 from __future__ import annotations
@@ -5,7 +6,7 @@ from __future__ import annotations
 from app.core.config import PROJECT_ROOT
 
 PROMPTS_DIR = PROJECT_ROOT / "prompts"
-PROMPT_VERSION = "v1"  # 写死 v1（MVP 不做多版本切换，版本化便于后续迭代）
+PROMPT_VERSION = "v1"  # 固定 v1（不做多版本切换；版本号便于后续迭代时区分模板）
 
 
 def _load_boundary_rules() -> str:

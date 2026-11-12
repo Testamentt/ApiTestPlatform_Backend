@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 统一日志。why：格式固定便于 grep 定位（时间/级别/logger:lineno/request_id），
 # request_id 由 RequestIdFilter 注入 record（缺失时兜底 '-'）。
 # 两个接管点：Web 进程在 create_app 调 setup_logging；Worker 进程由 celery 的 after_setup_logger /

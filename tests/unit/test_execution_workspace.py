@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 执行 workspace 构建单元测试：auth_enabled 时生成登录 conftest。
 # why 归属 LocalExecutor：workspace 构建随执行器抽象下沉（Jenkins 执行器不需要本地 workspace），
 # 编排层不再承担「怎么准备执行环境」。

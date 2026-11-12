@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # SwaggerService.parse_document 测试：解析落库 / auto 版本递增 / reparse 覆盖 / 超限 / 超阈值告警。
 from __future__ import annotations
 

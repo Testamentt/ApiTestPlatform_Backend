@@ -1,3 +1,4 @@
+@rem 本项目编码格式：UTF-8（无 BOM）。
 @echo off
 rem Reset the local dev SQLite DB. Why: Base.metadata.create_all only creates missing tables and never ALTERs
 rem existing ones, so after adding model columns an existing dev DB drifts (2026-08-10: trust_score missing ->

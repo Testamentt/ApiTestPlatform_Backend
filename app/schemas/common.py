@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 统一响应与分页。why：所有接口成功统一 {code, message, data}，列表统一分页结构。
 from __future__ import annotations
 

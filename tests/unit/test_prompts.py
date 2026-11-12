@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Prompt 版本一致性断言：代码引用版本与 prompts/ 实际文件一致 + 占位符齐全。
 from __future__ import annotations
 

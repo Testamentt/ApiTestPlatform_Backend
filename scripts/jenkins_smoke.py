@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Jenkins 集成冒烟：按配置触发一次构建、等待结束、回读 JUnit 并打印汇总。
 # 用法（在 backend/ 目录）：
 #   python scripts/jenkins_smoke.py

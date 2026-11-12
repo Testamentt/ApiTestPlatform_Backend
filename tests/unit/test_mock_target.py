@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # mock 目标服务测试（demo 脚本但属执行链路演示依赖）：
 # /delay 不得阻塞事件循环（time.sleep 会卡死并发请求）+ 状态码/鉴权端点行为。
 from __future__ import annotations

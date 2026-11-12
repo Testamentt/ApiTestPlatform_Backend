@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 任务创建入口。why：Lookup-Create 幂等（同 case_ids+timeout 只跑一次）+ 唯一约束竞态收敛；draft 禁止执行。
 from __future__ import annotations
 

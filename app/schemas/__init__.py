@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 from app.schemas.case import CaseCreate, CaseRead, CaseUpdate, ConfirmBody, ConfirmResult
 from app.schemas.common import ApiResponse, Page
 from app.schemas.task import TaskCreate, TaskRead, TaskResultItem, TaskResults

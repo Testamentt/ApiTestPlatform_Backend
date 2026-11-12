@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 [project]
 name = "testplatform-backend"
 version = "0.1.0"
@@ -28,6 +29,11 @@ dev = [
     "pytest>=8.2,<9.0",
     "pytest-cov>=5,<7",
     "ruff>=0.16,<0.17",
+    # why 必须显式声明：ci.yml 与 Jenkinsfile 的 pytest 步骤都传了
+    # `--alluredir=reports/allure-results --clean-alluredir`，该参数由 allure-pytest 插件提供。
+    # 缺它时 pytest 直接以退出码 4（usage error）中断，报 "unrecognized arguments: --alluredir"
+    # → 新环境 test-fast / Jenkins 测试阶段必红。本机曾因手工 pip install 过而不复现，属环境漂移。
+    "allure-pytest>=2.13,<3",
 ]
 # why 独立 extra：execution.executor=local 时执行层在子进程里跑 `python -m pytest` 生成 JUnit，
 # 故 pytest 是该模式的**运行时**依赖（而非仅开发期）。容器镜像必须带上它，

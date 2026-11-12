@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 业务异常基类。why：把「业务失败原因」与 HTTP 状态解耦，
 # 统一走异常体系返回 {code, message, detail}，路由不裸 return 错误字典。
 from __future__ import annotations

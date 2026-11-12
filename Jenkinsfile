@@ -1,3 +1,4 @@
+/* 本项目编码格式：UTF-8（无 BOM）。 */
 /*
  * Jenkins 声明式流水线（P0）——与 GitHub Actions 三段门禁等价，但把测试结果做成「可发布的报告」。
  *
@@ -49,6 +50,8 @@ pipeline {
           .venv/bin/ruff check app tests scripts
           .venv/bin/ruff format --check .
           .venv/bin/python scripts/doc_check.py
+          .venv/bin/python scripts/doc_hygiene.py
+          .venv/bin/python scripts/encoding_check.py
         '''
       }
     }

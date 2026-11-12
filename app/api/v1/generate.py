@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # AI 生成路由。why：POST 立即 202（异步解耦，LLM 不阻塞 Web）+ GET 轮询进度。
 from __future__ import annotations
 

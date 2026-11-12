@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 执行器契约。why：执行引擎与「在哪里跑」解耦——本地 subprocess 与 Jenkins 只是两种实现，
 # 编排层（状态机 / 事务边界 / 报告落盘）只依赖本协议，从而避免把 pytest 命令写死进服务层。
 from __future__ import annotations

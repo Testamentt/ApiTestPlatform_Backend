@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 测试文件生成。why：结构化字段 repr 插值（无 Jinja2）；函数名恒 test_{case_id} 便于 JUnit 回映射；
 # repr 转义防止用户字段破坏 Python 语法。断言引擎：契约层（status_code 基线恒渲染）+ 字段层
 # （assertions 逐条渲染，path/op 已过 AssertionItem 白名单校验，value repr 进字面量——

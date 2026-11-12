@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # HTML 报告生成测试：有结果 / 无结果兜底（best-effort 报告不因缺结果而失败）+ 旧报告清理。
 from __future__ import annotations
 

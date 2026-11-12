@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 执行编排。why：短事务分界（读→commit→算→写），禁止持有 Session 期间跑 subprocess；
 # 结果落 tasks.result_summary（无独立结果表）；超时/解析失败降级保证任务进入明确终态。
 from __future__ import annotations

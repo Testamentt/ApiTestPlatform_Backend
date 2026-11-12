@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # Swagger 解析出入参。why：ParseResult 透出 warnings（宽容解析不静默）。
 from __future__ import annotations
 

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 健康检查接口测试：db/redis 探测 up/down 组合，mock 真实 Redis 连接（不依赖本机 Redis）。
 from __future__ import annotations
 

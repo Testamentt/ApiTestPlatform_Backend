@@ -1,5 +1,6 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 唯一 subprocess 入口。why：命令白名单 + 超时 + 进程树清理收敛在单一边界，
-# 业务禁止裸 subprocess.run。MVP 用 Popen + communicate（无需后台线程防爆）。
+# 业务禁止裸 subprocess.run。统一走 Popen + communicate（可超时、可杀进程树，无需后台线程）。
 from __future__ import annotations
 
 import logging
