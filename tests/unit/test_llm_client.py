@@ -5,6 +5,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.utils.llm_client import LlmClient
 from pydantic import BaseModel, ConfigDict
@@ -59,10 +60,12 @@ def test_chat_json_params_fixed(monkeypatch):
     client = _make_client(monkeypatch, fake)
     client.chat_json("sys", "user", schema=_FakeSchema)
     kwargs = fake.calls[0]
-    assert kwargs["temperature"] == 0  # 确定性（RULES §9.3）
+    assert kwargs["temperature"] == 0  # 确定性
     assert kwargs["response_format"] == {"type": "json_object"}  # 结构化输出
     assert kwargs["max_tokens"] == 4096
-    assert kwargs["model"] == "deepseek-chat"
+    # why：模型名来自配置而不是硬编码——provider 可切换（官方 DeepSeek / CommandCode 等兼容端点），
+    # 这里断言"透传配置值"这一行为契约，避免换端点就挂测试
+    assert kwargs["model"] == get_settings().llm.model
 
 
 def test_chat_json_retry_then_fail(monkeypatch):
@@ -81,7 +84,7 @@ def test_chat_json_retry_then_fail(monkeypatch):
     with pytest.raises(AppError) as ei:
         client.chat_json("sys", "user", schema=_FakeSchema)
     assert ei.value.code == "LLM_FAILED"
-    assert len(fake.calls) == 4  # 首次尝试 + 3 次重试（§9.4）
+    assert len(fake.calls) == 4  # 首次尝试 + 3 次重试
 
 
 def test_chat_json_retries_5xx_then_success(monkeypatch):
@@ -122,7 +125,7 @@ def test_chat_json_4xx_no_retry(monkeypatch):
 
 
 def test_chat_json_input_too_long_rejected(monkeypatch):
-    # §9.3 输入长度预检：超限调用前拒绝，不裸奔
+    # 输入长度预检：超限调用前拒绝，不裸奔
     from app.core.config import get_settings
 
     fake = _FakeCompletions([lambda: _resp(json.dumps({"ok": True}))])
@@ -141,12 +144,12 @@ def test_chat_json_validation_failed_carries_raw(monkeypatch):
     with pytest.raises(AppError) as ei:
         client.chat_json("sys", "user", schema=_FakeSchema)
     assert ei.value.code == "LLM_VALIDATION_FAILED"
-    assert ei.value.raw_response == raw  # 间隙 2：raw_response 随异常携带
+    assert ei.value.raw_response == raw  # raw_response 随异常携带
     assert len(fake.calls) == 1  # 校验失败不重试
 
 
 def test_chat_json_extracts_markdown_fenced_json(monkeypatch):
-    # 细节 1：DeepSeek 偶发把 JSON 包在 ```json 代码块，_extract_json 剥离后成功
+    # DeepSeek 偶发把 JSON 包在 ```json 代码块，_extract_json 剥离后成功
     fenced = "```json\n" + json.dumps({"ok": True}) + "\n```"
     fake = _FakeCompletions([lambda: _resp(fenced)])
     client = _make_client(monkeypatch, fake)
@@ -163,7 +166,7 @@ def test_chat_json_invalid_json_raises(monkeypatch):
 
 
 def test_chat_json_empty_choices_no_retry(monkeypatch):
-    # why：空 choices（部分代理/内容过滤场景）曾以 IndexError 绕过错误分类穿透（R3 批次）——
+    # why：空 choices（部分代理/内容过滤场景）曾以 IndexError 绕过错误分类穿透——
     # 显式 LLM_FAILED 且不重试
     empty = SimpleNamespace(choices=[], usage=None)
 
@@ -179,7 +182,7 @@ def test_chat_json_empty_choices_no_retry(monkeypatch):
 
 
 def test_chat_json_timeout_and_connection_retried(monkeypatch):
-    # why：APITimeoutError/APIConnectionError 分支此前零覆盖（R3 批次）——§11.1 场景③「LLM 超时」
+    # why：APITimeoutError/APIConnectionError 分支此前零覆盖——「LLM 超时」场景
     import httpx
     from openai import APIConnectionError, APITimeoutError
 
@@ -199,7 +202,7 @@ def test_chat_json_timeout_and_connection_retried(monkeypatch):
 
 
 def test_chat_json_usage_none_defaults_to_zero(monkeypatch):
-    # why：usage=None 兜底分支（兼容端点/代理返回 usage:null）此前无断言（R3 批次）
+    # why：usage=None 兜底分支（兼容端点/代理返回 usage:null）此前无断言
     resp = SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps({"ok": True})))],
         usage=None,
@@ -210,7 +213,7 @@ def test_chat_json_usage_none_defaults_to_zero(monkeypatch):
     assert (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens) == (0, 0, 0)
 
 
-# ---------- P2-4：任务级预算透传（deadline）----------
+# ---------- 任务级预算透传（deadline）----------
 
 
 def test_deadline_exhausted_skips_call(monkeypatch):

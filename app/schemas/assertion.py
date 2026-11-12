@@ -1,6 +1,6 @@
 # 断言规则 schema。why：渲染进生成代码前必须过结构校验——path 白名单正则（status_code 或
 # a.b.0.c 点路径）从源头消灭注入面（引号/括号/分号在校验层即拒绝，渲染层无需再防御）；
-# op 固定 4 种映射到固定表达式模板；value 一律 repr 进字面量。LLM 输出与手工入参共用（RULES §11.2）。
+# op 固定 4 种映射到固定表达式模板；value 一律 repr 进字面量。LLM 输出与手工入参共用。
 from __future__ import annotations
 
 from typing import Any, Literal

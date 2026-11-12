@@ -21,17 +21,17 @@ logger = logging.getLogger(__name__)
     retry_backoff=True,
     retry_backoff_max=300,
     retry_jitter=True,
-    max_retries=get_settings().celery.max_retries,  # 来自 config（RULES §8.1，禁止硬编码）
+    max_retries=get_settings().celery.max_retries,  # 来自 config，禁止硬编码
 )
 def execute_cases_task(task_id: int, request_id: str | None = None) -> None:
-    # why：Web 侧 dispatch 透传 request_id（§6.2）——跨进程恢复链路上下文，
+    # why：Web 侧 dispatch 透传 request_id——跨进程恢复链路上下文，
     # 本任务及执行链路日志统一携带，错误定位可跨请求关联
     set_request_id(request_id)
     svc = ExecutionService(SessionLocal)
     try:
         svc.execute_cases(task_id)
     except SoftTimeLimitExceeded:
-        # why：RULES §8.2 MUST——软超时必须清理并落 FAILED，避免 DB 状态停留在 running/pending；
+        # why：软超时必须清理并落 FAILED，避免 DB 状态停留在 running/pending；
         # 子进程由 force_fail_timeout best-effort 杀树，权威兜底是 scan_stale_tasks。
         logger.exception("task %s Celery 软超时，清理并落 failed", task_id)
         svc.force_fail_timeout(task_id)

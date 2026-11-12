@@ -1,4 +1,4 @@
-# request_id 中间件测试：响应头回写 / 客户端透传 / 日志 Filter 注入（review 批次 C，§6.2）。
+# request_id 中间件测试：响应头回写 / 客户端透传 / 日志 Filter 注入。
 from __future__ import annotations
 
 import logging

@@ -1,5 +1,5 @@
-# AI 生成出入参。why：GeneratedCase 是 LLM 输出校验 schema（extra="forbid" 严格校验，RULES §10.2）；
-# operation_id 不由 LLM 生成、由服务端注入（防血缘被污染，§11.2）。
+# AI 生成出入参。why：GeneratedCase 是 LLM 输出校验 schema（extra="forbid" 严格校验）；
+# operation_id 不由 LLM 生成、由服务端注入（防血缘被污染）。
 from __future__ import annotations
 
 from datetime import datetime
@@ -11,11 +11,11 @@ from app.schemas.case import HTTP_METHODS
 
 
 class GeneratedCase(BaseModel):
-    # 【面试锚点】operation_id 不由 LLM 生成，由服务端注入；
+    # operation_id 不由 LLM 生成，由服务端注入；
     # LLM 输出若包含 operation_id 字段，extra="forbid" 会直接判失败（防血缘被污染）
     model_config = ConfigDict(extra="forbid")
 
-    # max_length 对齐 test_cases 表列长（name 255 / path 1024，review L8）——
+    # max_length 对齐 test_cases 表列长（name 255 / path 1024）——
     # LLM 超长输出在 Pydantic 校验层拦截，避免落库时被 DB 截断/报错
     name: str = Field(min_length=1, max_length=255)
     method: HTTP_METHODS
@@ -31,7 +31,7 @@ class GeneratedCase(BaseModel):
 class GeneratedCaseList(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    # why：min_length=1（review A1 语义层）——空数组是"LLM 什么也没产出"，不该伪装成一个成功接口；
+    # why：min_length=1——空数组是"LLM 什么也没产出"，不该伪装成一个成功接口；
     # 无此约束时 {"cases": []} 会让任务记 SUCCESS/generated+1 而草稿为 0
     cases: list[GeneratedCase] = Field(min_length=1)
 
@@ -49,7 +49,7 @@ class GenerateTaskRead(BaseModel):
     run_id: str
     status: str
     operation_count: int
-    celery_task_id: str | None  # 卡死时可通过 Celery 定位/revoke（RULES §8.3）
+    celery_task_id: str | None  # 卡死时可通过 Celery 定位/revoke
     prompt_version: str | None
     error_stage: str | None
     error_msg: str | None

@@ -16,7 +16,7 @@ def test_create_case_201_default_draft(client):
 
 
 def test_create_case_exposes_trust_score(client):
-    # trust_score 可观测（手工=100），审核按血缘可信度优先 Review（P1-4 修复）
+    # trust_score 可观测（手工=100），审核按血缘可信度优先 Review
     r = _create_case(client)
     assert r.json()["data"]["trust_score"] == 100
 
@@ -41,7 +41,7 @@ def test_confirm_draft_to_active(client):
 
 
 def test_confirm_records_reviewer(client, session_factory):
-    # why：批准人审计（RULES §11.2「需传入 reviewer」）——reviewer 必须落库可追溯（review R3-2）
+    # why：批准人审计（需传入 reviewer）——reviewer 必须落库可追溯
     from app.models.test_case import TestCase
 
     cid = _create_case(client).json()["data"]["id"]
@@ -58,8 +58,8 @@ def test_confirm_empty_reviewer_422(client):
 
 
 def test_confirm_revalidates_schema(client, session_factory):
-    # why：RULES §11.2「转 active 时重新执行 schema 校验」——draft 期间数据被改坏必须拦在
-    # 状态迁移前（review R3-2）；绕过 API 校验器直接落库的坏数据在此被激活闸拦下
+    # why：转 active 时重新执行 schema 校验——draft 期间数据被改坏必须拦在
+    # 状态迁移前；绕过 API 校验器直接落库的坏数据在此被激活闸拦下
     from app.models.test_case import TestCase
 
     cid = _create_case(client).json()["data"]["id"]
@@ -75,7 +75,7 @@ def test_confirm_revalidates_schema(client, session_factory):
 
 
 def test_update_case_fields(client):
-    # why：PUT 端点此前零测试（review R3-2）——正常更新路径 + 字段落库
+    # why：PUT 端点此前零测试——正常更新路径 + 字段落库
     cid = _create_case(client).json()["data"]["id"]
     r = client.put(
         f"/api/v1/cases/{cid}",
@@ -92,7 +92,7 @@ def test_update_case_fields(client):
 
 
 def test_update_case_rejects_bad_path(client):
-    # why：CaseUpdate 校验器（path 前缀）须被测试锁定（review R3-2）
+    # why：CaseUpdate 校验器（path 前缀）须被测试锁定
     cid = _create_case(client).json()["data"]["id"]
     r = client.put(f"/api/v1/cases/{cid}", json={"path": "users"})
     assert r.status_code == 422
@@ -103,7 +103,7 @@ def test_update_missing_404(client):
     assert r.status_code == 404
 
 
-# ---------- 更新两层闸（review C3）：形状闸 + 语义闸 ----------
+# ---------- 更新两层闸：形状闸 + 语义闸 ----------
 
 
 def _active_case(client, reviewer="alice"):
@@ -113,7 +113,7 @@ def _active_case(client, reviewer="alice"):
 
 
 def test_update_active_case_downgrades_to_draft(client):
-    # why：语义闸（review C3）——active 是"执行资格"而非永久标签，内容一变即失效，必须回 draft 重审
+    # why：语义闸——active 是"执行资格"而非永久标签，内容一变即失效，必须回 draft 重审
     cid = _active_case(client)
     r = client.put(f"/api/v1/cases/{cid}", json={"expected_status": 201})
     assert r.status_code == 200
@@ -146,7 +146,7 @@ def test_update_active_case_assertions_downgrade(client):
 
 def test_update_case_shape_gate_rejects_corrupted_row(client, session_factory):
     # why：形状闸——**active** 用例在库里被 out-of-band 写坏后，更新不得"带病续命"，
-    # 且拒绝时不落半截数据（P3-4 后闸门只对 active 生效，故此处先激活）
+    # 且拒绝时不落半截数据（闸门只对 active 生效，故此处先激活）
     from app.models.test_case import TestCase
 
     cid = _active_case(client)
@@ -162,7 +162,7 @@ def test_update_case_shape_gate_rejects_corrupted_row(client, session_factory):
 
 
 def test_update_draft_case_allows_repair_style_update(client, session_factory):
-    """P3-4：draft 不做形状闸——"历史坏行 + 只想改名字"这类修复式更新必须放行。
+    """draft 不做形状闸——"历史坏行 + 只想改名字"这类修复式更新必须放行。
 
     why：闸门只为「执行池」服务；draft 的安全性由 confirm 的激活闸兜底（它是进执行池的唯一入口）。
     """
@@ -204,7 +204,7 @@ def test_update_case_shape_gate_allows_repair(client):
 
 
 def test_expected_status_out_of_range_422(client):
-    # why：状态码边界（review N6）——99999 此前可静默进执行池，断言必然失败且看不出是脏数据
+    # why：状态码边界——99999 此前可静默进执行池，断言必然失败且看不出是脏数据
     cid = _create_case(client).json()["data"]["id"]
     assert _create_case(client, expected_status=42).status_code == 422
     assert _create_case(client, expected_status=600).status_code == 422
@@ -295,7 +295,7 @@ def test_update_case_assertions_validated(client, session_factory):
 
 
 def test_confirm_revalidates_corrupted_assertions(client, session_factory):
-    # why：激活闸（§11.2）——绕过 API 直改库的坏断言在 draft→active 前被拦下
+    # why：激活闸——绕过 API 直改库的坏断言在 draft→active 前被拦下
     from app.models.test_case import TestCase
 
     cid = _create_case(client).json()["data"]["id"]

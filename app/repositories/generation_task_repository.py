@@ -28,7 +28,7 @@ class GenerationTaskRepository(BaseRepository[GenerationTask]):
         try:
             self.session.commit()
         except SQLAlchemyError:
-            # 与 TaskRepository 行为对齐：commit 失败回滚，防脏数据半提交残留（review L4）
+            # 与 TaskRepository 行为对齐：commit 失败回滚，防脏数据半提交残留
             self.session.rollback()
             raise
         return task

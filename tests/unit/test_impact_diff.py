@@ -70,7 +70,7 @@ def test_hash_version_mismatch_marks_all_changed():
     assert d.changed == ["a", "b"]
 
 
-# ---------- breaking 联合判定（F2） ----------
+# ---------- breaking 联合判定 ----------
 
 
 def _diff_breaking(old_c, new_c):
@@ -124,7 +124,7 @@ def test_enum_added_is_non_breaking():
 
 
 def test_breaking_status_code_change():
-    # F1：200→202（响应状态码集合变化，schema 相同）也必须判 breaking——下游按旧码断言会静默失败
+    # 200→202（响应状态码集合变化，schema 相同）也必须判 breaking——下游按旧码断言会静默失败
     d = _diff_breaking(
         _contract(response_codes=["200"]),
         _contract(response_codes=["202"]),
@@ -154,7 +154,7 @@ def test_contract_missing_is_breaking():
     assert d.breaking_changed == ["op"]
 
 
-# ---------- suggested_remap（D2，只建议不自动重绑） ----------
+# ---------- suggested_remap（只建议不自动重绑） ----------
 
 
 def test_suggested_remap_similar_names():

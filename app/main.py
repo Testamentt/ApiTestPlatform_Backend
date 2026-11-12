@@ -26,7 +26,7 @@ def format_validation_errors(errors: list[dict]) -> list[dict]:
     """把 pydantic/FastAPI 的字段错误整理成前端可直接用的结构。
 
     why：只保留 field/message/type 三类信息——框架原始错误里带 `input`（回显用户输入，可能是密码或大对象）
-    与 `ctx`（可能含异常对象，不可 JSON 序列化），直接透出既有泄漏风险也会让序列化炸掉（P2-1）。
+    与 `ctx`（可能含异常对象，不可 JSON 序列化），直接透出既有泄漏风险也会让序列化炸掉。
     """
     formatted: list[dict] = []
     for error in errors:
@@ -53,11 +53,11 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     setup_logging(settings.app.debug)
-    validate_prompts()  # §3.2：prompt 缺文件/缺占位符启动即抛，不在生成任务运行期才失败（R3 批次）
+    validate_prompts()  # prompt 缺文件/缺占位符启动即抛，不在生成任务运行期才失败
     # why：StaticFiles 挂载要求目录已存在，故在 create_app 时确保目录就绪
     Path("data").mkdir(exist_ok=True)
     Path(settings.execution.workspace_dir).mkdir(exist_ok=True)
-    # why：docs_url 用配置开关（§10.5 生产设 docs_enabled=false 即关 /docs），默认开供演示开箱即用
+    # why：docs_url 用配置开关（生产设 docs_enabled=false 即关 /docs），默认开供演示开箱即用
     app = FastAPI(
         title=settings.app.name,
         version=settings.app.version,
@@ -65,7 +65,7 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.app.docs_enabled else None,
         redoc_url="/redoc" if settings.app.docs_enabled else None,
     )
-    # why：CORS 按需挂载——frontend.cors_origins 为空（MVP 零前端）时不发 CORS 头，符合 §10.5 白名单原则
+    # why：CORS 按需挂载——frontend.cors_origins 为空（MVP 零前端）时不发 CORS 头，遵循白名单原则
     if settings.frontend.cors_origins:
         app.add_middleware(
             CORSMiddleware,
@@ -76,7 +76,7 @@ def create_app() -> FastAPI:
         )
     app.include_router(api_router)
     # why：request_id 中间件要求「最先注入」（最外层）——CORS 之后 add 的中间件在最外层，
-    # 保证请求一进来即生成/透传 request_id，响应头回写对任何路由/异常 handler 都生效（§6.2）
+    # 保证请求一进来即生成/透传 request_id，响应头回写对任何路由/异常 handler 都生效
     app.add_middleware(RequestIdMiddleware)
 
     @app.exception_handler(AppError)
@@ -90,7 +90,7 @@ def create_app() -> FastAPI:
     async def _request_validation_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
-        """入参校验失败 → 统一响应结构（P2-1，此前是框架的 `{"detail": [...]}`）。
+        """入参校验失败 → 统一响应结构（此前是框架的 `{"detail": [...]}`）。
 
         why：契约统一后前端不必再为「框架 422 长什么样」写兜底分支；detail 给出逐字段错误，
         前端可精确高亮。状态码仍是 422，语义不变。
@@ -106,7 +106,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ValidationError)
     async def _pydantic_validation_handler(request: Request, exc: ValidationError) -> JSONResponse:
-        """服务层内部构造出的 Pydantic 校验失败 → 422 而不是 500（P2-1 兜底）。
+        """服务层内部构造出的 Pydantic 校验失败 → 422 而不是 500（兜底）。
 
         why：典型场景是服务层复用入参 schema 自行组装（如影响分析一键回归把 >500 条用例塞进 TaskCreate）——
         这类错误此前直接冒泡成 500，客户端看不到任何可行动信息。此 handler 只做兜底：
@@ -131,9 +131,9 @@ def create_app() -> FastAPI:
             content={"code": "INTERNAL_ERROR", "message": "服务器内部错误", "detail": None},
         )
 
-    # why：不再挂载 /static——报告改由带鉴权的 GET /api/v1/tasks/{id}/report 读取（review N3）：
+    # why：不再挂载 /static——报告改由带鉴权的 GET /api/v1/tasks/{id}/report 读取：
     # 无鉴权静态挂载会随 task_id 自增被枚举，而报告含用例名与失败信息；
-    # 测试文件（tasks/{id}/test_*.py 含请求参数/请求体）本来就必须留在挂载面之外（review H2）
+    # 测试文件（tasks/{id}/test_*.py 含请求参数/请求体）本来就必须留在挂载面之外
 
     @app.get("/", include_in_schema=False)
     def _root() -> RedirectResponse:

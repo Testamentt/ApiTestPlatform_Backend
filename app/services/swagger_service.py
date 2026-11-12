@@ -22,8 +22,8 @@ class SwaggerService:
     def parse_document(
         self, document: dict, version: str | None = None
     ) -> tuple[ApiDefinition, list[str]]:
-        """解析 OpenAPI 3.x 入库。why：先纯校验/解析（无 Session）再落库，遵守短事务分界（RULES §2.1）。
-        返回 (definition, warnings)——宽容解析的问题逐条透出，不静默（D4/D5）。"""
+        """解析 OpenAPI 3.x 入库。why：先纯校验/解析（无 Session）再落库，遵守短事务分界。
+        返回 (definition, warnings)——宽容解析的问题逐条透出，不静默。"""
         settings = get_settings()
         if len(json.dumps(document)) > settings.swagger.max_upload_bytes:
             raise AppError(

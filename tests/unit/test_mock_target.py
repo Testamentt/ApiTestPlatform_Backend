@@ -1,4 +1,4 @@
-# mock 目标服务测试（demo 脚本但属执行链路演示依赖，review R2-M1）：
+# mock 目标服务测试（demo 脚本但属执行链路演示依赖）：
 # /delay 不得阻塞事件循环（time.sleep 会卡死并发请求）+ 状态码/鉴权端点行为。
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def client():
 
 
 def test_delay_does_not_block_event_loop(client):
-    # why：/delay 曾用 time.sleep 阻塞事件循环（R2-M1）——延迟期间并发请求全部卡死。
+    # why：/delay 曾用 time.sleep 阻塞事件循环——延迟期间并发请求全部卡死。
     # 计时从「发起 /delay/1 之前」开始：阻塞实现下 /get 被拖到延迟结束（elapsed≈1s+），
     # async 实现下 /get 在 0.1s 后即返回（<0.5s）
     async def scenario():

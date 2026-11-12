@@ -1,4 +1,4 @@
-# 唯一 LLM 入口。why：超时/错误分类/重试/成本日志收敛在单一边界（RULES §9.1 评审红线，业务禁止裸调 SDK）；
+# 唯一 LLM 入口。why：超时/错误分类/重试/成本日志收敛在单一边界（业务禁止裸调 SDK）；
 # response_format 强制 JSON + _extract_json 格式清洗双重容错；校验失败抛 AppError 携带 raw_response 供 generation_log 落库。
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class LlmClient:
     def __init__(self) -> None:
         s = get_settings().llm
         self.settings = s
-        # why：api_key_env 是环境变量名（密钥只放 .env，RULES §3.1/§8），不在 config 明文
+        # why：api_key_env 是环境变量名（密钥只放 .env），不在 config 明文
         self.client = OpenAI(
             api_key=os.environ.get(s.api_key_env, ""),
             base_url=s.base_url,
@@ -43,7 +43,7 @@ class LlmClient:
 
     def _extract_json(self, raw: str) -> str:
         """从 LLM 响应提取 JSON：剥离代码块围栏/首尾空白。why：DeepSeek 偶发把 JSON 包在 ```json 外层，
-        直接 json.loads 会误杀合法响应——先清洗再解析，提高成功率（细节 1）。大小写/任意标签均可剥离。"""
+        直接 json.loads 会误杀合法响应——先清洗再解析，提高成功率。大小写/任意标签均可剥离。"""
         cleaned = raw.strip()
         if cleaned.startswith("```"):
             cleaned = _MD_FENCE_RE.sub("", cleaned)
@@ -57,12 +57,12 @@ class LlmClient:
         """结构化输出调用：response_format 强制 JSON → _extract_json 清洗 → schema 严格校验。
         返回 (已校验模型, usage)；校验失败抛 LLM_VALIDATION_FAILED（携带 raw_response），瞬时异常重试后抛 LLM_FAILED。
 
-        deadline（P2-4）：调用方任务级预算的绝对时间点（`time.monotonic()` 口径）。传入后——
+        deadline：调用方任务级预算的绝对时间点（`time.monotonic()` 口径）。传入后——
         ① 预算已耗尽直接抛 `LLM_DEADLINE_EXCEEDED`（不再发起调用）② 每次请求的读超时按剩余预算钳位
         ③ 退避 sleep 会越过 deadline 时不再重试。不传 = 与历史行为一致（只用固定连接/读超时）。
         """
         s = self.settings
-        # why：§9.3 输入长度预检——超长上下文裸奔会被上游 400 拒绝且浪费 token，调用前明确拒绝
+        # why：输入长度预检——超长上下文裸奔会被上游 400 拒绝且浪费 token，调用前明确拒绝
         total_chars = len(system) + len(user)
         if total_chars > s.max_input_chars:
             raise AppError(
@@ -71,8 +71,8 @@ class LlmClient:
                 detail=f"输入超长（{total_chars} 字符 > 上限 {s.max_input_chars}），请精简 Swagger 或分批生成",
             )
         last_exc: Exception | None = None
-        # why：range(max_retries + 1) = 首次尝试 + max_retries 次重试（§9.4「最多重试 3 次」）；
-        # 退避 1s/3s/9s（3**attempt），仅瞬时异常重试；start 计时供 §6.2 调用日志
+        # why：range(max_retries + 1) = 首次尝试 + max_retries 次重试；
+        # 退避 1s/3s/9s（3**attempt），仅瞬时异常重试；start 计时供调用日志
         start = time.monotonic()
         attempts = 0
         for attempt in range(s.max_retries + 1):
@@ -91,7 +91,7 @@ class LlmClient:
                     {"role": "user", "content": user},
                 ],
                 "response_format": {"type": "json_object"},
-                "temperature": s.temperature,  # 确定性，可复现（RULES §9.3）
+                "temperature": s.temperature,  # 确定性，可复现
                 "max_tokens": s.max_tokens,
             }
             if remaining is not None:
@@ -104,7 +104,7 @@ class LlmClient:
                 resp = self.client.chat.completions.create(**request_kwargs)
                 if not resp.choices:
                     # why：空 choices（部分代理/内容过滤场景）会以 IndexError 绕过下方错误分类
-                    # 直接穿透（fix-hints 链路无兜底会 500）——显式归入 LLM_FAILED 不可重试（R3 批次）
+                    # 直接穿透（fix-hints 链路无兜底会 500）——显式归入 LLM_FAILED 不可重试
                     raise AppError("LLM_FAILED", status_code=502, detail="LLM 返回空 choices")
                 raw = resp.choices[0].message.content or ""
                 data = json.loads(self._extract_json(raw))
@@ -118,7 +118,7 @@ class LlmClient:
                     usage = LlmUsage(
                         u.prompt_tokens or 0, u.completion_tokens or 0, u.total_tokens or 0
                     )
-                # §6.2：成功调用日志（模型/耗时/token/是否重试）；request_id 由统一 Filter 注入
+                # 成功调用日志（模型/耗时/token/是否重试）；request_id 由统一 Filter 注入
                 logger.info(
                     "llm call ok model=%s attempts=%d duration_ms=%d "
                     "prompt_tokens=%d completion_tokens=%d total_tokens=%d",
@@ -144,14 +144,14 @@ class LlmClient:
                 exc = AppError(
                     "LLM_VALIDATION_FAILED",
                     status_code=502,
-                    detail=f"Pydantic 校验失败: {e}",  # 具体错误供 rejected_detail（间隙 2）
+                    detail=f"Pydantic 校验失败: {e}",  # 具体错误供 rejected_detail
                 )
                 exc.raw_response = raw  # 原始响应随异常携带，generation_log 落库用
-                raise exc from e  # 校验失败不可重试（RULES §9.4）
+                raise exc from e  # 校验失败不可重试
             if attempt < s.max_retries:
-                backoff = s.retry_backoff * (3**attempt)  # 指数退避 1s/3s/9s（§9.4）
+                backoff = s.retry_backoff * (3**attempt)  # 指数退避 1s/3s/9s
                 if deadline is not None and time.monotonic() + backoff >= deadline:
-                    # why：退避会睡过任务预算——重试已无意义，直接以预算耗尽收尾（P2-4）
+                    # why：退避会睡过任务预算——重试已无意义，直接以预算耗尽收尾
                     raise AppError(
                         "LLM_DEADLINE_EXCEEDED",
                         status_code=504,

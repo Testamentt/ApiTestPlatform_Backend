@@ -85,7 +85,7 @@ def render_test_file(case) -> str:
     safe_name = f"{case.name!r}"
     if ex.auth_enabled:
         # why：被测系统需要登录态时，token 由 workspace conftest 的 session fixture 提供，
-        # 用例文件只引用 fixture——登录细节/凭证不进用例（§8），AI 生成链路对 headers 无感知
+        # 用例文件只引用 fixture——登录细节/凭证不进用例，AI 生成链路对 headers 无感知
         request_line = (
             f"    r = httpx.request({case.method!r}, url, params={params!r}, "
             f"json={body!r}, headers={{{ex.auth_token_header!r}: token}}, timeout={timeout})\n"
@@ -116,7 +116,7 @@ def render_conftest() -> str:
     """被测系统登录 conftest（auth_enabled 时随执行 workspace 生成）。
 
     why：session 级登录一次取 token，全部用例共享（N 个用例只登 1 次，不压登录接口）；
-    凭证在 pytest 运行时从环境变量读、绝不写入生成文件（§8）；登录体字段名/密码编码/token
+    凭证在 pytest 运行时从环境变量读、绝不写入生成文件；登录体字段名/密码编码/token
     提取路径均来自 config——被测系统各异，适配是配置问题而非代码问题。
     """
     ex = get_settings().execution
@@ -135,7 +135,7 @@ def render_conftest() -> str:
         f"PASSWORD_ENV = {ex.auth_password_env!r}\n"
         f"TOKEN_FIELD = {ex.auth_token_field!r}\n"
         f"PASSWORD_ENCODING = {ex.auth_password_encoding!r}\n"
-        f"LOGIN_TIMEOUT = {ex.pytest_timeout!r}  # 来自 config（§2.3）\n"
+        f"LOGIN_TIMEOUT = {ex.pytest_timeout!r}  # 来自 config 的 pytest_timeout\n"
         "\n\n"
         '@pytest.fixture(scope="session")\n'
         "def token():\n"

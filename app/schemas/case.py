@@ -11,7 +11,7 @@ from app.schemas.assertion import AssertionItem
 HTTP_METHODS = Literal["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 
 # why：strip_whitespace 先于长度校验执行——纯空白串在 min_length=1 处被拒（min_length 单独用会放过 "   "，
-# 而 name/path/operation_id 会进生成代码与血缘检索，空白值等于脏数据）；长度上限对齐表列长（review L8）
+# 而 name/path/operation_id 会进生成代码与血缘检索，空白值等于脏数据）；长度上限对齐表列长
 NameStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
 PathStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
 # why：HTTP 状态码有效区间——无界时 99999 这类值会静默进执行池（断言必然失败，且排障时看不出是脏数据）
@@ -85,7 +85,7 @@ class ConfirmBody(BaseModel):
     @field_validator("reviewer")
     @classmethod
     def _reviewer_not_blank(cls, v: str) -> str:
-        # why：min_length 不拦纯空白——批准人审计字段不能收 "  "（R3 批次）；strip 后落库
+        # why：min_length 不拦纯空白——批准人审计字段不能收 "  "；strip 后落库
         if not v.strip():
             raise ValueError("reviewer 不能为空白")
         return v.strip()

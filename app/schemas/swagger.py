@@ -1,4 +1,4 @@
-# Swagger 解析出入参。why：ParseResult 透出 warnings（宽容解析不静默，D4/D5）。
+# Swagger 解析出入参。why：ParseResult 透出 warnings（宽容解析不静默）。
 from __future__ import annotations
 
 from pydantic import BaseModel

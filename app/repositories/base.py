@@ -52,7 +52,7 @@ class BaseRepository[ModelT: Base]:
         try:
             self.session.commit()
         except SQLAlchemyError:
-            self.session.rollback()  # 唯一回滚点，防止脏数据残留（RULES §15 示例 2）
+            self.session.rollback()  # 唯一回滚点，防止脏数据残留
             raise
         self.session.refresh(obj)
         return obj
@@ -63,7 +63,7 @@ class BaseRepository[ModelT: Base]:
         """唯一约束竞态收敛：约束报错后重查「赢家」行，把并发语义修复成与串行一致。
 
         why：Lookup-Create 幂等存在经典 TOCTOU 窗口——两个请求都先查、都未命中，第二个 INSERT 撞
-        UNIQUE 约束抛 IntegrityError，此前直接冒泡成 500（review C1）。唯一约束已经保证"不会重复建"，
+        UNIQUE 约束抛 IntegrityError，此前直接冒泡成 500。唯一约束已经保证"不会重复建"，
         缺的只是"把赢家查回来"。重试若干次是为了兼容「赢家事务尚未提交可见」的极短窗口
         （SQLite WAL 下 commit 后立即可见，故通常第一次就命中）。
         """

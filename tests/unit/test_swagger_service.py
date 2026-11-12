@@ -32,7 +32,7 @@ def test_parse_document_creates_definition(session_factory):
         defn, warnings = SwaggerService(s).parse_document(_doc())
         assert defn.version == "v1"
         assert defn.operation_ids == ["listUsers"]
-        # why=2：L3 指纹算法 md5→sha256 时 hash_version 递增，快照记录当前算法代际
+        # why=2：指纹算法 md5→sha256 时 hash_version 递增，快照记录当前算法代际
         assert defn.hash_version == 2
         assert warnings == []
 
@@ -96,7 +96,7 @@ def test_parse_warns_when_operation_count_exceeds(session_factory, monkeypatch, 
 
 
 def test_parse_version_collision_returns_existing(session_factory, monkeypatch):
-    """P2-6：并发解析同一个新版本号时撞 UNIQUE(api_definitions.version)。
+    """并发解析同一个新版本号时撞 UNIQUE(api_definitions.version)。
 
     正确行为 = 查回「赢家」行返回（并发语义 = 串行语义），而不是 IntegrityError 冒泡成 500。
     why：用 `get_by_version` 返回 None 模拟"另一个请求也以为版本号可用"的 TOCTOU 窗口——

@@ -1,4 +1,4 @@
-# 密钥与本地配置（密钥只放 .env，RULES §3.1）
+# 密钥与本地配置（密钥只放 .env）
 .env
 .env.*
 !.env.example
@@ -37,14 +37,14 @@ logs/
 .vscode/
 *.swp
 
-# ---- 以下只保留项目本体，不公开（已上传文件用 git rm --cached 移出跟踪）----
+# ---- 本地开发辅助文件与过程记录，不入库 ----
 
-# Claude Code / AI 协作（规则/技能/指南/记忆，仅本地开发用）
+# 本地 AI 协作辅助文件（规则/技能/指南/记忆）
 .claude/
 CLAUDE.md
 memory.md
 
-# 文档中的对话产物（过程记录，不公开；只保留设计/架构/数据库等文档）
+# 文档过程记录，不入库（只保留设计/架构/数据库等文档）
 docs/plans/
 docs/reviews/
 docs/sessions/

@@ -1,4 +1,4 @@
-# Worker 日志接管测试（review N1）。why：全链路 request_id 的可观测性靠"Worker 进程真的装了
+# Worker 日志接管测试。why：全链路 request_id 的可观测性靠"Worker 进程真的装了
 # Filter/Formatter 且格式串含 request_id"这一事实维持——此前只有 Web 侧安装，Worker 日志既无统一格式
 # 也无 request_id；且实测发现"只换 Formatter 对象、保留 Celery 的 format 串"等于没接管（格式里没有占位符）。
 from __future__ import annotations
@@ -50,7 +50,7 @@ def test_missing_request_id_falls_back_to_dash(monkeypatch):
 
 
 def test_apply_formatting_overrides_foreign_format(monkeypatch):
-    """N1 回归核心：接管 Celery 风格 handler 时**必须换掉格式串**。
+    """回归核心：接管 Celery 风格 handler 时**必须换掉格式串**。
 
     why：Celery 默认 format 是 `[时间: 级别/进程名] 消息`，没有 `%(request_id)s`——
     只替换 Formatter 对象、沿用它的 format，日志里永远打不出 request_id（首次修复的真实翻车点）。
@@ -127,7 +127,7 @@ class _FakeTask:
         return None
 
 
-# ---------- P3-5：Worker stdio 切 UTF-8 ----------
+# ---------- Worker stdio 切 UTF-8 ----------
 
 
 class _Stream:
@@ -142,7 +142,7 @@ class _Stream:
 
 
 def test_worker_streams_reconfigured_to_utf8(monkeypatch):
-    """why：Windows 控制台/重定向默认 cp936——Worker 中文日志乱码，编码异常时还会整行丢失（P3-5）。"""
+    """why：Windows 控制台/重定向默认 cp936——Worker 中文日志乱码，编码异常时还会整行丢失。"""
     import sys
 
     from app.celery_app import _ensure_utf8_streams

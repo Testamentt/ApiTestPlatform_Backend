@@ -1,4 +1,4 @@
-# subprocess_util 单元测试：白名单 / 超时 / returncode / 编码 / 杀树（review N2/N5）。
+# subprocess_util 单元测试：白名单 / 超时 / returncode / 编码 / 杀树。
 from __future__ import annotations
 
 import subprocess
@@ -16,7 +16,7 @@ def test_whitelist_rejected():
 
 
 def test_whitelist_prefix_pattern_python3():
-    # why：Linux/Docker 下 sys.executable 是 python3.12，白名单 python3* 前缀必须放行（review H1）
+    # why：Linux/Docker 下 sys.executable 是 python3.12，白名单 python3* 前缀必须放行
     from app.utils.subprocess_util import _name_allowed
 
     whitelist = ["python", "python3*", "pytest"]
@@ -52,7 +52,7 @@ def test_timeout_raises():
     assert exc.value.code == "SUBPROCESS_TIMEOUT"
 
 
-# ---------- 编码（review N2）：父子都按 UTF-8，不再依赖宿主 locale ----------
+# ---------- 编码：父子都按 UTF-8，不再依赖宿主 locale ----------
 
 
 def test_utf8_chinese_output_round_trips():
@@ -83,7 +83,7 @@ def test_undecodable_bytes_do_not_break_caller():
     assert "\ufffd" in res.stdout
 
 
-# ---------- 杀树（review N5）：跨平台分派 + 失败可见 + 真实杀进程 ----------
+# ---------- 杀树：跨平台分派 + 失败可见 + 真实杀进程 ----------
 
 
 def test_kill_tree_dispatches_by_platform(monkeypatch):
@@ -132,7 +132,7 @@ def test_kill_tree_really_kills_process():
 
 def test_on_start_failure_kills_child(monkeypatch):
     # why：on_start（如 mark_running 发现任务已被取消）抛错时子进程已在运行——必须先杀再抛，
-    # 否则进程孤儿化（review C2/N5）
+    # 否则进程孤儿化
     killed: list[int] = []
     monkeypatch.setattr(
         "app.utils.subprocess_util.kill_process_tree",

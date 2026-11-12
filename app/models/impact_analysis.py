@@ -1,6 +1,6 @@
 # 影响分析结果。why：affected_case_ids 快照是回归依据；affected_count 由 @validates 写时同步——
 # validates 只在整体赋值时触发（列表原地 append 不触发），故业务写入口收敛为整体替换。
-# last_regression_* 持久化每次一键回归结果（F3：可追溯）。
+# last_regression_* 持久化每次一键回归结果（可追溯）。
 from __future__ import annotations
 
 from datetime import datetime

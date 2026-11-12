@@ -158,7 +158,7 @@ def test_regression_all_dropped_raises(session_factory):
 
 
 def test_regression_over_task_limit_raises_422(session_factory, monkeypatch):
-    """P2-1/N7：受影响用例超过单任务上限（500）时必须显式 422，而不是让服务层内部构造
+    """受影响用例超过单任务上限（500）时必须显式 422，而不是让服务层内部构造
     `TaskCreate` 抛 Pydantic ValidationError 冒泡成 500。
 
     why：这里用轻量 stub 顶掉仓储，避免为了一个边界断言往库里塞 501 行数据。

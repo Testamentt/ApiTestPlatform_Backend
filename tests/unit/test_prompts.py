@@ -1,4 +1,4 @@
-# Prompt 版本一致性断言（RULES §3.2）：代码引用版本与 prompts/ 实际文件一致 + 占位符齐全。
+# Prompt 版本一致性断言：代码引用版本与 prompts/ 实际文件一致 + 占位符齐全。
 from __future__ import annotations
 
 from app.utils.prompt_util import PROMPT_VERSION, PROMPTS_DIR
@@ -7,7 +7,7 @@ from app.utils.prompt_util import PROMPT_VERSION, PROMPTS_DIR
 def test_prompt_files_exist_for_version():
     assert (PROMPTS_DIR / PROMPT_VERSION / "system.md").exists()
     assert (PROMPTS_DIR / PROMPT_VERSION / "user.md").exists()
-    assert (PROMPTS_DIR / PROMPT_VERSION / "boundary_rules.md").exists()  # review L5 外置
+    assert (PROMPTS_DIR / PROMPT_VERSION / "boundary_rules.md").exists()  # 外置
 
 
 def test_user_prompt_placeholders_all_present():
@@ -31,14 +31,14 @@ def test_system_prompt_requires_assertions():
 
 
 def test_validate_prompts_passes_on_real_dir():
-    # why：§3.2「占位符缺失时启动即抛错」——create_app 启动期调用（R3 批次）
+    # why：占位符缺失时启动即抛错——create_app 启动期调用
     from app.utils.prompt_util import validate_prompts
 
     validate_prompts()  # 真实 prompts/v1 必须通过，不抛即过
 
 
 def test_validate_prompts_fails_on_missing_placeholder(tmp_path, monkeypatch):
-    # why：占位符缺失须在启动期报错而非生成任务运行期 KeyError（R3 批次）
+    # why：占位符缺失须在启动期报错而非生成任务运行期 KeyError
     from app.utils import prompt_util
 
     version_dir = tmp_path / "v1"

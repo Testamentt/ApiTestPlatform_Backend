@@ -1,5 +1,5 @@
 # AssertionItem schema 单元测试：path 白名单正则 / op 白名单 / extra=forbid——
-# 渲染进生成代码前的唯一注入防线（RULES §11.2）。
+# 渲染进生成代码前的唯一注入防线。
 from __future__ import annotations
 
 import pytest

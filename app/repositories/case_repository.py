@@ -35,7 +35,7 @@ class CaseRepository(BaseRepository[TestCase]):
         return list(self.session.scalars(stmt))
 
     def bound_operation_ids(self, operation_ids: list[str]) -> set[str]:
-        """返回其中已绑 active 用例的 operation_id 子集——untested_ops 判定（D3）。"""
+        """返回其中已绑 active 用例的 operation_id 子集——untested_ops 判定。"""
         return set(
             self.session.scalars(
                 select(TestCase.operation_id).where(

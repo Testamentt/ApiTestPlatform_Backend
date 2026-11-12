@@ -43,7 +43,7 @@ class ApiDefinitionRepository(BaseRepository[ApiDefinition]):
         """reparse 覆盖：同 version 先删旧插新（CI 重复触发不膨胀版本表）。
 
         why：`version` 是唯一约束，而「先查→再删→再插」有 TOCTOU 窗口——两个请求同时解析同一个
-        新版本号时，第二个会撞 `UNIQUE(api_definitions.version)` 并冒泡成 500（P2-6）。收敛策略与
+        新版本号时，第二个会撞 `UNIQUE(api_definitions.version)` 并冒泡成 500。收敛策略与
         任务/生成链路一致：撞约束即回滚并查回「赢家」行返回（并发语义 = 串行语义）。
         """
         existing = self.get_by_version(version)
@@ -61,7 +61,7 @@ class ApiDefinitionRepository(BaseRepository[ApiDefinition]):
         try:
             self.session.commit()
         except IntegrityError:
-            self.session.rollback()  # 先删后插，任何一步失败整事务回滚（RULES §6.1）
+            self.session.rollback()  # 先删后插，任何一步失败整事务回滚
             winner = self.resolve_after_unique_violation(lambda: self.get_by_version(version))
             if winner is None:
                 raise

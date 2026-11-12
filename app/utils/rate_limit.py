@@ -1,5 +1,5 @@
 # 限流基础设施（Redis 固定窗口）。why：鉴权解决"你是谁"，限流解决"你能多快"——脚本误跑/暴力试错需要准入闸。
-# 固定窗口（而非令牌桶/滑动窗口）是刻意选择：实现 20 行、行为可解释、面试讲得清，且复用既有 Redis 不引入新组件。
+# 固定窗口（而非令牌桶/滑动窗口）是刻意选择：实现 20 行、行为可解释，且复用既有 Redis 不引入新组件。
 # 本模块只做"纯逻辑 + 一次 Redis INCR/EXPIRE"，不依赖 FastAPI（依赖注入在 app/api/v1/deps.py 组装）。
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def hash_identity(raw: str) -> str:
-    """主体标识只存哈希。why：限流 key 会落到 Redis——不能把 Bearer 令牌明文写进去（§8 密钥不入库/不入外部存储）。"""
+    """主体标识只存哈希。why：限流 key 会落到 Redis——不能把 Bearer 令牌明文写进去（密钥不入库/不入外部存储）。"""
     return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
@@ -55,7 +55,7 @@ def hit_count(identity: str, *, window_seconds: int, now: float | None = None) -
             client.expire(key, window_seconds)  # 只在窗口首个请求设过期，避免每次刷新 TTL
         return int(count)
     except Exception as e:  # noqa: BLE001  # redis.RedisError 之外的连接层异常也要降级，故兜底
-        logger.warning("限流计数失败，放行本次请求（P3-8c 降级策略）: %s", e)
+        logger.warning("限流计数失败，放行本次请求（降级策略）: %s", e)
         return None
     finally:
         client.close()

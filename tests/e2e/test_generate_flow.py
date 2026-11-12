@@ -44,7 +44,7 @@ def test_ai_generate_to_confirm_to_execute(client, session_factory, monkeypatch)
     assert task["status"] == "success"
     assert task["result_summary"]["generated"] == 2
     assert task["result_summary"]["draft_created"] == 2
-    assert task["celery_task_id"] is not None  # P2-3：celery_task_id 持久化
+    assert task["celery_task_id"] is not None  # celery_task_id 持久化
 
     # 2. draft 用例：source=ai、trust_score=80、status=draft（防幻觉三层护栏）
     cases = client.get("/api/v1/cases?status=draft").json()["data"]["items"]

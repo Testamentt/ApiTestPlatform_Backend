@@ -50,13 +50,13 @@ def test_valid_token_200(auth_client):
 
 
 def test_health_no_auth(auth_client):
-    """why：health 是部署探针，免鉴权（§10.3 探针端点）。"""
+    """why：health 是部署探针，免鉴权。"""
     resp = auth_client.get("/api/v1/health")
     assert resp.status_code == 200
 
 
 def test_report_requires_auth(auth_client):
-    """why：报告含用例名与失败信息，必须走鉴权（review N3）——无凭证一律 401，不得有无鉴权旁路。"""
+    """why：报告含用例名与失败信息，必须走鉴权——无凭证一律 401，不得有无鉴权旁路。"""
     resp = auth_client.get("/api/v1/tasks/1/report")
     assert resp.status_code == 401
     assert resp.json()["code"] == "AUTH_REQUIRED"
@@ -68,7 +68,7 @@ def test_openapi_has_bearer_scheme(auth_client):
     assert "HTTPBearer" in openapi["components"]["securitySchemes"]
 
 
-# ---------- JWT 通道（P3-8b）：与静态 token 并存，可配置开关 ----------
+# ---------- JWT 通道：与静态 token 并存，可配置开关 ----------
 
 
 def _jwt(secret: str, *, expires_in: int = 60, algorithm: str = "HS256", **claims) -> str:

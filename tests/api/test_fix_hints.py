@@ -61,7 +61,7 @@ def test_fix_hints_best_effort_returns_none(client, session_factory, monkeypatch
 
 
 def test_fix_hints_writes_generation_log(client, session_factory, monkeypatch):
-    # §9.6 审计：成功路径写 generation_logs（model='fix_hint' 区分来源，generation_task_id 可空）
+    # 审计：成功路径写 generation_logs（model='fix_hint' 区分来源，generation_task_id 可空）
     from app.models.generation_log import GenerationLog
 
     aid = _seed_impact(session_factory, breaking=["createUser"])
@@ -100,7 +100,7 @@ def test_fix_hints_failure_writes_error_log(client, session_factory, monkeypatch
 
 
 def test_fix_hints_prompt_delimited(client, session_factory, monkeypatch):
-    # §10.1 注入防护：恶意 operationId（含指令句式）经 repr + 定界包裹进 prompt，不裸拼
+    # 注入防护：恶意 operationId（含指令句式）经 repr + 定界包裹进 prompt，不裸拼
     from app.models.impact_analysis import ImpactAnalysis
 
     captured = {}

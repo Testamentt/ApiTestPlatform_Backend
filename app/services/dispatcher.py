@@ -1,6 +1,6 @@
 # 派发器。why：任务入队抽象为单点（当前是 Celery 异步版），Web 层不直接 import 任务模块；
-# dispatch_or_fail 收敛「入队失败兜底」策略（review M2），执行/生成两类任务共用同一实现；
-# revoke_task 收敛「撤销已入队消息」（取消/排队超时回收，review N4）。
+# dispatch_or_fail 收敛「入队失败兜底」策略，执行/生成两类任务共用同一实现；
+# revoke_task 收敛「撤销已入队消息」（取消/排队超时回收）。
 # 延迟导入防循环引用（celery 任务模块会反向 import 本包）。
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 def task_time_limits(timeout_seconds: int | None) -> dict[str, int]:
-    """执行任务级 Celery 时间限制（review N13）。
+    """执行任务级 Celery 时间限制。
 
     why：全局 soft_time_limit=300 与接口允许的 timeout_seconds（≤3600）口径冲突——用户在 Linux/prefork
     池下设 600s 会被 300s 提前掐掉。这里按任务真实超时派生限制，并留清理余量；
-    §8.2 要求 time_limit < visibility_timeout（否则运行中任务被重复投递），故超上限时向 visibility 收敛。
+    time_limit 必须 < visibility_timeout（否则运行中任务被重复投递），故超上限时向 visibility 收敛。
     """
     settings = get_settings()
     base = timeout_seconds or settings.execution.pytest_timeout
@@ -36,7 +36,7 @@ def dispatch_execution(task_id: int, *, timeout_seconds: int | None = None) -> s
     from app.middleware.request_id import get_request_id
     from app.tasks.execute_cases import execute_cases_task  # noqa: PLC0415
 
-    # why：request_id 随任务参数透传（§6.2）——跨进程 ContextVar 不共享，
+    # why：request_id 随任务参数透传——跨进程 ContextVar 不共享，
     # Worker 侧任务函数开头 set_request_id 恢复，任务日志/LLM 调用沿用同一链路 id
     return execute_cases_task.apply_async(
         args=[task_id],
@@ -79,7 +79,7 @@ def dispatch_or_fail[TaskT](
     label: str = "",
     dispatch_kwargs: dict | None = None,
 ) -> None:
-    """why：入队失败（Celery/Redis 不可用）不能留 PENDING 孤儿（review M2）——
+    """why：入队失败（Celery/Redis 不可用）不能留 PENDING 孤儿——
     置 FAILED(dispatch) 后抛业务异常（503 结构化响应），同输入再提交走重试路径。
     label：错误信息前缀（如「生成」），区分执行/生成两条链路；
     dispatch_kwargs：透传给 dispatch_fn 的任务级参数（如执行任务的 timeout_seconds）。"""

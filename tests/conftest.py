@@ -20,7 +20,7 @@ celery_app.conf.task_eager_propagates = True
 
 
 def pytest_collection_modifyitems(config, items):
-    # why：分层 marker 声明即用（review L12）——按目录自动归类 api/tasks/integration，
+    # why：分层 marker 声明即用——按目录自动归类 api/tasks/integration，
     # 支持 `-m api`/`-m tasks` 独立分层跑；e2e 已自行标 slow，这里再补 integration 归类。
     # 逐文件写 pytestmark 易遗漏且新文件忘标，集中在此单点维护。
     for item in items:
@@ -38,7 +38,7 @@ def isolated_workspace(tmp_path, monkeypatch):
     """每个用例独占执行 workspace。
 
     why：测试会真实生成 test_*.py / report.html，而 task_id 在每个内存库里都从 1 开始——
-    不隔离就会读到上一个用例留下的同名报告（review N3 的「报告未生成→404」用例即被此坑到）。
+    不隔离就会读到上一个用例留下的同名报告（「报告未生成→404」用例即被此坑到）。
     """
     from app.core.config import get_settings
 

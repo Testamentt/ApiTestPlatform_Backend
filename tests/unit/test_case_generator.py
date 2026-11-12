@@ -108,7 +108,7 @@ def test_auth_mode_renders_token_fixture_and_header(monkeypatch):
 
 
 def test_render_conftest_valid_and_no_secret_leak(monkeypatch):
-    # why：凭证只经环境变量在 pytest 运行时读取（§8）——生成文件里绝不能出现密码明文
+    # why：凭证只经环境变量在 pytest 运行时读取——生成文件里绝不能出现密码明文
     monkeypatch.setenv("ERP_TEST_PASSWORD", "super-secret-123")
     monkeypatch.setattr(
         "app.utils.case_generator.get_settings",

@@ -49,7 +49,7 @@ def make_fake_run_cmd(
 
 
 class FakeLlmClient:
-    """Fake LLM：内部调真实 schema.model_validate（不跳过校验链路，间隙 3）；
+    """Fake LLM：内部调真实 schema.model_validate（不跳过校验链路）；
     失败模式抛 AppError 带 raw_response；LlmUsage 固定 100/50/150。"""
 
     def __init__(self, *, data=None, raise_error=None):
@@ -59,7 +59,7 @@ class FakeLlmClient:
         self.calls: list[dict] = []
 
     def chat_json(self, system, user, *, schema, deadline=None):
-        # why：deadline 是 P2-4 新增的可选参数——fake 必须同签名，否则真实调用点传参时直接 TypeError
+        # why：deadline 是新增的可选参数——fake 必须同签名，否则真实调用点传参时直接 TypeError
         self.calls.append({"system": system, "user": user, "deadline": deadline})
         if self.raise_error is not None:
             raise self.raise_error

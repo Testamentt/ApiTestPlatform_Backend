@@ -1,4 +1,4 @@
-# 派发器透传测试：request_id 随任务参数跨进程传递（§6.2，review 批次 C）。
+# 派发器透传测试：request_id 随任务参数跨进程传递。
 from __future__ import annotations
 
 from app.middleware.request_id import reset_request_id, set_request_id
@@ -21,14 +21,14 @@ def test_dispatch_execution_forwards_request_id(monkeypatch):
         dispatch_execution(42)
     finally:
         reset_request_id()
-    # 请求上下文的 id 透传 Worker（§6.2）；任务入参只传 id（RULES §8.4）
+    # 请求上下文的 id 透传 Worker；任务入参只传 id
     assert captured["args"] == ()
     assert captured["kwargs"]["args"] == [42]
     assert captured["kwargs"]["kwargs"] == {"request_id": "rid-dispatch-1"}
 
 
 def test_dispatch_execution_sets_task_level_time_limits(monkeypatch):
-    """任务级超时跟 tasks.timeout_seconds 走（review N13）：全局 300s 不得掐掉用户设的 600s。"""
+    """任务级超时跟 tasks.timeout_seconds 走：全局 300s 不得掐掉用户设的 600s。"""
     import app.tasks.execute_cases as ec
     from app.core.config import get_settings
     from app.services.dispatcher import dispatch_execution
@@ -42,7 +42,7 @@ def test_dispatch_execution_sets_task_level_time_limits(monkeypatch):
     dispatch_execution(7, timeout_seconds=600)
     assert captured["soft_time_limit"] == 630
     assert captured["time_limit"] == 660
-    # §8.2：time_limit 必须 < visibility_timeout，否则运行中任务被重复投递
+    # time_limit 必须 < visibility_timeout，否则运行中任务被重复投递
     assert captured["time_limit"] < get_settings().celery.visibility_timeout
 
 
@@ -98,7 +98,7 @@ def test_task_signature_accepts_request_id(session_factory, patch_sessionlocal, 
 def test_generate_task_signature_accepts_request_id(
     session_factory, patch_sessionlocal, monkeypatch
 ):
-    # why：generate 链路的任务侧恢复此前无测试（R3 批次）——LLM 链路断环将不可知
+    # why：generate 链路的任务侧恢复此前无测试——LLM 链路断环将不可知
     from app.middleware.request_id import get_request_id, reset_request_id
     from app.tasks.generate_cases import generate_cases_task
 

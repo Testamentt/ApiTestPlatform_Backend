@@ -26,12 +26,12 @@ class CaseService:
         return self.repo.get_or_raise(case_id)
 
     def update_case(self, case_id: int, payload: CaseUpdate) -> TestCase:
-        """两层闸更新（review C3 + P3-4 细化）。
+        """两层闸更新。
 
         why：update 是 exclude_unset 部分更新——此前既不重校验也不降级，active 用例被改成坏数据后
         仍留在执行池（错误断言/非法 path 直到跑挂才暴露）。现补：
         ① 形状闸——**只对 active 用例**校验合并后的完整记录：执行池必须始终是合法数据。
-           draft 不做形状闸（P3-4）：否则「历史坏行 + 只想改个名字」这类修复式更新会被自己的闸门卡死；
+           draft 不做形状闸：否则「历史坏行 + 只想改个名字」这类修复式更新会被自己的闸门卡死；
            draft 的安全性由 confirm 的激活闸 `_revalidate_for_active` 兜底（它是进执行池的唯一入口）。
         ② 语义闸——active 用例的语义字段一变即降级 draft，重新走人工审核（active 是执行资格，不是永久标签）。
         """
@@ -71,7 +71,7 @@ class CaseService:
             )
         self._revalidate_for_active(case)
         case.status = CaseStatus.ACTIVE
-        case.reviewer = reviewer  # 批准人落库（RULES §11.2：责任可审计，review R3-2）
+        case.reviewer = reviewer  # 批准人落库（责任可审计）
         try:
             self.session.commit()
         except SQLAlchemyError:
@@ -98,7 +98,7 @@ class CaseService:
             ) from e
 
     def _revalidate_for_active(self, case: TestCase) -> None:
-        """转 active 前按入参 schema 重新校验（RULES §11.2 MUST）。
+        """转 active 前按入参 schema 重新校验，不通过则拒绝激活。
 
         why：draft 期间数据可能被改坏或来自未校验的历史写入——激活是进入执行池的最后一道闸，
         校验失败必须拦在状态迁移前（否则坏用例获得执行资格）。

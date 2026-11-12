@@ -57,7 +57,7 @@ def test_execute_timeout_marks_failed(session_factory, patch_sessionlocal, monke
 
 
 def test_execute_command_not_allowed_stage(session_factory, patch_sessionlocal, monkeypatch):
-    # review L7：白名单拒绝 ≠ 超时——错误分类必须落 command，否则排障误入 timeout 诊断路径
+    # 白名单拒绝 ≠ 超时——错误分类必须落 command，否则排障误入 timeout 诊断路径
     from ..fakes import make_fake_run_cmd
 
     case_id, task_id = _seed_task(session_factory)
@@ -126,7 +126,7 @@ def test_execute_returncode_1_is_success_when_junit_valid(
 
 
 def test_soft_timeout_propagates_to_task_handler(session_factory, patch_sessionlocal, monkeypatch):
-    # why：服务层 except Exception 曾截胡 SoftTimeLimitExceeded，任务层 handler 成死代码（R3-1）——
+    # why：服务层 except Exception 曾截胡 SoftTimeLimitExceeded，任务层 handler 成死代码——
     # 从 _execute_cases（内层）抛出，锁死「穿透服务层兜底 → 任务层 force_fail_timeout →
     # FAILED(timeout) + 读 DB pid 杀树」的真实传播链
     from celery.exceptions import SoftTimeLimitExceeded
@@ -174,7 +174,7 @@ def test_draft_case_excluded(session_factory, patch_sessionlocal, monkeypatch):
 
 
 def test_cancel_race_does_not_resurrect_task(session_factory, patch_sessionlocal, monkeypatch):
-    """C2 回归：读任务时还是 pending，启动瞬间被取消 → 条件更新影响 0 行 → 放弃执行。
+    """条件更新回归：读任务时还是 pending，启动瞬间被取消 → 条件更新影响 0 行 → 放弃执行。
 
     why：`_mark_running` 此前无条件覆盖为 RUNNING——取消与 Worker 领取交错时取消会被覆盖丢失
     （任务继续跑、终态被改回 success/failed）。现要求"取消终态不被执行层覆盖"，并杀掉已启动子进程。
@@ -203,7 +203,7 @@ def test_cancel_race_does_not_resurrect_task(session_factory, patch_sessionlocal
 
 
 def test_fail_does_not_overwrite_cancelled_terminal(session_factory, patch_sessionlocal):
-    """P2-3：执行层失败回写是条件更新——已被取消（终态）的任务不被改写成 subprocess/timeout。"""
+    """执行层失败回写是条件更新——已被取消（终态）的任务不被改写成 subprocess/timeout。"""
     from app.services.execution_service import ExecutionService
 
     case_id, task_id = _seed_task(session_factory)
@@ -224,7 +224,7 @@ def test_fail_does_not_overwrite_cancelled_terminal(session_factory, patch_sessi
 def test_soft_timeout_does_not_overwrite_cancelled_terminal(
     session_factory, patch_sessionlocal, monkeypatch
 ):
-    """软超时兜底同样条件更新（P2-3）：被取消的任务不因 Celery 软超时被改写。"""
+    """软超时兜底同样条件更新：被取消的任务不因 Celery 软超时被改写。"""
     from app.services.execution_service import ExecutionService
 
     case_id, task_id = _seed_task(session_factory)
@@ -241,7 +241,7 @@ def test_soft_timeout_does_not_overwrite_cancelled_terminal(
 
 
 def test_finish_success_skips_when_cancelled(session_factory):
-    """P2-3：已被取消的任务不会被「成功」回写覆盖（先条件更新，再在有资格时写报告）。"""
+    """已被取消的任务不会被「成功」回写覆盖（先条件更新，再在有资格时写报告）。"""
     from app.services.execution_service import ExecutionService
 
     case_id, task_id = _seed_task(session_factory)

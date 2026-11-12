@@ -63,7 +63,7 @@ def test_test_case_trust_score_default_100(session_factory):
 
 
 def test_generated_case_max_length_matches_db():
-    # review L8：name/path 上限与 test_cases 列长（255/1024）对齐——超长输出在校验层拦截
+    # name/path 上限与 test_cases 列长（255/1024）对齐——超长输出在校验层拦截
     from app.schemas.generate import GeneratedCase
     from pydantic import ValidationError
 
@@ -77,7 +77,7 @@ def test_generated_case_max_length_matches_db():
 
 def test_generated_case_assertions_validated_itemwise():
     # why：LLM 断言输出逐条过 AssertionItem（path/op 白名单）——非法断言整 case 校验拒绝，
-    # 走 validation_failed 落审计（RULES §11.2），不落库不渲染
+    # 走 validation_failed 落审计，不落库不渲染
     from app.schemas.generate import GeneratedCase
     from pydantic import ValidationError
 

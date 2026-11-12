@@ -1,5 +1,5 @@
 # 影响分析编排。why：纯规则（解析→diff→检索→落库）短事务分界；回归宽容降级 + 真实口径 summary +
-# last_regression_* 持久化 + 结构化日志审计。breaking_changed 唯一触发圈定（D1/F2）；removed 进迁移清单（D2）。
+# last_regression_* 持久化 + 结构化日志审计。breaking_changed 是唯一触发圈定的依据；removed 进迁移清单。
 from __future__ import annotations
 
 import json
@@ -20,7 +20,7 @@ from app.schemas.impact import (
     RegressionResult,
 )
 from app.schemas.task import MAX_CASE_IDS, TaskCreate
-from app.services.generation_service import _sanitize_llm_field  # §10.2 同口径清洗（R3-4）
+from app.services.generation_service import _sanitize_llm_field  # 同口径清洗
 from app.services.task_service import TaskService
 from app.utils.impact_diff import build_suggested_remap, diff_operations
 from app.utils.llm_client import (
@@ -96,7 +96,7 @@ class ImpactService:
         )
         orphaned_cases = self.case_repo.find_by_operation_ids(diff.removed, active_only=True)
         bound = self.case_repo.bound_operation_ids(parsed.operation_ids)
-        untested_ops = sorted(set(parsed.operation_ids) - bound)  # D3：未绑用例接口清单
+        untested_ops = sorted(set(parsed.operation_ids) - bound)  # 未绑用例接口清单
         affected_ids = sorted({c.id for c in affected_cases})
         remap = build_suggested_remap(diff.removed, diff.added)
 
@@ -132,7 +132,7 @@ class ImpactService:
             suggested_remap=analysis.suggested_remap,
             untested_ops=analysis.untested_ops,
             warnings=parsed.warnings,
-            # 联动点 2：breaking 变更时提示「可按需生成修复建议」入口（细节 4）
+            # 联动点 2：breaking 变更时提示「可按需生成修复建议」入口
             has_fix_hint=bool(diff.breaking_changed),
             fix_hint_endpoint=f"/api/v1/impact/{analysis.id}/fix-hints"
             if diff.breaking_changed
@@ -142,7 +142,7 @@ class ImpactService:
     def suggest_fix_hints(self, analysis_id: int) -> dict | None:
         """breaking 变更的一句话修复建议（best-effort，复用 llm_client）。
         why：analyze 保持纯规则秒回；建议按需生成、失败置 None 不阻塞——不让 LLM 拖慢规则引擎，但给用户 AI 助手。
-        Prompt 走 prompts/v1 模板（§3.2 版本化）+ 定界/repr 注入防护（§10.1）；审计写 generation_logs（§9.6，
+        Prompt 走 prompts/v1 模板（版本化）+ 定界/repr 注入防护；审计写 generation_logs（
         文档承诺 model='fix_hint' 区分来源）。fix-hints 为轻量同步建议（Web 请求线程 best-effort，失败置 None）。"""
         analysis = self.impact_repo.get_or_raise(analysis_id)
         if not analysis.breaking_changed_ops:
@@ -150,7 +150,7 @@ class ImpactService:
                 "NO_BREAKING_CHANGES", status_code=422, detail="无 breaking 变更，无需修复建议"
             )
         ops = list(analysis.breaking_changed_ops)
-        # 短事务分界：先关事务再调 LLM——禁止持 DB Session/连接期间调 LLM（§2.1）
+        # 短事务分界：先关事务再调 LLM——禁止持 DB Session/连接期间调 LLM
         self.session.commit()
         llm = self.llm or LlmClient()
         system = load_fix_hint_system()
@@ -159,7 +159,7 @@ class ImpactService:
         try:
             parsed, usage = llm.chat_json(system, user, schema=FixHint)
         except AppError as e:
-            # best-effort 失败置 None，但同样落审计（§9.6 结构化日志兜底）
+            # best-effort 失败置 None，但同样落审计（结构化日志兜底）
             self._write_fix_hint_log(
                 usage=None,
                 latency_ms=int((monotonic() - start) * 1000),
@@ -171,7 +171,7 @@ class ImpactService:
         latency_ms = int((monotonic() - start) * 1000)
         cost = round(usage.total_tokens * llm.settings.cost_per_1k_tokens / 1000, 6)
         self._write_fix_hint_log(usage=usage, latency_ms=latency_ms, cost=cost, status="success")
-        # §10.2：LLM 输出与生成链路同口径清洗（review R3-4——此前 fix_hint 原文直入 ai_fix_hint）
+        # LLM 输出与生成链路同口径清洗——此前 fix_hint 原文直入 ai_fix_hint
         hint = {"breaking_changed_ops": ops, "suggestion": _sanitize_llm_field(parsed.suggestion)}
         try:
             analysis.ai_fix_hint = hint
@@ -184,7 +184,7 @@ class ImpactService:
     def _write_fix_hint_log(
         self, *, usage, latency_ms: int, cost: float = 0.0, error: str | None = None, status: str
     ) -> None:
-        """fix-hints 审计落库。why：§9.6 每次 LLM 调用记 usage/cost 到 generation_logs；
+        """fix-hints 审计落库。why：每次 LLM 调用记 usage/cost 到 generation_logs；
         无关联生成任务（generation_task_id 可空），model='fix_hint' 区分来源（文档契约）。"""
         usage_dict = None
         if usage is not None:
@@ -214,7 +214,7 @@ class ImpactService:
             raise
 
     def regression(self, analysis_id: int) -> RegressionResult:
-        """一键回归。宽容降级：快照里失效用例被过滤，只执行仍 active 的；summary 用执行时真实口径（D6）。"""
+        """一键回归。宽容降级：快照里失效用例被过滤，只执行仍 active 的；summary 用执行时真实口径。"""
         analysis = self.impact_repo.get_or_raise(analysis_id)
         affected = analysis.affected_case_ids
         if not affected:
@@ -233,7 +233,7 @@ class ImpactService:
                 "NO_ACTIVE_CASES", status_code=422, detail=f"受影响用例全部失效: {dropped}"
             )
         # why：服务层这里复用了入参 schema（TaskCreate）自行组装——超过单任务上限时 pydantic 会抛
-        # ValidationError 而不是 HTTP 422，客户端只看到 500（review N7/P2-1）。显式拦下并给出可行动指引。
+        # ValidationError 而不是 HTTP 422，客户端只看到 500。显式拦下并给出可行动指引。
         if len(active_ids) > MAX_CASE_IDS:
             raise AppError(
                 "TOO_MANY_CASES",
@@ -248,11 +248,11 @@ class ImpactService:
             TaskCreate(case_ids=active_ids)
         )  # Lookup-Create 幂等
         summary = {
-            "total": len(active_ids) + len(dropped),  # 执行时真实口径，不用旧快照（D6）
+            "total": len(active_ids) + len(dropped),  # 执行时真实口径，不用旧快照
             "executed": len(active_ids),
             "dropped": len(dropped),
         }
-        self.impact_repo.mark_regression(analysis.id, task.id, len(active_ids))  # F3 持久化
+        self.impact_repo.mark_regression(analysis.id, task.id, len(active_ids))  # 回归结果持久化
         # 审计日志：保留 analysis/task/executed/dropped/reasons，无独立 event 表（可追溯）
         logger.info(
             "impact.regression analysis=%s task=%s executed=%s dropped=%s reasons=%s",

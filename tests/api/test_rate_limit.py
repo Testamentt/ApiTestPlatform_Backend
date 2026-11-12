@@ -1,4 +1,4 @@
-# 限流测试（P3-8c）：固定窗口命中 429 / 关闭时不碰 Redis / Redis 不可用放行（降级策略）。
+# 限流测试：固定窗口命中 429 / 关闭时不碰 Redis / Redis 不可用放行（降级策略）。
 # why：限流是"保护"不是"正确性前提"——降级行为必须被测试锁住，否则一次 Redis 抖动会变成全站 429。
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def test_rate_limit_blocks_over_quota(monkeypatch, auth_client):
 
 
 def test_rate_limit_key_hides_token(monkeypatch, auth_client):
-    # why：限流 key 落 Redis——不能出现令牌明文（§8 密钥不入库/不入外部存储）
+    # why：限流 key 落 Redis——不能出现令牌明文（密钥不入库/不入外部存储）
     fake = _FakeRedis()
     _patch_redis(monkeypatch, fake)
     monkeypatch.setattr(get_settings().security, "rate_limit_per_minute", 5)

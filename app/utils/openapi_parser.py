@@ -1,5 +1,5 @@
 # OpenAPI 3.x 解析器。why：纯规则提取（无 Session、无状态），供影响分析 O(1) diff 与 Phase 3 生成复用。
-# 宽容解析：只提取不校验——畸形 schema 原样保留不抛异常，降级/跳过问题逐条记入 warnings（不静默，D4/D5）。
+# 宽容解析：只提取不校验——畸形 schema 原样保留不抛异常，降级/跳过问题逐条记入 warnings（不静默）。
 from __future__ import annotations
 
 import hashlib
@@ -31,8 +31,8 @@ _STRUCT_KEYS = {
 }
 # 宽容解析的占位键与跨文件引用原文，参与 hash 以暴露差异
 _EXTRA_KEYS = {"$ref", "x-circular", "x-broken-ref"}
-# schema $ref/嵌套展开的最大深度。why：恶意/畸形文档可构造万层嵌套触发 RecursionError（review L6），
-# 超限截断并记 warning（与 D4/D5 同口径：降级不静默）
+# schema $ref/嵌套展开的最大深度。why：恶意/畸形文档可构造万层嵌套触发 RecursionError，
+# 超限截断并记 warning（降级不静默）
 _MAX_SCHEMA_DEPTH = 50
 
 _METHODS = ("get", "post", "put", "patch", "delete", "head", "options")
@@ -180,7 +180,7 @@ def _resolve_schema(
     if "$ref" in schema:
         ref = schema["$ref"]
         if not isinstance(ref, str) or not ref.startswith("#/components/schemas/"):
-            # 跨文件/外部引用：保留原文参与 hash + warning，用户可见 hash 可能不完整（D5）
+            # 跨文件/外部引用：保留原文参与 hash + warning，用户可见 hash 可能不完整
             warnings.append(f"跨文件/外部 $ref 未解析，hash 可能不完整: {ref}")
             return {"$ref": ref}
         name = ref.rsplit("/", 1)[-1]
@@ -188,7 +188,7 @@ def _resolve_schema(
             return {"type": "object", "x-circular": True}  # 循环引用占位，防死循环
         target = (schemas or {}).get(name)
         if target is None:
-            warnings.append(f"$ref 目标不存在，hash 不可靠: {ref}")  # D4：不静默
+            warnings.append(f"$ref 目标不存在，hash 不可靠: {ref}")  # 不静默
             return {"type": "object", "x-broken-ref": True}
         return _resolve_schema(target, schemas, visited | {name}, warnings, depth=depth + 1)
 
@@ -202,7 +202,7 @@ def _resolve_schema(
                 for kk, vv in (v or {}).items()
             }
         elif k == "allOf" and isinstance(v, list):
-            # 合并各分支 properties + required（对齐 ai-generation §2）
+            # 合并各分支 properties + required（对齐 ai-generation 文档）
             merged = {"type": "object", "properties": {}, "required": []}
             for part in v:
                 resolved = _resolve_schema(part, schemas, visited, warnings, depth=depth + 1)
@@ -260,7 +260,7 @@ def _build_request_core(op: ParsedOperation) -> dict:
 
 
 def _build_response_core(op: ParsedOperation) -> dict:
-    """响应侧 hash 输入：状态码指纹 + 各码 schema。why：200→202 语义变化（schema 相同）也必须命中（F1）。"""
+    """响应侧 hash 输入：状态码指纹 + 各码 schema。why：200→202 语义变化（schema 相同）也必须命中。"""
     return {
         "status_codes": sorted(op.responses.keys()),
         "schemas": {code: _normalize(r["schema"]) for code, r in op.responses.items()},
@@ -271,7 +271,7 @@ def _hash_op(op: ParsedOperation) -> dict:
     """分段 hash：{request, response}。O(1) diff 的关键——只存哈希不存原文。"""
     req = json.dumps(_build_request_core(op), sort_keys=True, ensure_ascii=False)
     resp = json.dumps(_build_response_core(op), sort_keys=True, ensure_ascii=False)
-    # why：指纹用 sha256——MD5 已非安全哈希（碰撞可构造），合同指纹应防止恶意碰撞（review L3）
+    # why：指纹用 sha256——MD5 已非安全哈希（碰撞可构造），合同指纹应防止恶意碰撞
     return {
         "request": hashlib.sha256(req.encode()).hexdigest(),
         "response": hashlib.sha256(resp.encode()).hexdigest(),
@@ -280,7 +280,7 @@ def _hash_op(op: ParsedOperation) -> dict:
 
 def _autogen_operation_id(method: str, path: str) -> str:
     """无 operationId 时自动生成。why：路径参数归一化 /users/{id}→/users/:param，
-    {id} 与 {userId} 不误判为不同接口（D1 场景）。"""
+    {id} 与 {userId} 不误判为不同接口。"""
     norm = _PATH_PARAM_RE.sub(":param", path)
     return f"{method}_{norm}"
 
@@ -288,8 +288,8 @@ def _autogen_operation_id(method: str, path: str) -> str:
 def _extract_contract(
     parameters: list[dict], request_body: dict | None, responses: dict | None = None
 ) -> dict:
-    """请求侧契约：required 集合 + 字段级 type/enum 签名——breaking 联合判定的输入（F2）。
-    额外记录响应状态码集合：200→202 等状态码变化会让下游按旧码断言静默失败，须纳入 breaking（F1）。"""
+    """请求侧契约：required 集合 + 字段级 type/enum 签名——breaking 联合判定的输入。
+    额外记录响应状态码集合：200→202 等状态码变化会让下游按旧码断言静默失败，须纳入 breaking。"""
     required: list[str] = []
     signature: dict = {}
     for p in parameters:
@@ -297,7 +297,7 @@ def _extract_contract(
             required.append(p["name"])
         _collect_signature(f"param:{p['in']}:{p['name']}", p.get("schema", {}), signature)
     if request_body:
-        # why：请求体顶层必填字段也是「必需项」——breaking 的 required 收紧判定必须覆盖（F2）
+        # why：请求体顶层必填字段也是「必需项」——breaking 的 required 收紧判定必须覆盖
         required.extend((request_body.get("schema") or {}).get("required") or [])
         _collect_signature("body", request_body.get("schema", {}), signature)
     contract: dict = {"required": sorted(set(required)), "signature": signature}
@@ -310,7 +310,7 @@ def _collect_signature(path: str, schema, out: dict) -> None:
     """递归收集字段 type/enum 签名（object properties / array items 展开）。"""
     schema = schema or {}
     # why：OpenAPI 3 允许 object 省略 type 只写 properties——只按 type=="object" 判定会漏展开
-    # 嵌套字段，其增删/变更进不了 signature（breaking 漏报，R3 批次）
+    # 嵌套字段，其增删/变更进不了 signature（breaking 漏报）
     if (schema.get("type") == "object" or "properties" in schema) and isinstance(
         schema.get("properties"), dict
     ):
@@ -323,7 +323,7 @@ def _collect_signature(path: str, schema, out: dict) -> None:
 
 
 def _detect_duplicate_ids(operations: list[ParsedOperation]) -> list[str]:
-    """检测 operation_id 重复。why：copy-paste 共用 id 会误圈定血缘，提前告警（F4）。"""
+    """检测 operation_id 重复。why：copy-paste 共用 id 会误圈定血缘，提前告警。"""
     seen: dict[str, list[str]] = {}
     for op in operations:
         seen.setdefault(op.operation_id, []).append(f"{op.method} {op.path}")

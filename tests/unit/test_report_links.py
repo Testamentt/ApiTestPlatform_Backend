@@ -1,4 +1,4 @@
-# report_link 迁移脚本测试（P3-3）：旧 /static 链接改写为带鉴权端点，幂等且不留半截数据。
+# report_link 迁移脚本测试：旧 /static 链接改写为带鉴权端点，幂等且不留半截数据。
 from __future__ import annotations
 
 from app.models.enums import TaskStatus

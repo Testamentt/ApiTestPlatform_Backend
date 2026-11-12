@@ -1,5 +1,5 @@
-# 逐 operation LLM 调用日志。why：审计可追溯（usage/cost/confidence/raw_response，RULES §9.6）；
-# 校验失败同样落库（validation_failed + 具体错误 + 原文）——不建坏用例但可追溯，防「静默丢失败」（§11.2）。
+# 逐 operation LLM 调用日志。why：审计可追溯（usage/cost/confidence/raw_response）；
+# 校验失败同样落库（validation_failed + 具体错误 + 原文）——不建坏用例但可追溯，防「静默丢失败」。
 from __future__ import annotations
 
 from sqlalchemy import JSON, Float, ForeignKey, Integer, String, Text

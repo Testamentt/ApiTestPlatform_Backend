@@ -44,14 +44,14 @@ def diff_operations(
 
 
 def _is_breaking(old_c, new_c) -> bool:
-    """breaking 联合判定（F2）：required 收紧 / type 变化 / 枚举删减 / 字段删除 / 响应状态码集合变化——
-    任一命中即破坏性。"""
+    """breaking 联合判定：required 收紧 / type 变化 / 枚举删减 / 字段删除 / 响应状态码集合变化——
+    任一命中即破坏性；响应状态码新增不视为破坏。"""
     if old_c is None or new_c is None:
         return True  # 契约缺失（如从无 body 变为有 body）保守视为 breaking
     if set(new_c.get("required", [])) - set(old_c.get("required", [])):
         return True  # ① required 收紧（false→true 或新增必需项）
     if set(old_c.get("response_status_codes", [])) - set(new_c.get("response_status_codes", [])):
-        return True  # ⑤ 响应状态码删减/替换（200→202：旧码不再返回，下游按旧码断言失败，F1）；新增不破坏
+        return True  # ⑤ 响应状态码删减/替换（200→202：旧码不再返回，下游按旧码断言失败）
     old_sig = old_c.get("signature", {})
     new_sig = new_c.get("signature", {})
     for field in old_sig.keys() & new_sig.keys():
@@ -64,7 +64,7 @@ def _is_breaking(old_c, new_c) -> bool:
 
 
 def build_suggested_remap(removed_ops: list[str], added_ops: list[str]) -> dict:
-    """removed→added 相似名配对。why：只做建议不自动重绑——Levenshtein 粗筛，避免「相似但不同」误绑（追问 2）。"""
+    """removed→added 相似名配对。why：只做建议不自动重绑——Levenshtein 粗筛，避免「相似但不同」误绑。"""
     if not removed_ops or not added_ops:
         return {}
     remap: dict[str, str] = {}

@@ -205,7 +205,7 @@ def test_request_change_only_request_hash():
 
 
 def test_status_code_change_changes_response_hash():
-    # F1 必挂场景：200→202（schema 相同）也必须命中
+    # 必挂场景：200→202（schema 相同）也必须命中
     base = {"path": "/tasks/{id}", "method": "GET", "operation_id": "getTask"}
     d1 = _swagger(
         [
@@ -354,7 +354,7 @@ def test_hash_keeps_ignoring_description_inside_property():
 
 
 def test_hash_is_sha256_hexdigest():
-    # review L3：指纹算法 md5→sha256——64 位 hex
+    # 指纹算法 md5→sha256——64 位 hex
     api = parse_openapi(_swagger([_users_op()]))
     for h in api.operation_hashes["listUsers"].values():
         assert len(h) == 64
@@ -362,7 +362,7 @@ def test_hash_is_sha256_hexdigest():
 
 
 def test_deep_nesting_truncated_with_warning():
-    # review L6：超深嵌套不抛 RecursionError——截断展开并记 warning（降级不静默）
+    # 超深嵌套不抛 RecursionError——截断展开并记 warning（降级不静默）
     deep = {"type": "object"}
     for _ in range(60):
         deep = {"type": "object", "properties": {"a": deep}}
@@ -408,7 +408,7 @@ def test_contract_required_and_signature():
 
 def test_contract_signature_expands_typeless_object():
     # why：OpenAPI 3 允许 object 省略 type 只写 properties——只按 type=="object" 判定会漏展开
-    # 嵌套字段，breaking 漏报（R3 批次）
+    # 嵌套字段，breaking 漏报
     doc = _swagger(
         [
             {

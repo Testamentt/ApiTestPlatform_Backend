@@ -95,7 +95,7 @@ def test_create_default_uses_untested(session_factory, monkeypatch):
             "app.services.generation_service.dispatch_generation", lambda _tid: None
         )
         task = svc.create_generation_task(DOC)
-        assert task.operation_ids == ["listUsers"]  # 读最新分析 untested（间隙 1）
+        assert task.operation_ids == ["listUsers"]  # 读最新分析 untested
 
 
 def test_create_first_run_full(session_factory, monkeypatch):
@@ -207,7 +207,7 @@ def test_run_generation_warnings_trust_score(session_factory):
 
 
 def test_run_generation_sanitizes_llm_output(session_factory):
-    # §10.2：LLM 输出中的 <script> 等危险标签/控制字符入库前清洗
+    # LLM 输出中的 <script> 等危险标签/控制字符入库前清洗
     task_id = _seed_task(session_factory, operation_ids=["listUsers"])
     evil = {
         "cases": [
@@ -224,12 +224,12 @@ def test_run_generation_sanitizes_llm_output(session_factory):
     run_generation(session_factory, task_id, llm=FakeLlmClient(data=evil))
     with session_factory() as s:
         case = s.query(TestCase).one()
-        assert "<script>" not in case.name  # 危险标签剔除（§10.2）；残留文本在前端自动转义下安全
+        assert "<script>" not in case.name  # 危险标签剔除；残留文本在前端自动转义下安全
         assert "正向" in case.name
 
 
 def test_run_generation_sanitizes_expanded_dangerous_tags(session_factory):
-    # §10.2 完整清洗（R3-4）：iframe 等危险标签族 + \x01-\x1f 控制字符此前保留
+    # 完整清洗：iframe 等危险标签族 + \x01-\x1f 控制字符此前保留
     task_id = _seed_task(session_factory, operation_ids=["listUsers"])
     evil = {
         "cases": [
@@ -252,7 +252,7 @@ def test_run_generation_sanitizes_expanded_dangerous_tags(session_factory):
 
 
 def test_run_generation_injection_scan_blocks_operation(session_factory):
-    # §10.1-4 敏感扫描（R3-3）：注入句式随结构键（pattern）进 prompt → 命中即拦截该 operation，
+    # 敏感扫描：注入句式随结构键（pattern）进 prompt → 命中即拦截该 operation，
     # 不调 LLM、告警落审计、rejected_detail 可见，不静默
     doc = {
         "openapi": "3.0.3",
@@ -292,7 +292,7 @@ def test_run_generation_injection_scan_blocks_operation(session_factory):
 
 
 def test_prompt_struct_strings_truncated(session_factory):
-    # §10.1-1 逐字段截断（R3-3）：结构键的超长字符串值进 prompt 前限长 256
+    # 逐字段截断：结构键的超长字符串值进 prompt 前限长 256
     doc = {
         "openapi": "3.0.3",
         "info": {"title": "t", "version": "1"},
@@ -366,7 +366,7 @@ def test_run_generation_partial_success(session_factory):
 
 
 def test_run_generation_times_out_at_deadline(session_factory, monkeypatch):
-    """N13 回归：任务级时间预算由任务自己守。
+    """任务级时间预算由任务自己守。
 
     why：`--pool=solo` 下 Celery 的 soft/hard time_limit 被静默关闭（Windows 本地与 docker-compose
     都用 solo），生成链路此前没有任何总时长上限——338 个 operation 串行可以跑几小时。
@@ -402,7 +402,7 @@ def test_run_generation_deadline_does_not_fire_early(session_factory, monkeypatc
 
 
 def test_create_concurrent_run_id_collision(session_factory, monkeypatch):
-    """并发竞态回归（review C1）：TOCTOU 窗口内第二个请求 commit 撞 UNIQUE(run_id)。
+    """并发竞态回归：TOCTOU 窗口内第二个请求 commit 撞 UNIQUE(run_id)。
 
     正确行为 = 查回「赢家」并复用同一任务行（并发语义与串行一致），而不是让 IntegrityError 冒泡成 500。
     """
@@ -443,11 +443,11 @@ def test_create_concurrent_winner_invisible_is_409(session_factory, monkeypatch)
         assert exc.value.status_code == 409
 
 
-# ---------- P2-4：任务级预算透传给 llm_client ----------
+# ---------- 任务级预算透传给 llm_client ----------
 
 
 def test_run_generation_passes_deadline_to_llm(session_factory):
-    """why：检查点之间的粗粒度超时是 P2-4 的痛点——每次 LLM 调用必须拿到同一个 deadline。"""
+    """why：检查点之间的粗粒度超时是此前的痛点——每次 LLM 调用必须拿到同一个 deadline。"""
     task_id = _seed_task(session_factory)
     llm = FakeLlmClient()
     run_generation(session_factory, task_id, llm=llm)
@@ -458,7 +458,7 @@ def test_run_generation_passes_deadline_to_llm(session_factory):
     assert deadlines[0] > time.monotonic()  # 预算尚未耗尽（默认 600s）
 
 
-# ---------- P2-5：LLM 输出侧敏感信息脱敏 ----------
+# ---------- LLM 输出侧敏感信息脱敏 ----------
 
 
 def test_redact_sensitive_reports_hits():
@@ -505,7 +505,7 @@ def test_run_generation_redacts_secrets_from_drafts(session_factory):
         assert task.result_summary["redacted"] >= 1
 
 
-# ---------- P2-7：输入扫描面收敛 ----------
+# ---------- 输入扫描面收敛 ----------
 
 
 def test_scan_prompt_risk_targets_operation_payload_only():
@@ -518,7 +518,7 @@ def test_scan_prompt_risk_targets_operation_payload_only():
 
 
 def test_run_generation_not_blocked_by_template_text(session_factory):
-    """模板无关文本不该拦截：把关键词塞进模板渲染结果里，任务仍应正常生成（P2-7 回归）。"""
+    """模板无关文本不该拦截：把关键词塞进模板渲染结果里，任务仍应正常生成。"""
     task_id = _seed_task(session_factory, operation_ids=["listUsers"])
     llm = FakeLlmClient()
     run_generation(session_factory, task_id, llm=llm)

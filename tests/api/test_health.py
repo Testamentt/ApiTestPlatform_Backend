@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 
 class _FakeRedis:
-    """ping 成功/失败的假 Redis（带 close 追踪，review L1 资源释放回归）。"""
+    """ping 成功/失败的假 Redis（带 close 追踪，资源释放回归）。"""
 
     def __init__(self, *, ok=True, **kw):
         self._ok = ok
@@ -37,7 +37,7 @@ def test_health_ok(client, monkeypatch):
     assert data["status"] == "ok"
     assert data["db"] == "up"
     assert data["redis"] == "up"
-    assert instances and instances[0].closed  # L1: 探测后连接已关闭
+    assert instances and instances[0].closed  # 探测后连接已关闭
 
 
 def test_health_redis_down_degraded(client, monkeypatch):

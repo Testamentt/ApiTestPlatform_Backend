@@ -1,4 +1,4 @@
-# 统一错误响应测试（P2-1）：入参校验 422 与「服务层校验失败」都必须是 {code, message, detail} 结构。
+# 统一错误响应测试：入参校验 422 与「服务层校验失败」都必须是 {code, message, detail} 结构。
 # why：此前框架 422 返回 {"detail": [...]}，前端得为它单写兜底分支；统一后前端只认一种契约。
 from __future__ import annotations
 

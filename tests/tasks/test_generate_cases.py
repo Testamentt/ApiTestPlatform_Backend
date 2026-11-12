@@ -80,9 +80,9 @@ def test_generate_task_parse_failure(session_factory, monkeypatch):
 
 
 def test_generate_task_soft_timeout_fails(session_factory, monkeypatch):
-    # RULES §8.2：SoftTimeLimitExceeded 捕获 → force_fail_timeout 落 FAILED(timeout)，不卡 RUNNING。
+    # SoftTimeLimitExceeded 捕获 → force_fail_timeout 落 FAILED(timeout)，不卡 RUNNING。
     # 从 _run_generation（内层）抛出：真实传播链须穿过 run_generation 的 except Exception 兜底——
-    # 旧代码兜底截胡导致任务层 handler 不可达（error_stage 误标 internal，R3-1）
+    # 旧代码兜底截胡导致任务层 handler 不可达（error_stage 误标 internal）
     from celery.exceptions import SoftTimeLimitExceeded
 
     task_id = _seed_task(session_factory)

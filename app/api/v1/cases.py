@@ -1,4 +1,4 @@
-# 用例路由。why：路由只做参数解析/转发，业务逻辑在 service（RULES.md §4）。
+# 用例路由。why：路由只做参数解析/转发，业务逻辑在 service。
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
