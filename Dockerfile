@@ -18,6 +18,9 @@ COPY --from=builder /install /usr/local
 COPY --from=builder /app/app ./app
 # prompts/ 是运行时 prompt 模板（PROMPT_VERSION 读取），必须随镜像
 COPY prompts ./prompts
+# why 运维脚本随镜像分发：schema 漂移时要在容器内就地迁移（compose exec），
+# 宿主不一定装了 python，也不该为了补一列而把库挂到宿主上跑
+COPY scripts/migrate_db.py ./scripts/migrate_db.py
 # settings.yaml 被 gitignore 不入库，容器用 example 兜底默认值，运行配置走 env 覆盖
 COPY config/settings.example.yaml ./config/settings.yaml
 # 预建数据/工作目录并 chown appuser：named volume 首次挂载继承该属主，非 root 可写
