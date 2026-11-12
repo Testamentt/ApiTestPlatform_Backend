@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # generation_service 单测：create（幂等/定向/untested/首次/全覆盖）+ run_generation（成功/校验失败/skipped/warnings/解析失败）。
 from __future__ import annotations
 
@@ -157,7 +158,10 @@ def test_run_generation_success(session_factory):
             "createUser",
             "deleteUser",
         }  # 服务端注入
-        assert all(c.trust_score == 80 for c in cases)  # 无 warnings → 80
+        # 逐条评分：这三个 operation 都只声明 200、无响应 schema，用例只有状态码断言
+        # → 唯一扣分项是「无字段层断言」-10；不再是由 document warnings 决定的固定 80
+        assert all(c.trust_score == 90 for c in cases)
+        assert all(c.quality_flags for c in cases)  # 扣分原因必须可见
         assert all(c.status == "draft" for c in cases)  # draft 恒为
         assert s.query(GenerationLog).count() == 3  # 逐 operation 审计日志
 
@@ -175,7 +179,6 @@ def test_run_generation_validation_failed(session_factory):
         assert s.query(TestCase).count() == 0  # 不建坏用例
         log = s.query(GenerationLog).one()
         assert log.status == "validation_failed"
-        assert log.ai_confidence == 0.0
         assert log.raw_response is not None  # 原始响应落库
 
 
@@ -192,7 +195,7 @@ def test_run_generation_skipped_filter(session_factory):
 
 
 def test_run_generation_warnings_trust_score(session_factory):
-    # 解析有 warnings（重复 operation_id）→ trust_score=60
+    # 解析有 warnings（重复 operation_id）→ 每条用例额外扣 20 分（接口契约可靠性下降）
     dup_doc = _swagger_doc(
         [
             {"path": "/a", "method": "GET", "operation_id": "dup"},
@@ -203,7 +206,9 @@ def test_run_generation_warnings_trust_score(session_factory):
     run_generation(session_factory, task_id, llm=FakeLlmClient())
     with session_factory() as s:
         cases = list(s.scalars(select(TestCase)))
-        assert cases and all(c.trust_score == 60 for c in cases)
+        # 100 - 10（无字段层断言）- 20（接口告警）= 70，逐条算出而非固定 60
+        assert cases and all(c.trust_score == 70 for c in cases)
+        assert any("告警" in f["reason"] for c in cases for f in (c.quality_flags or []))
 
 
 def test_run_generation_sanitizes_llm_output(session_factory):
@@ -482,25 +487,29 @@ def test_sanitize_llm_field_counts_nested_hits():
 
 
 def test_run_generation_redacts_secrets_from_drafts(session_factory):
-    """端到端：LLM 回显内网地址 → 落库用例里必须是占位符，且 result_summary 记录脱敏数。"""
+    """端到端：LLM 回显内网地址 → 落库用例里必须是占位符，且 result_summary 记录脱敏数。
+
+    why 用 body 而不是 params 承载内网地址：doc 里没有声明任何 query 参数，
+    往 params 塞字段会被语义校验判 `params_unknown`（这是期望行为，见 test_generation_validators）。
+    """
     llm = FakeLlmClient(
         data={
             "cases": [
                 {
                     "name": "内网回显用例",
-                    "method": "GET",
+                    "method": "POST",
                     "path": "/users",
                     "expected_status": 200,
-                    "params": {"host": "192.168.1.10"},
+                    "body": {"host": "192.168.1.10"},
                 }
             ]
         }
     )
-    task_id = _seed_task(session_factory, operation_ids=["listUsers"])
+    task_id = _seed_task(session_factory, operation_ids=["createUser"])
     run_generation(session_factory, task_id, llm=llm)
     with session_factory() as s:
         case = s.scalars(select(TestCase)).one()
-        assert case.params["host"] == "[REDACTED]"
+        assert case.body["host"] == "[REDACTED]"
         task = s.get(GenerationTask, task_id)
         assert task.result_summary["redacted"] >= 1
 
@@ -527,3 +536,142 @@ def test_run_generation_not_blocked_by_template_text(session_factory):
         assert task.status == GenerationStatus.SUCCESS.value
         assert task.result_summary["generated"] == 1
         assert task.result_summary["rejected"] == 0
+
+
+# ---------- 语义校验接入 ----------
+
+
+def test_run_generation_rejects_wrong_method(session_factory):
+    """用户举的反例：文档是 GET /users，LLM 返回 DELETE /users。
+
+    why 必须在入库口拒：draft 一旦落库，人工审核只看 name（「删除用户」）就会 confirm，
+    执行时 render_test_file 用 case.method 原样发请求——真打 DELETE。
+    """
+    llm = FakeLlmClient(
+        data={
+            "cases": [
+                {
+                    "name": "删除用户",
+                    "method": "DELETE",
+                    "path": "/users",
+                    "expected_status": 200,
+                    "assertions": [{"path": "status_code", "op": "eq", "value": 200}],
+                }
+            ]
+        }
+    )
+    task_id = _seed_task(session_factory, operation_ids=["listUsers"])
+    run_generation(session_factory, task_id, llm=llm)
+    with session_factory() as s:
+        task = s.get(GenerationTask, task_id)
+        assert s.query(TestCase).count() == 0  # 不入库
+        assert task.result_summary["rejected"] == 1
+        detail = task.result_summary["rejected_detail"][0]
+        assert "语义校验未通过" in detail["reason"]
+        assert detail["violations"][0]["rule"] == "method_mismatch"
+        assert detail["violations"][0]["level"] == "error"
+        # 全被拒也必须留审计（不静默）
+        log = s.query(GenerationLog).one()
+        assert log.status == "validation_failed"
+
+
+def test_run_generation_partial_rejection_keeps_valid_cases(session_factory):
+    """同一次输出里混入违规用例：只拒违规那条，合法的照常入库。"""
+    llm = FakeLlmClient(
+        data={
+            "cases": [
+                {
+                    "name": "正向",
+                    "method": "GET",
+                    "path": "/users",
+                    "expected_status": 200,
+                    "assertions": [{"path": "status_code", "op": "eq", "value": 200}],
+                },
+                {
+                    "name": "越权路径",
+                    "method": "GET",
+                    "path": "/admin/users",
+                    "expected_status": 200,
+                    "assertions": [{"path": "status_code", "op": "eq", "value": 200}],
+                },
+            ]
+        }
+    )
+    task_id = _seed_task(session_factory, operation_ids=["listUsers"])
+    run_generation(session_factory, task_id, llm=llm)
+    with session_factory() as s:
+        cases = list(s.scalars(select(TestCase)))
+        assert len(cases) == 1
+        assert cases[0].path == "/users"
+        task = s.get(GenerationTask, task_id)
+        assert task.result_summary["draft_created"] == 1
+        assert task.result_summary["rejected"] == 1
+
+
+def test_run_generation_scores_each_case_independently(session_factory):
+    """逐条评分：同一 operation 的两条用例分数可以不同（不再是固定标签）。"""
+    llm = FakeLlmClient(
+        data={
+            "cases": [
+                # 只有状态码断言 → 扣 10
+                {
+                    "name": "只断言状态码",
+                    "method": "GET",
+                    "path": "/users",
+                    "expected_status": 200,
+                    "assertions": [{"path": "status_code", "op": "eq", "value": 200}],
+                },
+                # 期望码未在文档声明（文档只声明 200）→ 扣 20 + 10
+                {
+                    "name": "未声明的状态码",
+                    "method": "GET",
+                    "path": "/users",
+                    "expected_status": 500,
+                    "assertions": [{"path": "status_code", "op": "eq", "value": 500}],
+                },
+            ]
+        }
+    )
+    task_id = _seed_task(session_factory, operation_ids=["listUsers"])
+    run_generation(session_factory, task_id, llm=llm)
+    with session_factory() as s:
+        by_name = {c.name: c for c in s.scalars(select(TestCase))}
+        assert by_name["只断言状态码"].trust_score == 90
+        assert by_name["未声明的状态码"].trust_score == 70
+        assert len(by_name["未声明的状态码"].quality_flags) == 2
+
+
+def test_run_generation_dedupes_within_one_response(session_factory):
+    """同一次输出重复返回相同用例 → 只落一条，其余计入跳过。"""
+    same = {
+        "name": "正向",
+        "method": "GET",
+        "path": "/users",
+        "expected_status": 200,
+        "assertions": [{"path": "status_code", "op": "eq", "value": 200}],
+    }
+    llm = FakeLlmClient(data={"cases": [dict(same), dict(same)]})
+    task_id = _seed_task(session_factory, operation_ids=["listUsers"])
+    run_generation(session_factory, task_id, llm=llm)
+    with session_factory() as s:
+        assert s.query(TestCase).count() == 1
+        task = s.get(GenerationTask, task_id)
+        assert task.result_summary["skipped_by_filter"] == 1
+
+
+def test_run_generation_dedupes_across_runs(session_factory):
+    """跨次去重：同一 mission 重复生成不再灌重复 draft。"""
+    task1 = _seed_task(session_factory, operation_ids=["listUsers"])
+    run_generation(session_factory, task1, llm=FakeLlmClient())
+    with session_factory() as s:
+        assert s.query(TestCase).count() == 1
+
+    with session_factory() as s:
+        task2 = GenerationTask(run_id="run_gen_2", document=DOC, operation_ids=["listUsers"])
+        s.add(task2)
+        s.commit()
+        task2_id = task2.id
+    run_generation(session_factory, task2_id, llm=FakeLlmClient())
+    with session_factory() as s:
+        assert s.query(TestCase).count() == 1  # 未新增
+        assert s.get(GenerationTask, task2_id).result_summary["skipped_by_filter"] == 1

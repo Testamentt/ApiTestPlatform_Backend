@@ -1,4 +1,5 @@
-# OpenAPI 3.x 解析器。why：纯规则提取（无 Session、无状态），供影响分析 O(1) diff 与 Phase 3 生成复用。
+# 本项目编码格式：UTF-8（无 BOM）。
+# OpenAPI 3.x 解析器。why：纯规则提取（无 Session、无状态），供影响分析 O(1) diff 与 AI 生成复用。
 # 宽容解析：只提取不校验——畸形 schema 原样保留不抛异常，降级/跳过问题逐条记入 warnings（不静默）。
 from __future__ import annotations
 
@@ -137,7 +138,7 @@ def _extract_operation(
         parameters=parameters,
         request_body=request_body,
         responses=responses,
-        contract=_extract_contract(parameters, request_body, responses),
+        contract=_extract_contract(parameters, request_body, responses, method=method, path=path),
     )
 
 
@@ -286,10 +287,20 @@ def _autogen_operation_id(method: str, path: str) -> str:
 
 
 def _extract_contract(
-    parameters: list[dict], request_body: dict | None, responses: dict | None = None
+    parameters: list[dict],
+    request_body: dict | None,
+    responses: dict | None = None,
+    *,
+    method: str = "",
+    path: str = "",
 ) -> dict:
     """请求侧契约：required 集合 + 字段级 type/enum 签名——breaking 联合判定的输入。
-    额外记录响应状态码集合：200→202 等状态码变化会让下游按旧码断言静默失败，须纳入 breaking。"""
+    额外记录响应状态码集合：200→202 等状态码变化会让下游按旧码断言静默失败，须纳入 breaking。
+
+    method/path/response_schemas 供 confirm 侧语义校验复用：confirm 拿不到 document，
+    只能靠快照反查「这条用例是否属于该接口」。why 不落进 hash——`_hash_op` 只读
+    `_build_request_core` / `_build_response_core`，加这几个键不影响 impact diff 判定。
+    """
     required: list[str] = []
     signature: dict = {}
     for p in parameters:
@@ -303,6 +314,15 @@ def _extract_contract(
     contract: dict = {"required": sorted(set(required)), "signature": signature}
     if responses is not None:
         contract["response_status_codes"] = sorted(str(c) for c in responses)
+        # 响应 schema 归一化后存入：断言字段校验需要叶子结构，hash 侧的 _normalize 会剥掉
+        # 判定所需的 properties 形态，故单独存一份
+        contract["response_schemas"] = {
+            str(code): _normalize(entry.get("schema")) for code, entry in responses.items()
+        }
+    if method:
+        contract["method"] = method
+    if path:
+        contract["path"] = path
     return contract
 
 

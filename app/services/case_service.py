@@ -1,5 +1,9 @@
+# 本项目编码格式：UTF-8（无 BOM）。
+# 本项目编码格式：UTF-8（无 BOM）。
 # 用例业务编排。why：业务规则（draft→active 防幻觉护栏、两层更新闸、删除）收敛在 service，路由零逻辑。
 from __future__ import annotations
+
+import logging
 
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -8,14 +12,25 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
 from app.models.enums import CaseStatus
 from app.models.test_case import TestCase
+from app.repositories.api_definition_repository import ApiDefinitionRepository
 from app.repositories.case_repository import CaseRepository
 from app.schemas.case import CaseCreate, CaseUpdate
+from app.services.generation_validators import (
+    contract_from_snapshot,
+    validate_case,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class CaseService:
     def __init__(self, session: Session) -> None:
         self.session = session
         self.repo = CaseRepository(session)
+        # why：confirm 是进执行池的唯一入口，而形状校验（CaseCreate）证明不了
+        # 「这条用例属于它声明的那个接口」——method/path 与接口对不上也能过。契约快照是
+        # confirm 阶段唯一的第二数据源（用例不存文档引用，confirm 拿不到 document）。
+        self.api_defs = ApiDefinitionRepository(session)
 
     def create_case(self, payload: CaseCreate) -> TestCase:
         # why：mode="json" 把嵌套 AssertionItem 拍平成 dict——JSON 列无法序列化 pydantic 模型
@@ -98,10 +113,12 @@ class CaseService:
             ) from e
 
     def _revalidate_for_active(self, case: TestCase) -> None:
-        """转 active 前按入参 schema 重新校验，不通过则拒绝激活。
+        """转 active 前重新校验：形状 + 语义。不通过则拒绝激活。
 
         why：draft 期间数据可能被改坏或来自未校验的历史写入——激活是进入执行池的最后一道闸，
         校验失败必须拦在状态迁移前（否则坏用例获得执行资格）。
+        why 两把尺子都要：形状校验保证「结构合法」，语义校验保证「属于这个接口」。
+        只有前者时，`method=DELETE, path=/users/1, operation_id=getUser` 能合法进执行池。
         """
         try:
             CaseCreate(
@@ -118,6 +135,48 @@ class CaseService:
             raise AppError(
                 "CASE_INVALID_FOR_ACTIVE", status_code=422, detail=f"激活前校验未通过: {e}"
             ) from e
+        self._validate_against_contract(case)
+
+    def _validate_against_contract(self, case: TestCase) -> None:
+        """用 operation 契约快照反向核对用例属于该接口。
+
+        降级口径（三条都不阻断激活，只记日志）：
+        - 没有契约快照（用例从未经 /parse 入库，或库里只有旧快照）→ 无从判定；
+        - 快照缺 method/path（旧版本落库的数据）→ 同上；
+        - 违规全是 warn 级（期望码未声明、断言字段不可判）→ 只影响质量评分，不影响可用性。
+
+        why 不阻断：语义校验在生成链路已经拦过一遍，confirm 是第二道；把「文档根本没声明
+        这个接口」也算成用例的错，会让手工用例全部无法激活。只有能明确判定「打错接口」的
+        error 级违规才拒绝。
+        """
+        snapshot = self.api_defs.get_latest()
+        if snapshot is None:
+            logger.info("用例 %s 激活前跳过语义校验：库中无契约快照", case.id)
+            return
+        contract = contract_from_snapshot(
+            (snapshot.operation_contracts or {}).get(case.operation_id) or {}
+        )
+        if contract is None:
+            # why：operation_id 不在最新快照里有两种可能——文档已移除该接口，或该 op 是
+            # 手工建的。两种情况都无从判定，不能据此拒绝激活（否则文档一迭代就锁死旧用例）
+            logger.info(
+                "用例 %s 激活前跳过语义校验：快照中无 operation_id=%s 的可用契约",
+                case.id,
+                case.operation_id,
+            )
+            return
+        violations = validate_case(case, contract)
+        errors = [v for v in violations if v.level == "error"]
+        if errors:
+            raise AppError(
+                "CASE_CONTRACT_MISMATCH",
+                status_code=422,
+                detail=(
+                    "用例与接口契约不符，拒绝激活："
+                    + "; ".join(v.detail for v in errors)
+                    + f"（operation_id={case.operation_id}，契约来自快照 {snapshot.version}）"
+                ),
+            )
 
     def delete_case(self, case_id: int) -> None:
         self.repo.delete(self.repo.get_or_raise(case_id))

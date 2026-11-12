@@ -1,4 +1,5 @@
-# 逐 operation LLM 调用日志。why：审计可追溯（usage/cost/confidence/raw_response）；
+# 本项目编码格式：UTF-8（无 BOM）。
+# 逐 operation LLM 调用日志。why：审计可追溯（usage/cost/raw_response）；
 # 校验失败同样落库（validation_failed + 具体错误 + 原文）——不建坏用例但可追溯，防「静默丢失败」。
 from __future__ import annotations
 
@@ -19,12 +20,10 @@ class GenerationLog(TimestampMixin, Base):
     operation_id: Mapped[str] = mapped_column(String(255), nullable=False)
     model: Mapped[str] = mapped_column(String(64), nullable=False)  # 生成=model，建议=fix_hint
     prompt_version: Mapped[str] = mapped_column(String(16), nullable=False)
-    status: Mapped[str] = mapped_column(
-        String(16), nullable=False
-    )  # success/validation_failed/error
-    ai_confidence: Mapped[float] = mapped_column(
-        Float, nullable=False, default=1.0
-    )  # 校验通过=1.0、失败=0.0
+    # why：status 已完整表达「这次调用成没成」（success/validation_failed/error），
+    # 早期并存的 ai_confidence（1.0/0.0）只是它的冗余编码，已移除；
+    # 用例层面的质量由 test_cases.trust_score + quality_flags 承担
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
     usage: Mapped[dict | None] = mapped_column(
         JSON
     )  # {prompt_tokens, completion_tokens, total_tokens}

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # 影响分析编排。why：纯规则（解析→diff→检索→落库）短事务分界；回归宽容降级 + 真实口径 summary +
 # last_regression_* 持久化 + 结构化日志审计。breaking_changed 是唯一触发圈定的依据；removed 进迁移清单。
 from __future__ import annotations
@@ -200,7 +201,6 @@ class ImpactService:
                 model="fix_hint",
                 prompt_version=PROMPT_VERSION,
                 status=status,
-                ai_confidence=1.0 if status == "success" else 0.0,
                 usage=usage_dict,
                 latency_ms=latency_ms,
                 cost_estimate=cost if status == "success" else None,

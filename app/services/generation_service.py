@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # AI 生成编排。why：create（Web 短操作）用传入 session + run_id 幂等 + 定向决策；
 # run_generation（Worker 长流程）用 session_factory 短事务分界——LLM 调用不占连接。
 # 防幻觉三层护栏：Pydantic 校验 + draft 恒为 + operation_id 服务端注入。
@@ -25,7 +26,13 @@ from app.models.impact_analysis import ImpactAnalysis
 from app.models.test_case import TestCase
 from app.repositories.generation_task_repository import GenerationTaskRepository
 from app.schemas.generate import GeneratedCaseList
+from app.services.case_quality import score_case
 from app.services.dispatcher import dispatch_generation, dispatch_or_fail
+from app.services.generation_validators import (
+    contract_from_operation,
+    has_error,
+    validate_case,
+)
 from app.utils.llm_client import LlmClient
 from app.utils.openapi_parser import ParsedOperation, parse_openapi
 from app.utils.prompt_util import PROMPT_VERSION, load_system_prompt, render_user_prompt
@@ -174,6 +181,54 @@ def _operation_to_json(op: ParsedOperation) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
+def _case_fingerprint(case) -> str:
+    """用例指纹：请求形状 + 期望状态码 + 断言。
+
+    why 含 assertions：实测真实库里「同请求不同断言」的用例确实不同（边界值与类型错误可能
+    发出相同请求），仅按请求去重会误杀；而完全相同请求 + 相同期望 + 相同断言才是真重复。
+    """
+    payload = {
+        "method": case.method,
+        "path": case.path,
+        "params": case.params or None,
+        "body": case.body or None,
+        "expected_status": case.expected_status,
+        "assertions": [a.model_dump() if hasattr(a, "model_dump") else a for a in case.assertions],
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()
+    ).hexdigest()
+
+
+def _fingerprint_exists(session, operation_id: str, fingerprint: str) -> bool:
+    """查库中该接口是否已有同指纹的 draft/active 用例。
+
+    why 不建指纹列：用例数在万级以内，按 operation_id（已建索引）取出候选后在内存比对，
+    比为一个纯派生值加列并承担迁移成本更划算；指纹算法变更时也不需要回填历史数据。
+    """
+    candidates = session.scalars(
+        select(TestCase).where(
+            TestCase.operation_id == operation_id,
+            TestCase.status.in_([CaseStatus.DRAFT.value, CaseStatus.ACTIVE.value]),
+        )
+    )
+    for existing in candidates:
+        payload = {
+            "method": existing.method,
+            "path": existing.path,
+            "params": existing.params or None,
+            "body": existing.body or None,
+            "expected_status": existing.expected_status,
+            "assertions": existing.assertions or [],
+        }
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str).encode()
+        ).hexdigest()
+        if digest == fingerprint:
+            return True
+    return False
+
+
 def _write_log(
     session_factory,
     *,
@@ -181,7 +236,6 @@ def _write_log(
     op_id: str,
     model: str,
     status: str,
-    confidence: float = 1.0,
     usage: dict | None = None,
     latency_ms: int | None = None,
     cost: float | None = None,
@@ -197,7 +251,6 @@ def _write_log(
                 model=model,
                 prompt_version=PROMPT_VERSION,
                 status=status,
-                ai_confidence=confidence,
                 usage=usage,
                 latency_ms=latency_ms,
                 cost_estimate=cost,
@@ -347,7 +400,6 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
                 op_id=op_id,
                 model=llm.settings.model,
                 status="error",
-                confidence=0.0,
                 error=f"敏感信息扫描拦截: {risk}",
             )
             rejected += 1
@@ -370,7 +422,6 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
                     op_id=op_id,
                     model=llm.settings.model,
                     status="validation_failed",
-                    confidence=0.0,
                     latency_ms=latency_ms,
                     raw=getattr(e, "raw_response", None),
                     error=str(e.detail),
@@ -383,7 +434,6 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
                     op_id=op_id,
                     model=llm.settings.model,
                     status="error",
-                    confidence=0.0,
                     latency_ms=latency_ms,
                     error=str(e.detail),
                 )
@@ -393,8 +443,52 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             continue  # 宽容：单接口失败不拖垮整批
         latency_ms = int((monotonic() - start) * 1000)
 
-        # 落库 draft：operation_id 服务端注入 + trust_score（document 级 warnings 决定 80/60）
-        trust_score = 60 if warnings_any else 80
+        # 语义校验：按 operation 契约反向核对 LLM 输出。
+        # why 放在落库前而不是执行前：打错接口的用例一旦进 draft，人工审核只看 name
+        # 就会 confirm 进执行池；拒在入库口才真正阻断「DELETE 打到 GET 接口」的路径。
+        contract = contract_from_operation(op)
+        accepted: list = []
+        for c in parsed_cases.cases:
+            violations = validate_case(c, contract)
+            if has_error(violations):
+                rejected += 1
+                rejected_detail.append(
+                    {
+                        "operation_id": op_id,
+                        "reason": "语义校验未通过: "
+                        + "; ".join(v.detail for v in violations if v.level == "error"),
+                        "violations": [
+                            {"rule": v.rule, "level": v.level, "detail": v.detail}
+                            for v in violations
+                        ],
+                    }
+                )
+                continue
+            # 逐条评分：分数与扣分原因都随用例走（document 级 warnings 只是其中一项）
+            quality = score_case(
+                violations,
+                has_field_assertion=any(
+                    (a.path if hasattr(a, "path") else a.get("path")) != "status_code"
+                    for a in c.assertions
+                ),
+                op_has_warnings=warnings_any,
+            )
+            accepted.append((c, quality))
+
+        if not accepted:
+            # 该 operation 的产出全部被语义校验拒掉——仍要写审计日志（不静默）
+            _write_log(
+                session_factory,
+                task_id=task_id,
+                op_id=op_id,
+                model=llm.settings.model,
+                status="validation_failed",
+                latency_ms=latency_ms,
+                raw=None,
+                error="语义校验拒绝了该接口的全部用例",
+            )
+            continue
+
         usage_dict = {
             "prompt_tokens": usage.prompt_tokens,
             "completion_tokens": usage.completion_tokens,
@@ -403,8 +497,21 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
         cost = round(usage.total_tokens * cost_per_1k / 1000, 6)
         # why：counter 是可变容器（Python 闭包不能重绑定外层变量）——累计本条用例被脱敏的片段数
         redactions = [0]
+        # why：本次 LLM 输出内部的重复（同一 operation 一次返回多条相同用例）在内存里判，
+        # 跨次重复再查库——两者都不是「新增草稿」，都要计入跳过
+        seen_fingerprints: set[str] = set()
         with session_factory() as s:
-            for c in parsed_cases.cases:
+            for c, quality in accepted:
+                # 跨次去重：同接口已有相同「请求 + 期望」的用例则跳过。
+                # why：重复生成会反复灌同样的 draft，人工审核被迫逐条比对
+                fingerprint = _case_fingerprint(c)
+                if fingerprint in seen_fingerprints or _fingerprint_exists(s, op_id, fingerprint):
+                    skipped_detail.append(
+                        f"operation_id '{op_id}' 已存在相同请求与期望的用例，跳过重复用例"
+                    )
+                    skipped_by_filter += 1
+                    continue
+                seen_fingerprints.add(fingerprint)
                 s.add(
                     TestCase(
                         name=_sanitize_llm_field(c.name, counter=redactions),
@@ -422,9 +529,11 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
                         ],
                         status=CaseStatus.DRAFT,  # draft 恒为，人工 confirm 才 active
                         source=CaseSource.AI,
-                        trust_score=trust_score,
+                        trust_score=quality.score,
+                        quality_flags=[f.to_dict() for f in quality.flags] or None,
                     )
                 )
+                draft_created += 1
             s.add(
                 GenerationLog(
                     generation_task_id=task_id,
@@ -432,7 +541,6 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
                     model=llm.settings.model,
                     prompt_version=PROMPT_VERSION,
                     status="success",
-                    ai_confidence=1.0,
                     usage=usage_dict,
                     latency_ms=latency_ms,
                     cost_estimate=cost,
@@ -444,7 +552,8 @@ def _run_generation(session_factory, task_id: int, *, llm: LlmClient | None = No
             logger.warning("operation %s LLM 输出命中敏感片段，已脱敏 %d 处", op_id, redactions[0])
             redacted_total += redactions[0]
         generated += 1
-        draft_created += len(parsed_cases.cases)
+        # why：draft_created 由落库循环逐条递增——语义校验拒掉与去重跳过的用例
+        # 都不该计入「新增草稿」，否则 result_summary 会与实际库内行数对不上
         cost_total += cost
 
     # 收尾：result_summary + SUCCESS

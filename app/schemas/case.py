@@ -1,4 +1,5 @@
-# 用例出入参。why：operation_id 必填（Phase 2 血缘）；method 白名单；status 不允许外部直接改。
+# 本项目编码格式：UTF-8（无 BOM）。
+# 用例出入参。why：operation_id 必填（影响分析血缘）；method 白名单；status 不允许外部直接改。
 from __future__ import annotations
 
 from datetime import datetime
@@ -71,9 +72,8 @@ class CaseRead(BaseModel):
     assertions: list | None
     status: str
     source: str
-    trust_score: (
-        int  # 血缘可信度（手工100 / AI 校验通过80 / AI 带 warnings60），审核按此优先 Review
-    )
+    trust_score: int  # 血缘可信度 0-100，AI 用例逐条计算（扣分原因见 quality_flags）
+    quality_flags: list | None  # [{reason, penalty}]，手工用例为 null
     reviewer: str | None
     created_at: datetime
     updated_at: datetime

@@ -1,3 +1,4 @@
+# 本项目编码格式：UTF-8（无 BOM）。
 # fix-hints API 测试：breaking 变更生成建议 / 无 breaking 422 / best-effort 失败置 None。
 from __future__ import annotations
 
@@ -75,7 +76,6 @@ def test_fix_hints_writes_generation_log(client, session_factory, monkeypatch):
         log = s.query(GenerationLog).one()
         assert log.model == "fix_hint"
         assert log.status == "success"
-        assert log.ai_confidence == 1.0
         assert log.cost_estimate is not None
         assert log.operation_id == "fix_hint"
         assert log.generation_task_id is None  # fix-hints 无关联生成任务
@@ -95,7 +95,6 @@ def test_fix_hints_failure_writes_error_log(client, session_factory, monkeypatch
     with session_factory() as s:
         log = s.query(GenerationLog).one()
         assert log.status == "error"
-        assert log.ai_confidence == 0.0
         assert log.error_msg is not None
 
 
