@@ -97,6 +97,13 @@ NAME_MARKER_PREFIX: dict[str, tuple[str, ...]] = {
     ".gitleaks.toml": ("#",),
 }
 
+# 首行编码声明的豁免文件：正文必须逐字等于公认法律文本，任何前置行都会破坏识别。
+# why 只豁免 E3 一项：LICENSE 仍须是合法 UTF-8（E1）、无 BOM（E2）、无乱码（E4）；
+# why 需要豁免：GitHub 靠规范化匹配识别许可证类型，首行多一行注释就会退化成 "Other"，
+# 而 "Other" 在仓库首页显示的正是「未声明许可证」的效果——元信息等于白填。
+# 豁免范围只到「首行声明」这一条，文件内容本身不做任何配对宽松处理。
+STANDARD_TEXT_FILES = frozenset({"LICENSE", "LICENSE.txt", "LICENSE.md", "COPYING"})
+
 # 不参与门禁的目录：依赖、构建产物、缓存、运行时数据、虚拟环境。
 # why 逐条列出而不是只排除 node_modules：本仓历史上把 venv/、.venv/、.workspace/ 都放在仓内，
 # 扫进去只会把第三方文件的编码问题算到本项目头上。
@@ -310,6 +317,8 @@ def marker_allowed(line: str, prefixes: tuple[str, ...]) -> bool:
 def check_header(text: str, path: Path, where: str) -> RuleResult:
     """E3：首行即编码声明。why 声明在首行才能被编辑器/工具当成文件级元信息读到。"""
     result = RuleResult("E3", f"首行声明「{MARKER_TEXT}」")
+    if path.name in STANDARD_TEXT_FILES:
+        return result  # 法律文本必须逐字匹配，前置声明会破坏许可证识别
     prefixes = expected_prefixes(path)
     if prefixes is None:
         return result  # 该文件族不参与（如 JSON 数据文件）
