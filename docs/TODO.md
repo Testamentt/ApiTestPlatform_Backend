@@ -207,14 +207,14 @@
 | :--- | :--- | :--- |
 | 新增 `scripts/doc_hygiene.py`（D1–D5 五项：内部批次编号 / 协作过程叙述 / 自贬措辞 / 生成式套话 / 未公开引用），扫描 `README.md` + `docs/*.md` 正文与 `app/`、`tests/`、`scripts/` 的注释与 docstring；Python 走 `tokenize` + `ast` 取注释与 docstring，YAML/TOML 取 `#` 行；CI `test-fast` 与 `Jenkinsfile` 的「静态检查 + 文档门禁」阶段均接入 | 不用 `[TMHVCBALRD][0-9]` 这类全仓正则：它把 HTTP 状态码（202/500/504）、表号、构建号（build #7/#8）、徽章 URL 全判成违规，逼着作者改事实。本门禁只匹配「编号真实出现时的形状」（括号内 / `review X1` / 日期+批次号），并显式放行优先级语义（P0/P1/P2）与章节号。豁免精确到文件且总量受限（`docs/TODO.md` 免 D2、`docs/README.internal.md` 整篇豁免、脚本自身免扫描），单测里加了「豁免总量不得膨胀」的断言 | `python scripts/doc_hygiene.py` 5/5 exit 0；首次运行暴露真实违规 37 项（含 `scripts/doc_hygiene.py` 自指与 `roadmap.md` 两处过程叙述），逐项改完后清零 |
 | 新增 `tests/unit/test_doc_hygiene.py`（24 例，属 `-m unit` 门禁）：① 仓库当前必须全通过 ② 五条规则各自构造违规必须被抓 ③ 十类正常技术内容（状态码/章节号/阈值/构建号/配置键/测试计数）必须放行 ④ 注释提取不误伤字符串字面量 ⑤ 豁免清单只对声明文件生效且总量受限 | 门禁最常见事故是「空转的绿色」——正则写歪了全通过但违规照样进仓。所以除「当前干净」外，必须同时证明「真能抓」与「不误伤」；误伤比漏判更糟，会逼着作者改事实。规则源码里就要写出被禁字面量作反例，故脚本自身免扫描（自指） | 24 passed；`ruff check` / `ruff format --check` 通过 |
-| 措辞纪律写入内部规则体系（`§20`：五类禁止内容表 + 提交信息规范 + 注释规范 + 提交前自检 + 豁免说明），AI 协作约定同步加索引与核心约定各一条；内部维护规范补「措辞纪律」小节与两条门禁的说明 | 规则与门禁分开写：规则文档解释「为什么禁、怎么改」，脚本只判可机械判定的部分。语义类问题（编造数字、技术事实错误、刻意歪写的动机说明）正则抓不到，必须在文档里写明仍需人工复核，避免给人「跑绿了就没事」的错觉 | `doc_check.py` 3/3 + `doc_hygiene.py` 5/5，均 exit 0；全量 `pytest -q` 412 passed / 4 deselected（原 386 + 新增 24），覆盖率 93.14% |
+| 措辞纪律写入内部规则体系（`§20`：五类禁止内容表 + 提交信息规范 + 注释规范 + 提交前自检 + 豁免说明），AI 协作约定同步加索引与核心约定各一条；内部维护规范补「措辞纪律」小节与两条门禁的说明 | 规则与门禁分开写：规则文档解释「为什么禁、怎么改」，脚本只判可机械判定的部分。语义类问题（编造数字、技术事实错误、刻意歪写的动机说明）正则抓不到，必须在文档里写明仍需人工复核，避免给人「跑绿了就没事」的错觉 | `doc_check.py` 3/3 + `doc_hygiene.py` 5/5，均 exit 0；全量 `pytest -q` 412 passed / 4 deselected（当时口径；后续已增至 497），覆盖率 93.14% |
 | 公开文档按新规则清理：`roadmap.md` 两处协作过程叙述改为设计表述（「审查发现 14 条新问题」→「审查列出的 14 条问题」、「本批未纳入」→「未纳入」） | 只改措辞不动事实：问题数量、批次范围、结论全部保留，去掉的是「谁在什么时候发现的」这类对外无意义的协作痕迹 | `doc_hygiene.py` 复跑清零；`doc_check.py` 链接与编号未受影响 |
 
-## 2026-11-12 · AI 生成语义校验与真实质量评分（进行中）
+## 2026-11-12 · AI 生成语义校验与真实质量评分（第一批已完成）
 
 > 方案与实测数据见 [plans/2026-11-12-generation-semantic-validation.md](plans/2026-11-12-generation-semantic-validation.md)。
 
-- [ ] 第一批：格式底噪修复 → 语义校验（`generation_validators.py`）→ 逐条 `trust_score` + `quality_flags` → 删除 `ai_confidence` → 前端展示扣分原因 → 去重与 `max_length`
+- [x] 第一批：格式底噪修复 → 语义校验（`generation_validators.py`）→ 逐条 `trust_score` + `quality_flags` → 删除 `ai_confidence` → 前端展示扣分原因 → 去重与 `max_length`
 - [x] confirm 侧语义校验：`_extract_contract` 补 `method`/`path`/`response_schemas`，`contract_from_snapshot` 适配器，`_revalidate_for_active` 跑 `validate_case`（error 级拒绝激活，无快照/旧快照/未知 op 降级放行）
 - [ ] 第二批：交叉一致性检查 + `unfalsifiable` 标记
 - [ ] 后续：P3 生成质量评测脚本
@@ -237,8 +237,9 @@
 
 ## 待提交 / 待跟进
 
-- [x] **2026-11-12 全量复跑口径（含去 AI 味门禁）**：`pytest -q` 412 passed / 4 deselected、`ruff check` / `ruff format --check`、`scripts/doc_check.py` 3/3、`scripts/doc_hygiene.py` 6/6 全绿。本批门禁数字以此次复跑为准；上节记录里的 368 passed / 92.68% 是 2026-11-11 批次与 Jenkins build #7/#8 当时的实测值（此后用例数增加），不是同一时间点的口径。覆盖率随被测代码增长而变化（本轮并行有新增模块），引用时以最新 CI 运行为准。
-- [ ] **文档改动尚未提交**：本批次代码侧已提交——后端 6 笔（`040697c` 起至 `fd45bd1`：执行器抽象、Beat 周期回收、CI 报告制品与 `Jenkinsfile`、部署编排、真实 e2e、脚本与注释清理），前端 4 笔（`e68aab0` 起至 `062b8f8`：过程文档与报告产物不入库、注释去内部编号、容器化部署、单测结果发布）；文档与门禁侧（`README.md`、`docs/` 下 11 篇、`scripts/doc_check.py`、`scripts/doc_hygiene.py`、`tests/unit/test_doc_hygiene.py`、`Jenkinsfile` 与 `ci.yml` 的门禁步骤、`.gitignore`）仍为工作区改动，本轮不执行 commit / push。`docs/README.internal.md` 已被 `.gitignore` 忽略，不随提交入库。文档建议单独一笔提交，提交前过 `ruff check app tests scripts`、`pytest -q`、`scripts/doc_check.py`、`scripts/doc_hygiene.py`；并确认 `reports/`、`htmlcov/`、`.coverage` 与 `.env` 备份未入版本库。
+- [x] **2026-11-13 全量复跑口径**：`pytest -q` 497 passed / 4 deselected、覆盖率 93.63%、`ruff check` / `ruff format --check`、`scripts/doc_check.py`、`scripts/doc_hygiene.py` 全绿。本批门禁数字以此为准；上节记录里的 368 passed / 92.68% 是 2026-11-11 批次与 Jenkins build #7/#8 当时的实测值，不是同一时间点的口径。覆盖率随被测代码增长而变化，引用时以最新 CI 运行为准。
+- [x] **文档与门禁侧改动已提交**：`README.md`、`docs/` 十一篇、`scripts/doc_check.py`、`scripts/doc_hygiene.py`、`tests/unit/test_doc_hygiene.py`、`Jenkinsfile` 与 `ci.yml` 的门禁步骤、`.gitignore` 均已随 `7b07ca2`（编码与注释措辞统一、两项门禁接入）等提交入库；`docs/README.internal.md` 按设计被 `.gitignore` 忽略，不随提交。
+- [ ] **推送**：两个仓库本地领先远端，未执行 `git push`；推送属对外动作，需明确授权后执行。
 - [ ] **Jenkins 侧不入库**：Windows 演示 job 配置、本机 Jenkins 安装目录与 Allure CLI 位置只在本机记录；仓库 `Jenkinsfile` 仍是项目 CI，不含 `TASK_ID` / `CASE_IDS` 参数。
 - [x] 代码侧高优先级修复（2026-10-08 / 10-10 批次）：已与当轮低优先级项合并为一次本地提交（含 `config/settings.example.yaml`、`.env.example` 的示例值与注释修正）。
 - [ ] 推送（2026-10 批次）：backend / frontend 两个仓库该批次不推送（本地提交即可）。

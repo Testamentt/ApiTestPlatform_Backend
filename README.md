@@ -47,7 +47,7 @@
 | 用例编写重复耗时 | AI 解析 OpenAPI 结构化生成，人工审核兜底 | 单接口编写耗时降低约 80% |
 | 变更后回归范围凭经验 | 接口血缘 + 分段哈希比对自动圈定 | 影响圈定 <10 s |
 | 同步执行阻塞 Web | Celery 异步解耦 + 任务级超时兜底 | Web 响应稳定 <50 ms |
-| 质量缺少度量门禁 | GitHub Actions + Jenkins 双通道产出 JUnit / coverage / Allure 标准制品 | 全项目覆盖率实测见最新 CI（2026-11-12 全量 412 用例），门槛 60/80；计数与覆盖率以最新 CI 运行为准 |
+| 质量缺少度量门禁 | GitHub Actions + Jenkins 双通道产出 JUnit / coverage / Allure 标准制品 | 全项目覆盖率实测见最新 CI（2026-11-13 全量 497 用例），门槛 60/80；计数与覆盖率以最新 CI 运行为准 |
 
 ### AI 用例智能生成
 
@@ -93,7 +93,7 @@ CI 的每个 job 都设有 fail-under 阈值，不达标即拦截合入；测试
 - 标准报告产物：一次 pytest 同时产 `reports/junit.xml`（逐用例）、`reports/coverage.xml` + `reports/htmlcov`（覆盖率趋势与行级明细）、`reports/allure-results`（Allure 测试结果）。这三种格式都是流水线可直接消费的交换格式，报告因此有「页面」与「制品」两种读法。
 - 发布与归档：Actions 侧用 `EnricoMi/publish-unit-test-result-action` 把逐用例结果发到 Checks / PR 注释，`upload-artifact` 归档 `reports/`（保留 14 天）；Jenkins 侧 `junit` + `recordCoverage` + `publishHTML`（coverage HTML）+ `allure` + `archiveArtifacts`（`reports/**`）。构建失败同样挂报告，构建页可直接点开红用例。
 - 报告层不判门禁：发布步骤带 `hashFiles` 守卫与 `continue-on-error`，Jenkins 的 `recordCoverage` 包 `fileExists`、Allure 步骤包 `try/catch`。收集期崩溃时不产 `junit.xml`，这些守卫让「报告发布失败」不会伪装成「测试失败」，也不把已通过的测试判红。
-- 门禁实测：`pytest -q` 488 passed / 4 deselected（`slow` e2e 被默认 `addopts` 排除，`pytest -m slow` 单独跑），全项目覆盖率 93.63%；`ruff check` / `ruff format --check` 与 `scripts/doc_check.py` 全绿（2026-11-12 本地全量复跑）。
+- 门禁实测：`pytest -q` 497 passed / 4 deselected（`slow` e2e 被默认 `addopts` 排除，`pytest -m slow` 单独跑），全项目覆盖率 93.63%；`ruff check` / `ruff format --check` 与 `scripts/doc_check.py` 全绿（2026-11-13 本地全量复跑）。
 - 真实 Jenkins 验证：在与 `Jenkinsfile` 等价的 Windows job 上跑完 build #7 / #8（SUCCESS，当时 368 passed / 4 deselected；此后用例数增加，最新本地全量为 410），`junit` 收 368 条用例，coverage 趋势页与 `Allure Report` 页均返回 200，`allure-results` / `allure-report` / `junit.xml` / `coverage.xml` / `htmlcov` 全部进构建归档。这是「在真实 Jenkins 上完成过一次完整验证」，不等于生产集成；仓库内 `Jenkinsfile` 走 `sh` 与 `.venv/bin`，需要 Linux agent，跨机器复现还取决于 Jenkins 插件与 Allure 工具链配置。
 - 接口鉴权防护：HTTPBearer 统一依赖注入，无凭证返回 401、凭证错误返回 403；`/health` 免鉴权作探针，`/docs` 在生产环境可一键关闭。
 - 全链路追踪：`X-Request-ID` 中间件让 Web → Celery → LLM 的日志贯穿同一请求 id，故障可按 id 一次性检索定位。
@@ -167,7 +167,7 @@ stateDiagram-v2
 
 | 命令 | 作用 |
 | :--- | :--- |
-| `pytest -q` | 后端测试门禁（单元 / 接口 / 任务），2026-11-12 实测 488 passed / 4 deselected |
+| `pytest -q` | 后端测试门禁（单元 / 接口 / 任务），2026-11-13 实测 497 passed / 4 deselected |
 | `pytest -m slow` | 慢测试 / e2e 冒烟（CI 单独 job，不随默认门禁） |
 | `pytest -m slow tests/e2e/test_real_full_chain.py -s` | 真实全链路 e2e：真 LLM（配置里的 OpenAI 兼容端点）+ 真 pytest 子进程 + 真 HTTP；进程级用 `REAL_E2E_PROCESS=1`（见下） |
 | `pytest --junitxml=reports/junit.xml --cov=app --cov-report=xml:reports/coverage.xml --cov-report=html:reports/htmlcov` | 本地复现 CI 报告产物（先建 `reports/`；JUnit + coverage XML/HTML）。Allure 结果由 `--alluredir=reports/allure-results --clean-alluredir` 产出，该参数由 `dev` extras 中的 `allure-pytest` 提供（`pip install -e ".[dev]"` 已包含，本地可完整复现 CI/Jenkins 的同一套产物） |
