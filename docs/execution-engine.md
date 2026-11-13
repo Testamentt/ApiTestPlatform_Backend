@@ -177,7 +177,7 @@ scan_stale_tasks():
 - 单任务内 10+ 用例串行执行（任务之间串行：单 Worker `--pool=solo --concurrency=1`）；Web 响应稳定 <50ms（异步解耦，不阻塞在 pytest 上）。
 - 死循环用例被超时强杀，任务进入明确终态，系统不卡死。
 - Worker 重启后（或 Beat 周期到点）：运行中超时任务、排队超时任务被迁移 failed；失败任务可人工重试。
-- 回归口径：默认 `pytest -q` 实测 497 passed / 4 deselected（slow 用例被 `addopts` 的 `-m 'not slow'` 排除，需 `pytest -m slow` 单独跑）；全项目覆盖率见最新 CI（2026-11-12 本地全量实测，以最新 CI 运行为准）。slow 里含 `tests/e2e/test_real_full_chain.py` 的 3 个真链路用例（真 pytest 子进程 / 真 LLM / 进程级全链路）。
+- 回归口径：默认 `pytest -q` 实测 506 passed / 4 deselected（slow 用例被 `addopts` 的 `-m 'not slow'` 排除，需 `pytest -m slow` 单独跑）；全项目覆盖率见最新 CI（2026-11-12 本地全量实测，以最新 CI 运行为准）。slow 里含 `tests/e2e/test_real_full_chain.py` 的 3 个真链路用例（真 pytest 子进程 / 真 LLM / 进程级全链路）。
 
 ## 10. 执行器抽象与 Jenkins 集成
 

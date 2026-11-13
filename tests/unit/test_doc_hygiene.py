@@ -146,15 +146,34 @@ class TestNoFalsePositivesOnTechnicalContent:
             "（P0）优先级最高，（P1）次之。",  # 优先级语义（白名单）
             "把 1695 tokens、$0.001695 写进台账。",  # 成本数字
             "MVP 例外持续生效：运行期 create_all。",  # 「MVP 例外」是既有契约名，不算阶段代称
+            "只豁免 E3 一项（E1 / E2 / E4 照常）。",  # 门禁代号，属白名单 C 类
+            "门禁分 D1–D6 六项（D1 与 D6 各管一类）。",  # 同上
         ],
     )
     def test_ordinary_content_is_allowed(self, text):
         assert _codes_hit(text, hygiene.DOC_PATTERNS) == set(), text
 
+
+class TestRuleScopes:
+    """规则适用范围。"""
+
     def test_code_patterns_skip_docs_only_rules(self):
         """代码注释只查 D1/D3/D4/D6；D2（过程叙述）与 D5（私有路径）只约束文档。"""
         codes = {code for code, _, _ in hygiene.CODE_PATTERNS}
         assert codes == {"D1", "D3", "D4", "D6"}
+
+
+class TestWhitelistPrecision:
+    """白名单精度：放过门禁代号，但不能顺手放过真正的评审批次号。"""
+
+    def test_gate_codes_allowed(self):
+        """门禁代号（§21.1 白名单 C 类）属正当引用，不该被判成批次编号。"""
+        assert _codes_hit("（E1）与（D6）是检查代号。", hygiene.DOC_PATTERNS) == set()
+
+    def test_adjacent_batch_ids_still_caught(self):
+        """相邻形态必须仍然命中：P3-6 是真批次号，E1 是代号，只差字母与数字位置。"""
+        assert "D1" in _codes_hit("按（P3-6）处理。", hygiene.DOC_PATTERNS)
+        assert "D1" in _codes_hit("按（review H4）处理。", hygiene.DOC_PATTERNS)
 
 
 class TestCommentExtraction:

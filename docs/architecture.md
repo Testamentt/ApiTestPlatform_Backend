@@ -199,7 +199,7 @@ backend/
 
 - 预期：Web 响应稳定 <50ms（异步解耦，不阻塞在 pytest/LLM 上）；单个任务可跑 10+ 用例；死循环用例被超时强杀，系统不卡死；AI 生成 draft 供人工审核。
 - 并发口径：**任务之间是串行的**——部署固定单 Worker（`--pool=solo --concurrency=1`，单写者写 SQLite）；"10+ 用例"指**同一任务内**的用例条数。
-- 门槛口径：全项目覆盖率门槛 60%（`pyproject.toml`），核心模块（services+utils）≥80%（CI 单独 fail-under）。当前 `pytest -q` 为 497 passed / 4 deselected（慢用例默认排除），全项目覆盖率见最新 CI（2026-11-12 本地全量实测，计数与覆盖率以最新 CI 运行为准）。
+- 门槛口径：全项目覆盖率门槛 60%（`pyproject.toml`），核心模块（services+utils）≥80%（CI 单独 fail-under）。当前 `pytest -q` 为 506 passed / 4 deselected（慢用例默认排除），全项目覆盖率见最新 CI（2026-11-12 本地全量实测，计数与覆盖率以最新 CI 运行为准）。
 - 风险：SQLite 双进程并发写（WAL + busy_timeout + 单 Worker 串行规避）；外部依赖（被测系统可达性、LLM 端点可用性、Jenkins 可用性：单测用 mock 与 `httpx.MockTransport` 隔离，真实链路另跑 `slow` e2e）；杀树在目标平台不可用时降级（`scan_stale_tasks` 兜底 + 失败留 warning）；切换到 Jenkins 执行器需要 Jenkins 侧有参数化 job，参数契约见 [execution-engine.md](execution-engine.md) §10。
 
 ## 10. 相关文档

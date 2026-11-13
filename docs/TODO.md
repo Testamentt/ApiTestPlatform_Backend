@@ -237,7 +237,7 @@
 
 ## 待提交 / 待跟进
 
-- [x] **2026-11-13 全量复跑口径**：`pytest -q` 497 passed / 4 deselected、覆盖率 93.63%、`ruff check` / `ruff format --check`、`scripts/doc_check.py`、`scripts/doc_hygiene.py` 全绿。本批门禁数字以此为准；上节记录里的 368 passed / 92.68% 是 2026-11-11 批次与 Jenkins build #7/#8 当时的实测值，不是同一时间点的口径。覆盖率随被测代码增长而变化，引用时以最新 CI 运行为准。
+- [x] **2026-11-13 全量复跑口径**：`pytest -q` 506 passed / 4 deselected、覆盖率 93.63%、`ruff check` / `ruff format --check`、`scripts/doc_check.py`、`scripts/doc_hygiene.py` 全绿。本批门禁数字以此为准；上节记录里的 368 passed / 92.68% 是 2026-11-11 批次与 Jenkins build #7/#8 当时的实测值，不是同一时间点的口径。覆盖率随被测代码增长而变化，引用时以最新 CI 运行为准。
 - [x] **文档与门禁侧改动已提交**：`README.md`、`docs/` 十一篇、`scripts/doc_check.py`、`scripts/doc_hygiene.py`、`tests/unit/test_doc_hygiene.py`、`Jenkinsfile` 与 `ci.yml` 的门禁步骤、`.gitignore` 均已随 `7b07ca2`（编码与注释措辞统一、两项门禁接入）等提交入库；`docs/README.internal.md` 按设计被 `.gitignore` 忽略，不随提交。
 - [ ] **推送**：两个仓库本地领先远端，未执行 `git push`；推送属对外动作，需明确授权后执行。
 - [ ] **Jenkins 侧不入库**：Windows 演示 job 配置、本机 Jenkins 安装目录与 Allure CLI 位置只在本机记录；仓库 `Jenkinsfile` 仍是项目 CI，不含 `TASK_ID` / `CASE_IDS` 参数。
