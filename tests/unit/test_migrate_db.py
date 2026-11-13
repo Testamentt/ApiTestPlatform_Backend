@@ -88,7 +88,7 @@ def _make_stale_db(path: Path) -> None:
 def test_migrate_adds_missing_column(tmp_path):
     db = tmp_path / "old.db"
     _make_stale_db(db)
-    statements, _notes = migrate_db.migrate(db)
+    statements, _notes, _backup = migrate_db.migrate(db)
     assert any("ADD COLUMN" in s and "quality_flags" in s for s in statements)
 
     con = sqlite3.connect(db)
@@ -135,8 +135,8 @@ def test_migrate_keeps_legacy_rows(tmp_path):
 def test_migrate_is_idempotent(tmp_path):
     db = tmp_path / "old.db"
     _make_stale_db(db)
-    first, _ = migrate_db.migrate(db)
-    second, _ = migrate_db.migrate(db)
+    first, _, _ = migrate_db.migrate(db)
+    second, _, _ = migrate_db.migrate(db)
     assert first  # 首次有 DDL
     assert second == []  # 再跑无动作
 
@@ -160,14 +160,93 @@ def test_migrate_skips_unknown_tables_not_in_models(tmp_path):
     con.commit()
     con.close()
 
-    statements, _ = migrate_db.migrate(db)
+    statements, _, _ = migrate_db.migrate(db)
     assert all("extra_table" not in s for s in statements)
+
+
+def test_migrate_backs_up_database_before_ddl(tmp_path):
+    """why：DROP COLUMN 不可逆，脚本是通用的——下次删的可能是有数据的列。
+
+    备份必须在任何 DDL 之前完成，且内容要是「迁移前」的状态（含将被删的列）。
+    """
+    db = tmp_path / "old.db"
+    _make_stale_db(db)
+    statements, _notes, backup = migrate_db.migrate(db)
+
+    assert statements
+    assert backup is not None and backup.exists()
+
+    # 备份里必须仍有 ai_confidence（证明拷的是迁移前状态，不是迁移后的库）
+    con = sqlite3.connect(backup)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(generation_logs)")}
+    con.close()
+    assert "ai_confidence" in cols
+
+    # 原库已迁移：列被删掉
+    con = sqlite3.connect(db)
+    live_cols = {r[1] for r in con.execute("PRAGMA table_info(generation_logs)")}
+    con.close()
+    assert "ai_confidence" not in live_cols
+
+
+def test_backup_name_keeps_original_extension(tmp_path):
+    """备份名不能改写原扩展名。
+
+    why 不用 Path.with_suffix：`x.sqlite3` → `with_suffix('.db.bak')` 会变成 `x.db.bak`，
+    看起来像另一个库；这里断言原名是前缀。
+    """
+    db = tmp_path / "platform.sqlite3"
+    _make_stale_db(db)
+    _statements, _notes, backup = migrate_db.migrate(db)
+
+    assert backup is not None
+    assert backup.name.startswith("platform.sqlite3.")
+    assert backup.name.endswith(".bak")
+
+
+def test_backup_does_not_overwrite_previous_run(tmp_path):
+    """同一库连续迁移两次，备份不能互相覆盖：第一次那份才是真正的迁移前状态。"""
+    db = tmp_path / "old.db"
+    _make_stale_db(db)
+    _first_statements, _notes, first_backup = migrate_db.migrate(db)
+    # 第二次已无 DDL，不会再备份
+    second_statements, _notes2, second_backup = migrate_db.migrate(db)
+
+    assert first_backup is not None and first_backup.exists()
+    assert second_statements == []
+    assert second_backup is None
+
+
+def test_dry_run_creates_no_backup(tmp_path):
+    """dry-run 不写库，也不该产备份文件（大库拷贝代价不该白付）。"""
+    db = tmp_path / "old.db"
+    _make_stale_db(db)
+    before = set(tmp_path.iterdir())
+
+    statements, _, backup = migrate_db.migrate(db, dry_run=True)
+
+    assert statements
+    assert backup is None
+    assert set(tmp_path.iterdir()) == before
+
+
+def test_backup_copies_wal_sidecar_when_present(tmp_path):
+    """WAL 模式下 -wal 可能含未 checkpoint 的数据，副本必须连它一起拷。"""
+    db = tmp_path / "old.db"
+    _make_stale_db(db)
+    wal = tmp_path / "old.db-wal"
+    wal.write_bytes(b"fake-wal")
+
+    _statements, _notes, backup = migrate_db.migrate(db)
+
+    assert backup is not None
+    assert backup.with_name(backup.name + "-wal").exists()
 
 
 def test_dry_run_changes_nothing(tmp_path):
     db = tmp_path / "old.db"
     _make_stale_db(db)
-    statements, _ = migrate_db.migrate(db, dry_run=True)
+    statements, _, _ = migrate_db.migrate(db, dry_run=True)
     assert statements
 
     con = sqlite3.connect(db)
@@ -210,7 +289,7 @@ def test_plan_reports_retained_legacy_column(tmp_path):
     con.commit()
     con.close()
 
-    _statements, notes = migrate_db.migrate(db, dry_run=True)
+    _statements, notes, _ = migrate_db.migrate(db, dry_run=True)
     assert any("legacy_optional" in n and "保留" in n for n in notes)
 
     con = sqlite3.connect(db)

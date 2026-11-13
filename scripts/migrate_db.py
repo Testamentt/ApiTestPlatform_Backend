@@ -8,8 +8,11 @@ why 需要它：`Base.metadata.create_all` 只建不存在的表，**不 ALTER �
 把执行记录与用例一起丢掉。
 
 设计约束：
-- **加列与删列都要处理**：模型删掉的列如果残留成 `NOT NULL` 且无默认值，会让新插入直接
-  `NOT NULL constraint failed`（`ai_confidence` 就是这样从"读不到"升级成"写不进"）。
+- **执行前整库备份**：`DROP COLUMN` 不可逆，脚本是通用的，下次删的可能是有数据的列。
+  备份名带时间戳（`<db>.<YYYYmmdd-HHMMSS>.bak`），同一天多次执行各留一份；
+  `-wal` / `-shm` 一并拷贝，保证 WAL 模式下副本可用。
+- **加列与删列都要处理**：模型删掉的列如果残留成 `NOT NULL` 且无默认值，会让新插入
+  直接 `NOT NULL constraint failed`（`ai_confidence` 就是这样从"读不到"升级成"写不进"）。
   只补列不删列，迁移完仍然 500。
 - **只删"阻断写入"的残留列**：可空或有默认值的多余列不影响 ORM，留着比删更安全。
 - **幂等**：以「当前实际列」与「模型定义列」求差集，重复执行不产生副作用。
@@ -26,8 +29,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -147,21 +152,48 @@ def plan_migrations(connection: sqlite3.Connection) -> tuple[list[str], list[str
     return statements, notes
 
 
-def migrate(db_path: Path, *, dry_run: bool = False) -> tuple[list[str], list[str]]:
-    """对单个 SQLite 文件执行 schema 对齐，返回 (实际执行的 DDL, 说明)。"""
+def backup_database(db_path: Path) -> Path:
+    """在执行任何 DDL 前整库拷贝一份，返回备份路径。
+
+    why 必须备份：脚本是通用的，而 `DROP COLUMN` 不可逆。当前唯一会删的列
+    （`ai_confidence`）恰好在本次改造里，删了无所谓；但下一次变成"删一个真有数据的列"
+    时，没有备份就没有退路。`shutil.copy2` 保留 mtime 便于追溯，代价是库体积一次拷贝。
+
+    why 不用 `db.with_suffix('.db.bak')`：`with_suffix` 会**替换**最后一个后缀——
+    `platform.db` → `platform.db.bak` 没问题，但 `x.sqlite3` → `x.db.bak` 会丢掉原扩展名，
+    看起来像另一个库。直接拼字符串语义更明确。
+
+    why 带时间戳：同一天反复跑会各自留档，不会被后一次覆盖掉"迁移前"那份。
+    """
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = db_path.with_name(f"{db_path.name}.{stamp}.bak")
+    shutil.copy2(db_path, backup_path)
+    # WAL 模式下 -wal 里可能还有未 checkpoint 的数据，一并备份才能保证副本可用
+    for suffix in ("-wal", "-shm"):
+        sidecar = db_path.with_name(db_path.name + suffix)
+        if sidecar.exists():
+            shutil.copy2(sidecar, backup_path.with_name(backup_path.name + suffix))
+    return backup_path
+
+
+def migrate(db_path: Path, *, dry_run: bool = False) -> tuple[list[str], list[str], Path | None]:
+    """对单个 SQLite 文件执行 schema 对齐，返回 (实际执行的 DDL, 说明, 备份路径)。"""
     if not db_path.exists():
         raise SystemExit(f"库不存在：{db_path}（新库由应用启动时的 create_all 建全量 schema）")
     connection = sqlite3.connect(db_path)
     try:
         statements, notes = plan_migrations(connection)
         if not statements:
-            return [], notes
+            return [], notes, None
         if dry_run:
-            return statements, notes
+            # why dry-run 不备份：它本来就不写库，多拷一份大文件纯属浪费
+            return statements, notes, None
+        # 先备份再执行——放在 for 循环前，任何一条 DDL 失败都能回到迁移前状态
+        backup_path = backup_database(db_path)
         for ddl in statements:
             connection.execute(ddl)
         connection.commit()
-        return statements, notes
+        return statements, notes, backup_path
     finally:
         connection.close()
 
@@ -197,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
 
     db_path = resolve_db_path(args.db)
     print(f"目标库：{db_path}")
-    statements, notes = migrate(db_path, dry_run=args.dry_run)
+    statements, notes, backup_path = migrate(db_path, dry_run=args.dry_run)
 
     if notes:
         print("\n检查说明：")
@@ -212,9 +244,10 @@ def main(argv: list[str] | None = None) -> int:
     for ddl in statements:
         print(f"  {ddl}")
     if args.dry_run:
-        print("\n（dry-run：未写入数据库）")
+        print("\n（dry-run：未写入数据库，未备份）")
     else:
-        print("\n完成。重启应用即可，无需删库。")
+        print(f"\n迁移前已备份：{backup_path}")
+        print("完成。重启应用即可，无需删库；确认无误后可手动删除备份。")
     return 0
 
 
